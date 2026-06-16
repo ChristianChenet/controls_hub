@@ -4,6 +4,7 @@ apps/*/dist/
 .env
 .env.local
 *.log
+*.bak_*
 release/
 backups/
 logs/
