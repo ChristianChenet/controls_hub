@@ -1350,16 +1350,41 @@ function CotacoesOperacional({
     }
 
     try {
+      let linkGerado = '';
+      let transportadoraLinkGerado = '';
       if (tipo === 'escolher' && transportadora?.id) {
         await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id));
         setMensagem('Transportadora escolhida com sucesso.');
       }
       if (tipo === 'link' && transportadora?.transportadora_id) {
         const retorno = await gerarNovoLinkCotacao(String(detalhe.cotacao.id), Number(transportadora.transportadora_id));
-        setUltimoLinkGerado(String(retorno.url_publica ?? ''));
-        setMensagem(`Novo link gerado: ${String(retorno.url_publica ?? '')}`);
+        const urlGerada = String(retorno.url_publica ?? '');
+        linkGerado = urlGerada;
+        transportadoraLinkGerado = String(transportadora.transportadora_id);
+        setUltimoLinkGerado(urlGerada);
+        setMensagem(`Novo link gerado: ${urlGerada}`);
+        setDetalhe((atual) => atual ? {
+          ...atual,
+          transportadoras: atual.transportadoras.map((item) => (
+            String(item.transportadora_id) === String(transportadora.transportadora_id)
+              ? { ...item, url_publica: urlGerada, token_status: 'ATIVO', status_envio: item.status_envio ?? 'ENVIADO' }
+              : item
+          ))
+        } : atual);
       }
-      setDetalhe(normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id))));
+      const detalheAtualizado = normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id)));
+      if (!detalheAtualizado) {
+        setDetalhe(null);
+        return;
+      }
+      setDetalhe(linkGerado ? {
+        ...detalheAtualizado,
+        transportadoras: detalheAtualizado.transportadoras.map((item) => (
+          String(item.transportadora_id) === transportadoraLinkGerado
+            ? { ...item, url_publica: String(item.url_publica ?? linkGerado), token_status: item.token_status ?? 'ATIVO', status_envio: item.status_envio ?? 'ENVIADO' }
+            : item
+        ))
+      } : detalheAtualizado);
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha na operação.');
     }
@@ -1542,6 +1567,7 @@ function CotacoesOperacional({
       {ultimoLinkGerado && (
         <div className="sucesso linkValidacao">
           <span>Link interno de validação disponível.</span>
+          <button className="ghost" onClick={() => copiarLink(ultimoLinkGerado)}>Copiar link</button>
           <button className="ghost" onClick={() => window.open(ultimoLinkGerado, '_blank')}>Visualizar link enviado</button>
         </div>
       )}
