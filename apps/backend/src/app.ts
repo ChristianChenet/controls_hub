@@ -1252,9 +1252,30 @@ export async function criarApp() {
     return sucesso(resultado);
   });
 
+  async function resolverTokenPublico(tokenParametro: string) {
+    const tokenInformado = decodeURIComponent(String(tokenParametro ?? '')).trim();
+    const tokenHashCalculado = createHash('sha256').update(tokenInformado).digest('hex');
+    const candidatos = [tokenHashCalculado];
+
+    // Links antigos ou gravados por rotinas de envio podem conter o hash salvo.
+    // A rota pública aceita os dois formatos para não quebrar links já enviados.
+    if (/^[a-f0-9]{64}$/i.test(tokenInformado) && tokenInformado !== tokenHashCalculado) {
+      candidatos.push(tokenInformado);
+    }
+
+    for (const tokenHash of candidatos) {
+      const resumo = await obterResumoPublicoPorToken(tokenHash);
+      if (resumo) {
+        return { tokenHash, resumo };
+      }
+    }
+
+    return null;
+  }
+
   app.get<{ Params: { token: string } }>('/api/publico/cotacao/:token', async (request, reply) => {
-    const tokenHash = createHash('sha256').update(request.params.token).digest('hex');
-    const resumo = await obterResumoPublicoPorToken(tokenHash);
+    const tokenResolvido = await resolverTokenPublico(request.params.token);
+    const resumo = tokenResolvido?.resumo;
 
     if (!resumo) {
       return reply.status(404).send(falha('TOKEN_INVALIDO', 'Cotacao nao encontrada.'));
@@ -1265,17 +1286,17 @@ export async function criarApp() {
       return reply.status(410).send(falha('TOKEN_INDISPONIVEL', 'Token expirado ou ja utilizado.'));
     }
 
-    await registrarVisualizacaoToken(tokenHash);
+    await registrarVisualizacaoToken(tokenResolvido!.tokenHash);
 
     return sucesso({
       resumo,
-      itens: await listarItensPublicosPorToken(tokenHash)
+      itens: await listarItensPublicosPorToken(tokenResolvido!.tokenHash)
     });
   });
 
   app.post<{ Params: { token: string }; Body: { valor_frete?: number; prazo_dias?: number; observacao?: string } }>('/api/publico/cotacao/:token/responder', async (request, reply) => {
-    const tokenHash = createHash('sha256').update(request.params.token).digest('hex');
-    const resumo = await obterResumoPublicoPorToken(tokenHash);
+    const tokenResolvido = await resolverTokenPublico(request.params.token);
+    const resumo = tokenResolvido?.resumo;
 
     if (!resumo) {
       return reply.status(404).send(falha('TOKEN_INVALIDO', 'Cotacao nao encontrada.'));
@@ -1303,7 +1324,7 @@ export async function criarApp() {
     }
 
     await registrarRespostaTransportadora({
-      tokenHash,
+      tokenHash: tokenResolvido!.tokenHash,
       cotacaoId: `${String((resumo as any).empresa_id ?? '')}|${String((resumo as any).tipo_documento ?? '')}|${String((resumo as any).numero_documento ?? '')}|${String((resumo as any).codigo_chave ?? '')}`,
       transportadoraId: (resumo as any).transportadora_id,
       valorFrete,
