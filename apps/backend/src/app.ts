@@ -658,7 +658,7 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; vendedor?: string; transportadora?: string; bloqueado?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -666,11 +666,17 @@ export async function criarApp() {
       dataInicial: request.query.data_inicial,
       dataFinal: request.query.data_final,
       etapaCodigo: request.query.etapa_codigo,
+      busca: request.query.busca,
+      numeroDocumento: request.query.numero_documento,
+      numeroNfe: request.query.numero_nfe,
+      cliente: request.query.cliente,
+      cidade: request.query.cidade,
+      codigoChave: request.query.codigo_chave,
       vendedor: request.query.vendedor,
       transportadora: request.query.transportadora,
       bloqueado: request.query.bloqueado,
       pagina: Number(request.query.pagina ?? 1),
-      limite: Number(request.query.limite ?? 50)
+      limite: Number(request.query.limite ?? 15)
     }));
   });
 

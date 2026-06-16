@@ -292,10 +292,16 @@ function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: Empr
 function FonteDaTela({ tela, usuario }: { tela: TelaAtual; usuario: UsuarioLogado }) {
   const [aberto, setAberto] = useState(false);
   const [fontes, setFontes] = useState<FonteTela[]>([]);
+  const [erroFonte, setErroFonte] = useState('');
 
   async function abrir() {
     if (!aberto && fontes.length === 0) {
-      setFontes(await buscarFonteDasTelas());
+      try {
+        setErroFonte('');
+        setFontes(await buscarFonteDasTelas());
+      } catch (error) {
+        setErroFonte(error instanceof Error ? error.message : 'Não foi possível carregar os detalhes técnicos.');
+      }
     }
     setAberto(!aberto);
   }
@@ -320,7 +326,17 @@ function FonteDaTela({ tela, usuario }: { tela: TelaAtual; usuario: UsuarioLogad
   const fonte =
     fontes.find((item: any) => String(item.rota ?? '').toLowerCase() === String(rotaAtual ?? '').toLowerCase()) ??
     fontes.find((item: any) => String(item.codigo ?? '').toUpperCase().includes(String(tela).toUpperCase())) ??
-    fontes[0];
+    fontes[0] ??
+    {
+      codigo: String(tela),
+      nome: String(tela),
+      rota: rotaAtual,
+      arquivo_fonte: 'apps/frontend/src/App.tsx',
+      componentes_principais: 'Layout, FonteDaTela e componente principal da tela',
+      endpoints_usados: '/api/auth/sessao, /api/cotacao-frete/*, /api/admin/*',
+      tabelas_principais: 'cotacoes_frete, cotacoes_frete_transportadoras, empresas, usuarios, permissoes',
+      rotinas_relacionadas: 'Carregamento da tela, permissões, filtros e ações operacionais.'
+    };
 
   return (
     <div className="fonteTela">
@@ -331,6 +347,7 @@ function FonteDaTela({ tela, usuario }: { tela: TelaAtual; usuario: UsuarioLogad
       {aberto && (
         <section className="fontePainel">
           <strong>{fonte?.nome ?? tela}</strong>
+          {erroFonte && <small><strong>Aviso:</strong> {erroFonte}</small>}
           <small><strong>Técnico:</strong> {fonte?.codigo ?? tela}</small>
           <small><strong>Rota:</strong> {fonte?.rota ?? rotaAtual}</small>
           <small><strong>Frontend:</strong> {fonte?.arquivo_fonte ?? 'apps/frontend/src/App.tsx'}</small>
@@ -1263,8 +1280,14 @@ function CotacoesOperacional({
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [ultimoLinkGerado, setUltimoLinkGerado] = useState('');
   const [paginaCotacao, setPaginaCotacao] = useState(1);
-  const [limiteCotacao, setLimiteCotacao] = useState(50);
+  const [limiteCotacao, setLimiteCotacao] = useState(15);
   const [totalCotacoes, setTotalCotacoes] = useState(0);
+  const [numeroDocumentoFiltro, setNumeroDocumentoFiltro] = useState('');
+  const [numeroNfeFiltro, setNumeroNfeFiltro] = useState('');
+  const [clienteFiltro, setClienteFiltro] = useState('');
+  const [cidadeFiltro, setCidadeFiltro] = useState('');
+  const [codigoChaveFiltro, setCodigoChaveFiltro] = useState('');
+  const [versaoTabelaCotacao, setVersaoTabelaCotacao] = useState(0);
   const pode = (codigo: string) => Boolean(usuario.superadmin || usuario.administrador || usuario.permissoes?.includes(codigo));
 
   async function carregar() {
@@ -1274,6 +1297,12 @@ function CotacoesOperacional({
         data_inicial: dataInicial,
         data_final: dataFinal,
         etapa_codigo: etapaFiltro,
+        busca: busca || undefined,
+        numero_documento: numeroDocumentoFiltro || undefined,
+        numero_nfe: numeroNfeFiltro || undefined,
+        cliente: clienteFiltro || undefined,
+        cidade: cidadeFiltro || undefined,
+        codigo_chave: codigoChaveFiltro || undefined,
         vendedor: vendedorFiltro || undefined,
         transportadora: transportadoraFiltro || undefined,
         bloqueado: bloqueadoFiltro || undefined,
@@ -1284,7 +1313,7 @@ function CotacoesOperacional({
       setTotalCotacoes(Array.isArray(retorno) ? dados.length : Number((retorno as any).total ?? dados.length));
       setCotacoes(dados);
       return dados.filter((item: any) => {
-        const texto = `${item.numero_documento ?? ''} ${item.nome_destinatario ?? ''} ${item.cidade_destino ?? ''} ${item.numeros_nfe ?? ''} ${item.numeros_cte ?? ''}`.toLowerCase();
+        const texto = `${item.numero_documento ?? ''} ${item.numero_pedido ?? ''} ${item.codigo_chave ?? ''} ${item.nome_destinatario ?? ''} ${item.cidade_destino ?? ''} ${item.numeros_nfe ?? ''} ${item.numeros_cte ?? ''}`.toLowerCase();
         const bateBusca = !busca || texto.includes(busca.toLowerCase());
         return bateBusca;
       });
@@ -1460,11 +1489,11 @@ function CotacoesOperacional({
         </div>
         <div className="acoesDashboard">
           <button className="ghost" onClick={() => setFiltrosAbertos(!filtrosAbertos)}>{filtrosAbertos ? 'Recolher filtros' : 'Filtros'}</button>
-          <BotaoAtualizar carregando={carregando} aoAtualizar={carregar} />
+          <BotaoAtualizar carregando={carregando} aoAtualizar={() => setVersaoTabelaCotacao((atual) => atual + 1)} />
         </div>
       </div>
       <div className="filtrosLinha">
-        <input placeholder="Buscar documento, destinatario ou cidade" value={busca} onChange={(evento) => setBusca(evento.target.value)} />
+        <input placeholder="Busca geral" value={busca} onChange={(evento) => { setBusca(evento.target.value); setPaginaCotacao(1); }} />
         <input type="date" value={dataInicial} onChange={(evento) => setDataInicial(evento.target.value)} />
         <input type="date" value={dataFinal} onChange={(evento) => setDataFinal(evento.target.value)} />
         <select value={etapaFiltro} onChange={(evento) => setEtapaFiltro(evento.target.value)}>
@@ -1479,18 +1508,35 @@ function CotacoesOperacional({
       </div>
       {filtrosAbertos && (
         <div className="filtrosLinha">
+          <input placeholder="Pedido/documento" value={numeroDocumentoFiltro} onChange={(evento) => { setNumeroDocumentoFiltro(evento.target.value); setPaginaCotacao(1); }} />
+          <input placeholder="Número NF-e" value={numeroNfeFiltro} onChange={(evento) => { setNumeroNfeFiltro(evento.target.value); setPaginaCotacao(1); }} />
+          <input placeholder="Cliente" value={clienteFiltro} onChange={(evento) => { setClienteFiltro(evento.target.value); setPaginaCotacao(1); }} />
+          <input placeholder="Cidade" value={cidadeFiltro} onChange={(evento) => { setCidadeFiltro(evento.target.value); setPaginaCotacao(1); }} />
+          <input placeholder="Chave" value={codigoChaveFiltro} onChange={(evento) => { setCodigoChaveFiltro(evento.target.value); setPaginaCotacao(1); }} />
           <input placeholder="Vendedor" value={vendedorFiltro} onChange={(evento) => setVendedorFiltro(evento.target.value)} />
           <input placeholder="Transportadora" value={transportadoraFiltro} onChange={(evento) => setTransportadoraFiltro(evento.target.value)} />
         </div>
       )}
       <TabelaOperacional
-        key={`${busca}-${bloqueadoFiltro}-${vendedorFiltro}-${transportadoraFiltro}`}
+        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
         titulo="Cotações de Frete"
         subtitulo="Clique em uma cotação para abrir o detalhe operacional, comparar transportadoras e acompanhar o fluxo completo."
         carregar={carregar}
         colunas={['tipo_documento', 'numero_documento', 'status', 'etapa_nome', 'nome_destinatario', 'cidade_destino', 'valor_mercadoria', 'bloqueado_para_alteracao']}
         aoSelecionar={abrir}
       />
+      <div className="paginacaoLinha">
+        <span>{totalCotacoes} registro(s) · página {paginaCotacao}/{Math.max(1, Math.ceil(totalCotacoes / limiteCotacao))}</span>
+        <select value={limiteCotacao} onChange={(evento) => { setLimiteCotacao(Number(evento.target.value)); setPaginaCotacao(1); }}>
+          <option value={15}>15 por página</option>
+          <option value={25}>25 por página</option>
+          <option value={50}>50 por página</option>
+          <option value={100}>100 por página</option>
+          <option value={200}>200 por página</option>
+        </select>
+        <button className="ghost" disabled={paginaCotacao <= 1} onClick={() => setPaginaCotacao((atual) => Math.max(1, atual - 1))}>Anterior</button>
+        <button className="ghost" disabled={paginaCotacao >= Math.max(1, Math.ceil(totalCotacoes / limiteCotacao))} onClick={() => setPaginaCotacao((atual) => Math.min(Math.max(1, Math.ceil(totalCotacoes / limiteCotacao)), atual + 1))}>Próxima</button>
+      </div>
       {erro && <div className="alerta">{erro}</div>}
       {mensagem && <div className="sucesso">{mensagem}</div>}
       {ultimoLinkGerado && (
@@ -2265,6 +2311,10 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
   const melhorFrete = Number(dados?.resumo.menor_frete_atual ?? 0);
   const valorInformado = Number(valorFrete.replace(',', '.'));
   const diferenca = melhorFrete > 0 && valorInformado > 0 ? ((valorInformado / melhorFrete) - 1) * 100 : 0;
+  const valorMercadoriaPublico = Number(dados?.resumo.valor_mercadoria ?? 0);
+  const valorTabelaPublico = Number(dados?.resumo.valor_tabela_transportadora ?? 0);
+  const percentualTabelaTotal = valorMercadoriaPublico > 0 ? (valorTabelaPublico / valorMercadoriaPublico) * 100 : 0;
+  const percentualFreteTotal = valorMercadoriaPublico > 0 && valorInformado > 0 ? (valorInformado / valorMercadoriaPublico) * 100 : 0;
 
   useEffect(() => {
     buscarCotacaoPublica(token)
@@ -2303,16 +2353,16 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
     ['Cidade Destinatário', resumo.cidade_destino],
     ['UF', resumo.uf_destino],
     ['Dest. Pessoa Física', resumo.destinatario_pessoa_fisica ? 'Sim' : 'Não'],
-    ['Valor da Mercadoria', `R$ ${String(resumo.valor_mercadoria ?? '0')}`],
+    ['Valor da Mercadoria', formatarMoeda(resumo.valor_mercadoria ?? 0)],
     ...(resumo.apresenta_peso === false ? [] : [['Peso Real', resumo.peso_real]]),
     ['Volumes Total', resumo.volumes_total],
     ...(resumo.apresenta_cubagem === false ? [] : [['Cubagem Total', resumo.cubagem_total]]),
-    ['Total do Frete', `R$ ${String(valorFrete || resumo.valor_solicitado || '0')}`],
-    ...(resumo.recebe_prazo_solicitado === false ? [] : [['Prazo informado na venda', `${String(resumo.prazo_informado_venda_dias ?? resumo.prazo_pedido_dias ?? '-')} dias`]]),
-    ['Prazo tabela', `${String(resumo.prazo_tabela_transportadora ?? resumo.menor_prazo_atual ?? '-')} dias`],
-    ['% Tabela sobre a NF', `${String(resumo.percentual_sobre_nf ?? '0')}%`],
-    ...(resumo.apresenta_valor_tabela === false ? [] : [['Valor Tabela', `R$ ${String(resumo.valor_tabela_transportadora ?? '0')}`]]),
-    ...(resumo.apresenta_menor_cotacao === false ? [] : [['Menor valor automático atual', `R$ ${String(resumo.menor_frete_atual ?? '0')}`]])
+    ['Total do Frete', formatarMoeda(valorFrete || resumo.valor_solicitado || 0)],
+    ...(resumo.recebe_prazo_solicitado === false ? [] : [['Prazo informado na venda', `${String(resumo.prazo_informado_venda_dias ?? resumo.prazo_pedido_dias ?? 0)} dias`]]),
+    ['Prazo tabela', `${String(resumo.prazo_tabela_transportadora ?? resumo.menor_prazo_atual ?? 0)} dias`],
+    ['% Tabela sobre o Total', formatarPercentual(percentualTabelaTotal)],
+    ...(resumo.apresenta_valor_tabela === false ? [] : [['Valor Tabela', formatarMoeda(resumo.valor_tabela_transportadora ?? 0)]]),
+    ...(resumo.apresenta_menor_cotacao === false ? [] : [['Menor valor automático atual', formatarMoeda(resumo.menor_frete_atual ?? 0)]])
   ];
 
   return (
@@ -2345,7 +2395,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
             <div className="resumoPublico">
               <strong>{String(resumo.transportadora_nome ?? '')}</strong>
               <p>{String(resumo.nome_destinatario ?? '')} - {String(resumo.cidade_destino ?? '')}/{String(resumo.uf_destino ?? '')}</p>
-              <p>Valor tabela: R$ {String(resumo.valor_tabela_transportadora ?? '0')} · Menor automático: R$ {String(resumo.menor_frete_atual ?? '0')}</p>
+              <p>Valor tabela: {formatarMoeda(resumo.valor_tabela_transportadora ?? 0)} · Menor automático: {formatarMoeda(resumo.menor_frete_atual ?? 0)}</p>
             </div>
             <div className="publicoCampos">
               {camposPublicos.map(([rotulo, valor]) => (
@@ -2378,6 +2428,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
               <label>
                 Valor do frete
                 <input value={valorFrete} onChange={(evento) => setValorFrete(evento.target.value)} placeholder="0,00" />
+                <small>% Frete sobre o Total: {formatarPercentual(percentualFreteTotal)}</small>
               </label>
               {resumo.exige_prazo_resposta !== false && (
                 <label>
@@ -2386,7 +2437,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
                 </label>
               )}
               <div className={diferenca <= 0 && valorInformado > 0 ? 'indicadorDesconto' : 'indicadorAcrescimo'}>
-                {valorInformado > 0 ? (diferenca > 0 ? `Já existe proposta menor: R$ ${String(resumo.menor_frete_atual ?? '0')} · +${diferenca.toFixed(2)}%` : `${diferenca.toFixed(2)}% vs menor valor atual`) : 'Informe o valor para comparar'}
+                {valorInformado > 0 ? (diferenca > 0 ? `Já existe proposta menor: ${formatarMoeda(resumo.menor_frete_atual ?? 0)} · +${diferenca.toFixed(2)}%` : `${diferenca.toFixed(2)}% vs menor valor atual`) : 'Informe o valor para comparar'}
               </div>
               <label>
                 Observacao

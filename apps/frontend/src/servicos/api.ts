@@ -195,6 +195,12 @@ export async function listarCotacoes(filtros?: {
   data_inicial?: string;
   data_final?: string;
   etapa_codigo?: string;
+  busca?: string;
+  numero_documento?: string;
+  numero_nfe?: string;
+  cliente?: string;
+  cidade?: string;
+  codigo_chave?: string;
   vendedor?: string;
   transportadora?: string;
   bloqueado?: string;

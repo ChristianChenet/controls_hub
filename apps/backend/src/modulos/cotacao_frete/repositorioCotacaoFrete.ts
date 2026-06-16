@@ -568,6 +568,12 @@ export type FiltrosCotacao = {
   dataInicial?: string;
   dataFinal?: string;
   etapaCodigo?: string;
+  busca?: string;
+  numeroDocumento?: string;
+  numeroNfe?: string;
+  cliente?: string;
+  cidade?: string;
+  codigoChave?: string;
   vendedor?: string;
   transportadora?: string;
   bloqueado?: string;
@@ -654,7 +660,58 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
 }
 
 export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCotacao = {}) {
-  return consultar(
+  const pagina = Math.max(1, Number(filtros.pagina ?? 1) || 1);
+  const limite = Math.min(200, Math.max(15, Number(filtros.limite ?? 15) || 15));
+  const offset = (pagina - 1) * limite;
+  const parametros = [
+    empresaId,
+    filtros.dataInicial || null,
+    filtros.dataFinal || null,
+    filtros.etapaCodigo || null,
+    filtros.vendedor ? `%${filtros.vendedor}%` : null,
+    filtros.transportadora ? `%${filtros.transportadora}%` : null,
+    filtros.bloqueado || null,
+    filtros.busca ? `%${filtros.busca}%` : null,
+    filtros.numeroDocumento ? `%${filtros.numeroDocumento}%` : null,
+    filtros.numeroNfe ? `%${filtros.numeroNfe}%` : null,
+    filtros.cliente ? `%${filtros.cliente}%` : null,
+    filtros.cidade ? `%${filtros.cidade}%` : null,
+    filtros.codigoChave ? `%${filtros.codigoChave}%` : null
+  ];
+  const where = `
+    c.empresa_id = $1
+    AND c.excluido = FALSE
+    AND c.situacao_pedido = 'ATIVO'
+    AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
+    AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
+    AND ($4::VARCHAR IS NULL OR e.codigo = $4)
+    AND ($5::VARCHAR IS NULL OR c.vendedor_nome ILIKE $5)
+    AND (
+      $6::VARCHAR IS NULL
+      OR COALESCE(c.transportadora_pedido_nome, '') ILIKE $6
+      OR COALESCE(t.nome_fantasia, '') ILIKE $6
+    )
+    AND (
+      $7::VARCHAR IS NULL
+      OR ($7 = 'SIM' AND COALESCE(c.bloqueado_para_alteracao, FALSE) = TRUE)
+      OR ($7 = 'NAO' AND COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE)
+    )
+    AND (
+      $8::VARCHAR IS NULL
+      OR c.numero_documento ILIKE $8
+      OR COALESCE(c.numero_pedido, '') ILIKE $8
+      OR c.codigo_chave ILIKE $8
+      OR COALESCE(c.nome_destinatario, '') ILIKE $8
+      OR COALESCE(c.cidade_destino, '') ILIKE $8
+      OR COALESCE(c.numero_nfe_faturada, '') ILIKE $8
+    )
+    AND ($9::VARCHAR IS NULL OR c.numero_documento ILIKE $9 OR COALESCE(c.numero_pedido, '') ILIKE $9)
+    AND ($10::VARCHAR IS NULL OR COALESCE(c.numero_nfe_faturada, '') ILIKE $10)
+    AND ($11::VARCHAR IS NULL OR COALESCE(c.nome_destinatario, '') ILIKE $11)
+    AND ($12::VARCHAR IS NULL OR COALESCE(c.cidade_destino, '') ILIKE $12)
+    AND ($13::VARCHAR IS NULL OR c.codigo_chave ILIKE $13)
+  `;
+  const itens = await consultar(
     `SELECT
       ${montarIdCotacaoSql('c')} AS id,
       c.tipo_documento,
@@ -685,34 +742,26 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     FROM cotacoes_frete c
     LEFT JOIN etapas_kanban e ON e.id = c.etapa_kanban_id
     LEFT JOIN transportadoras t ON t.id = c.transportadora_escolhida_id
-    WHERE c.empresa_id = $1
-      AND c.excluido = FALSE
-      AND c.situacao_pedido = 'ATIVO'
-      AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
-      AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
-      AND ($4::VARCHAR IS NULL OR e.codigo = $4)
-      AND ($5::VARCHAR IS NULL OR c.vendedor_nome ILIKE $5)
-      AND (
-        $6::VARCHAR IS NULL
-        OR COALESCE(c.transportadora_pedido_nome, '') ILIKE $6
-        OR COALESCE(t.nome_fantasia, '') ILIKE $6
-      )
-      AND (
-        $7::VARCHAR IS NULL
-        OR ($7 = 'SIM' AND COALESCE(c.bloqueado_para_alteracao, FALSE) = TRUE)
-        OR ($7 = 'NAO' AND COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE)
-      )
-    ORDER BY c.criado_em DESC`,
-    [
-      empresaId,
-      filtros.dataInicial || null,
-      filtros.dataFinal || null,
-      filtros.etapaCodigo || null,
-      filtros.vendedor ? `%${filtros.vendedor}%` : null,
-      filtros.transportadora ? `%${filtros.transportadora}%` : null,
-      filtros.bloqueado || null
-    ]
+    WHERE ${where}
+    ORDER BY c.criado_em DESC
+    LIMIT $14 OFFSET $15`,
+    [...parametros, limite, offset]
   );
+  const total = await consultarUm<{ total: string }>(
+    `SELECT COUNT(*) AS total
+    FROM cotacoes_frete c
+    LEFT JOIN etapas_kanban e ON e.id = c.etapa_kanban_id
+    LEFT JOIN transportadoras t ON t.id = c.transportadora_escolhida_id
+    WHERE ${where}`,
+    parametros
+  );
+
+  return {
+    itens,
+    total: Number(total?.total ?? 0),
+    pagina,
+    limite
+  };
 }
 
 
