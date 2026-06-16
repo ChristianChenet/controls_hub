@@ -1,0 +1,517 @@
+import { consultar, consultarUm } from '../../banco/conexao.js';
+import { montarIdCotacaoSql, parametrosChave, parseChaveCotacao } from './chaveCotacao.js';
+
+type FiltrosEnvioMassa = {
+  situacao?: string;
+  busca?: string;
+  envio?: string;
+  data_inicial?: string;
+  data_final?: string;
+  numero_documento?: string;
+  numero_nfe?: string;
+  cliente?: string;
+  cidade?: string;
+  codigo_chave?: string;
+  pagina?: string | number;
+  limite?: string | number;
+};
+
+function montarIdEnvio(chave: { empresaId: number; tipoDocumento: string; numeroDocumento: string; codigoChave: string }, numeroEnvio: number) {
+  return `${chave.empresaId}|${chave.tipoDocumento}|${chave.numeroDocumento}|${chave.codigoChave}|${numeroEnvio}`;
+}
+
+function parseIdEnvio(id: string | number) {
+  const partes = decodeURIComponent(String(id ?? '')).split('|');
+  if (partes.length !== 5) {
+    throw Object.assign(new Error('Identificador de envio invalido.'), {
+      codigo: 'ENVIO_INVALIDO',
+      statusCode: 400
+    });
+  }
+
+  return {
+    empresaId: Number(partes[0]),
+    tipoDocumento: partes[1],
+    numeroDocumento: partes[2],
+    codigoChave: partes[3],
+    numeroEnvio: Number(partes[4])
+  };
+}
+
+function parseIdFornecedorEnvio(id: string | number) {
+  const partes = decodeURIComponent(String(id ?? '')).split('|');
+  if (partes.length !== 6) {
+    throw Object.assign(new Error('Identificador de fornecedor do envio invalido.'), {
+      codigo: 'ENVIO_FORNECEDOR_INVALIDO',
+      statusCode: 400
+    });
+  }
+
+  return {
+    empresaId: Number(partes[0]),
+    tipoDocumento: partes[1],
+    numeroDocumento: partes[2],
+    codigoChave: partes[3],
+    numeroEnvio: Number(partes[4]),
+    transportadoraId: Number(partes[5])
+  };
+}
+
+function prepararChaves(empresaId: number, cotacoesIds: Array<string | number>) {
+  return cotacoesIds.map((id) => parseChaveCotacao(id, empresaId));
+}
+
+export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: FiltrosEnvioMassa = {}) {
+  const pagina = Math.max(Number(filtros.pagina ?? 1), 1);
+  const limite = Math.min(Math.max(Number(filtros.limite ?? 50), 1), 100000);
+  const deslocamento = (pagina - 1) * limite;
+  const situacao = filtros.situacao ?? 'ATIVOS';
+  const envio = filtros.envio ?? 'TODOS';
+  const busca = filtros.busca ? `%${filtros.busca.toLowerCase()}%` : null;
+  const numeroDocumento = filtros.numero_documento ? `%${filtros.numero_documento.toLowerCase()}%` : null;
+  const numeroNota = filtros.numero_nfe ? `%${filtros.numero_nfe.toLowerCase()}%` : null;
+  const cliente = filtros.cliente ? `%${filtros.cliente.toLowerCase()}%` : null;
+  const cidade = filtros.cidade ? `%${filtros.cidade.toLowerCase()}%` : null;
+  const codigoChave = filtros.codigo_chave ? `%${filtros.codigo_chave.toLowerCase()}%` : null;
+  const parametros = [
+    empresaId,
+    situacao,
+    busca,
+    envio,
+    filtros.data_inicial || null,
+    filtros.data_final || null,
+    numeroDocumento,
+    numeroNota,
+    cliente,
+    cidade,
+    codigoChave
+  ];
+
+  const sqlBase = `
+    FROM cotacoes_frete c
+    LEFT JOIN etapas_kanban e
+      ON e.id = c.etapa_kanban_id
+    LEFT JOIN cotacoes_frete_transportadoras cft
+      ON cft.empresa_id = c.empresa_id
+     AND cft.tipo_documento = c.tipo_documento
+     AND cft.numero_documento = c.numero_documento
+     AND cft.codigo_chave = c.codigo_chave
+    LEFT JOIN cotacoes_frete_envios env
+      ON env.empresa_id = c.empresa_id
+     AND env.tipo_documento = c.tipo_documento
+     AND env.numero_documento = c.numero_documento
+     AND env.codigo_chave = c.codigo_chave
+    LEFT JOIN cotacoes_frete_envios_fornecedores ef
+      ON ef.empresa_id = env.empresa_id
+     AND ef.tipo_documento = env.tipo_documento
+     AND ef.numero_documento = env.numero_documento
+     AND ef.codigo_chave = env.codigo_chave
+     AND ef.numero_envio = env.numero_envio
+    LEFT JOIN LATERAL (
+      SELECT STRING_AGG(nf.numero_nfe::TEXT, ', ' ORDER BY nf.data_nfe DESC NULLS LAST, nf.numero_nfe::TEXT) AS numeros_nfe
+      FROM cotacoes_frete_notas_fiscais nf
+      WHERE nf.empresa_id = c.empresa_id
+        AND nf.tipo_documento = c.tipo_documento
+        AND nf.numero_documento = c.numero_documento
+        AND nf.codigo_chave = c.codigo_chave
+    ) nfes ON TRUE
+    WHERE c.empresa_id = $1
+      AND (
+        $2::VARCHAR = 'TODOS'
+        OR ($2::VARCHAR = 'ATIVOS' AND c.situacao_pedido = 'ATIVO' AND c.excluido = FALSE)
+        OR ($2::VARCHAR = 'CANCELADOS' AND c.situacao_pedido = 'CANCELADO')
+        OR ($2::VARCHAR = 'EXCLUIDOS' AND (c.situacao_pedido = 'EXCLUIDO' OR c.excluido = TRUE))
+        OR ($2::VARCHAR = 'CANCELADOS_EXCLUIDOS' AND (c.situacao_pedido IN ('CANCELADO', 'EXCLUIDO') OR c.excluido = TRUE))
+      )
+      AND ($5::DATE IS NULL OR c.data_documento >= $5::DATE)
+      AND ($6::DATE IS NULL OR c.data_documento <= $6::DATE)
+      AND (
+        $3::VARCHAR IS NULL
+        OR LOWER(COALESCE(c.numero_documento, '')) LIKE $3::VARCHAR
+        OR LOWER(COALESCE(c.numero_pedido, '')) LIKE $3::VARCHAR
+        OR LOWER(COALESCE(c.codigo_chave, '')) LIKE $3::VARCHAR
+        OR LOWER(COALESCE(c.nome_destinatario, '')) LIKE $3::VARCHAR
+        OR LOWER(COALESCE(c.cidade_destino, '')) LIKE $3::VARCHAR
+        OR LOWER(COALESCE(nfes.numeros_nfe, '')) LIKE $3::VARCHAR
+      )
+      AND ($7::VARCHAR IS NULL OR LOWER(COALESCE(c.numero_documento, '')) LIKE $7::VARCHAR OR LOWER(COALESCE(c.numero_pedido, '')) LIKE $7::VARCHAR)
+      AND ($8::VARCHAR IS NULL OR LOWER(COALESCE(nfes.numeros_nfe, '')) LIKE $8::VARCHAR)
+      AND ($9::VARCHAR IS NULL OR LOWER(COALESCE(c.nome_destinatario, '')) LIKE $9::VARCHAR)
+      AND ($10::VARCHAR IS NULL OR LOWER(COALESCE(c.cidade_destino, '')) LIKE $10::VARCHAR)
+      AND ($11::VARCHAR IS NULL OR LOWER(COALESCE(c.codigo_chave, '')) LIKE $11::VARCHAR)
+    GROUP BY
+      c.empresa_id,
+      c.tipo_documento,
+      c.numero_documento,
+      c.numero_pedido,
+      c.codigo_chave,
+      c.situacao_pedido,
+      c.status,
+      c.nome_destinatario,
+      c.cidade_destino,
+      c.uf_destino,
+      c.valor_mercadoria,
+      c.criado_em,
+      e.nome,
+      nfes.numeros_nfe
+    HAVING (
+      $4::VARCHAR = 'TODOS'
+      OR ($4::VARCHAR = 'NAO_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') = 0)
+      OR ($4::VARCHAR = 'JA_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') > 0)
+    )`;
+
+  const itens = await consultar(
+    `SELECT
+      ${montarIdCotacaoSql('c')} AS id,
+      c.tipo_documento,
+      c.numero_documento,
+      c.numero_pedido,
+      c.codigo_chave,
+      c.situacao_pedido,
+      c.status,
+      c.nome_destinatario,
+      c.cidade_destino,
+      c.uf_destino,
+      c.valor_mercadoria,
+      nfes.numeros_nfe,
+      e.nome AS etapa_nome,
+      COUNT(DISTINCT cft.transportadora_id) AS fornecedores_vinculados,
+      COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') AS fornecedores_enviados
+    ${sqlBase}
+    ORDER BY c.criado_em DESC
+    LIMIT $12::INTEGER
+    OFFSET $13::INTEGER`,
+    [...parametros, limite, deslocamento]
+  );
+
+  const total = await consultarUm<{ total: string }>(
+    `SELECT COUNT(*) AS total
+    FROM (
+      SELECT ${montarIdCotacaoSql('c')} AS id ${sqlBase}
+    ) totais`,
+    parametros
+  );
+
+  return {
+    itens,
+    total: Number(total?.total ?? 0),
+    pagina,
+    limite
+  };
+}
+
+export async function prepararEnvioMassa(empresaId: number, cotacoesIds: Array<string | number>) {
+  if (!cotacoesIds.length) {
+    return [];
+  }
+
+  const chaves = prepararChaves(empresaId, cotacoesIds);
+
+  return consultar(
+    `WITH chaves AS (
+      SELECT *
+      FROM UNNEST($2::BIGINT[], $3::VARCHAR[], $4::VARCHAR[], $5::VARCHAR[])
+        AS chave(empresa_id, tipo_documento, numero_documento, codigo_chave)
+    )
+    SELECT
+      ${montarIdCotacaoSql('c')} AS cotacao_id,
+      c.numero_documento,
+      c.numero_pedido,
+      c.codigo_chave,
+      c.situacao_pedido,
+      c.excluido,
+      t.id AS transportadora_id,
+      t.nome_fantasia,
+      t.email,
+      t.sla_resposta_horas,
+      t.prazo_resposta_obrigatorio,
+      t.recebe_prazo_solicitado,
+      t.apresenta_lista_produtos,
+      cft.valor_frete,
+      cft.ranking_frete,
+      RANK() OVER (
+        PARTITION BY c.empresa_id, c.tipo_documento, c.numero_documento, c.codigo_chave
+        ORDER BY cft.valor_frete ASC NULLS LAST, cft.transportadora_id ASC
+      ) AS posicao_cotacao,
+      cft.origem_cotacao,
+      ultimo_envio.url_publica AS ultimo_link_enviado,
+      ultimo_envio.enviado_em AS ultimo_link_enviado_em,
+      EXISTS (
+        SELECT 1
+        FROM cotacoes_frete_envios_fornecedores ef
+        WHERE ef.empresa_id = c.empresa_id
+          AND ef.tipo_documento = c.tipo_documento
+          AND ef.numero_documento = c.numero_documento
+          AND ef.codigo_chave = c.codigo_chave
+          AND ef.transportadora_id = t.id
+          AND ef.status_envio = 'ENVIADO'
+      ) AS ja_enviado
+    FROM cotacoes_frete c
+    INNER JOIN chaves chave
+      ON chave.empresa_id = c.empresa_id
+     AND chave.tipo_documento = c.tipo_documento
+     AND chave.numero_documento = c.numero_documento
+     AND chave.codigo_chave = c.codigo_chave
+    INNER JOIN cotacoes_frete_transportadoras cft
+      ON cft.empresa_id = c.empresa_id
+     AND cft.tipo_documento = c.tipo_documento
+     AND cft.numero_documento = c.numero_documento
+     AND cft.codigo_chave = c.codigo_chave
+    INNER JOIN transportadoras t
+      ON t.id = cft.transportadora_id
+    LEFT JOIN LATERAL (
+      SELECT
+        ef.url_publica,
+        ef.enviado_em
+      FROM cotacoes_frete_envios_fornecedores ef
+      WHERE ef.empresa_id = c.empresa_id
+        AND ef.tipo_documento = c.tipo_documento
+        AND ef.numero_documento = c.numero_documento
+        AND ef.codigo_chave = c.codigo_chave
+        AND ef.transportadora_id = t.id
+        AND ef.url_publica IS NOT NULL
+      ORDER BY ef.enviado_em DESC NULLS LAST, ef.numero_envio DESC
+      LIMIT 1
+    ) ultimo_envio ON TRUE
+    WHERE c.empresa_id = $1
+    ORDER BY c.numero_documento ASC, t.nome_fantasia ASC`,
+    [
+      empresaId,
+      chaves.map((chave) => chave.empresaId),
+      chaves.map((chave) => chave.tipoDocumento),
+      chaves.map((chave) => chave.numeroDocumento),
+      chaves.map((chave) => chave.codigoChave)
+    ]
+  );
+}
+
+export async function criarEnvioCotacao(dados: {
+  empresaId: number;
+  cotacaoId: string | number;
+  codigoChave: string;
+  parcial: boolean;
+  usuarioId: number;
+  itensIds: number[];
+}) {
+  const chave = parseChaveCotacao(dados.cotacaoId, dados.empresaId);
+  const numeroEnvio = await consultarUm<{ numero_envio: number }>(
+    `SELECT COALESCE(MAX(numero_envio), 0) + 1 AS numero_envio
+    FROM cotacoes_frete_envios
+    WHERE empresa_id = $1
+      AND tipo_documento = $2
+      AND numero_documento = $3
+      AND codigo_chave = $4`,
+    parametrosChave(chave)
+  );
+
+  const envio = await consultarUm<{ id: string; numero_envio: number; codigo_chave: string }>(
+    `INSERT INTO cotacoes_frete_envios (
+      empresa_id,
+      tipo_documento,
+      numero_documento,
+      codigo_chave,
+      numero_envio,
+      parcial,
+      primeiro_envio,
+      status_envio,
+      criado_por_usuario_id
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $5 = 1, 'PENDENTE', $7)
+    RETURNING
+      CONCAT_WS('|', empresa_id, tipo_documento, numero_documento, codigo_chave, numero_envio) AS id,
+      numero_envio,
+      codigo_chave`,
+    [...parametrosChave(chave), numeroEnvio?.numero_envio ?? 1, dados.parcial, dados.usuarioId]
+  );
+
+  if (envio) {
+    const itens = dados.itensIds.length
+      ? dados.itensIds
+      : (await consultar<{ item_sequencia: number }>(
+          `SELECT item_sequencia
+          FROM cotacoes_frete_itens
+          WHERE empresa_id = $1
+            AND tipo_documento = $2
+            AND numero_documento = $3
+            AND codigo_chave = $4
+          ORDER BY item_sequencia ASC`,
+          parametrosChave(chave)
+        )).map((item) => item.item_sequencia);
+
+    for (const itemSequencia of itens) {
+      await consultar(
+        `INSERT INTO cotacoes_frete_envios_itens (
+          empresa_id,
+          tipo_documento,
+          numero_documento,
+          codigo_chave,
+          numero_envio,
+          item_sequencia,
+          quantidade_enviada
+        )
+        SELECT $1, $2, $3, $4, $5, item_sequencia, quantidade
+        FROM cotacoes_frete_itens
+        WHERE empresa_id = $1
+          AND tipo_documento = $2
+          AND numero_documento = $3
+          AND codigo_chave = $4
+          AND item_sequencia = $6
+        ON CONFLICT (empresa_id, tipo_documento, numero_documento, codigo_chave, numero_envio, item_sequencia) DO NOTHING`,
+        [...parametrosChave(chave), envio.numero_envio, itemSequencia]
+      );
+    }
+  }
+
+  return envio;
+}
+
+export async function registrarFornecedorEnvio(dados: {
+  envioId: string | number;
+  transportadoraId: number;
+  emailDestino?: string | null;
+  primeiroEnvio: boolean;
+  reenvio: boolean;
+  urlPublica?: string | null;
+  tokenHash?: string | null;
+  slaLimiteEm?: Date | null;
+}) {
+  const envio = parseIdEnvio(dados.envioId);
+  return consultarUm<{ id: string }>(
+    `INSERT INTO cotacoes_frete_envios_fornecedores (
+      empresa_id,
+      tipo_documento,
+      numero_documento,
+      codigo_chave,
+      numero_envio,
+      transportadora_id,
+      email_destino,
+      url_publica,
+      token_hash,
+      sla_limite_em,
+      status_envio,
+      primeiro_envio,
+      reenvio,
+      tentativas
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDENTE', $11, $12, 0)
+    ON CONFLICT (empresa_id, tipo_documento, numero_documento, codigo_chave, numero_envio, transportadora_id) DO UPDATE SET
+      email_destino = EXCLUDED.email_destino,
+      url_publica = EXCLUDED.url_publica,
+      token_hash = COALESCE(EXCLUDED.token_hash, cotacoes_frete_envios_fornecedores.token_hash),
+      sla_limite_em = EXCLUDED.sla_limite_em,
+      reenvio = EXCLUDED.reenvio,
+      status_envio = 'PENDENTE'
+    RETURNING CONCAT_WS('|', empresa_id, tipo_documento, numero_documento, codigo_chave, numero_envio, transportadora_id) AS id`,
+    [
+      envio.empresaId,
+      envio.tipoDocumento,
+      envio.numeroDocumento,
+      envio.codigoChave,
+      envio.numeroEnvio,
+      dados.transportadoraId,
+      dados.emailDestino ?? null,
+      dados.urlPublica ?? null,
+      dados.tokenHash ?? null,
+      dados.slaLimiteEm ?? null,
+      dados.primeiroEnvio,
+      dados.reenvio
+    ]
+  );
+}
+
+export async function atualizarFornecedorEnvio(dados: {
+  envioFornecedorId: string | number;
+  tokenId?: string | number | null;
+  status: string;
+  erro?: string | null;
+}) {
+  const fornecedor = parseIdFornecedorEnvio(dados.envioFornecedorId);
+  return consultarUm(
+    `UPDATE cotacoes_frete_envios_fornecedores
+    SET token_hash = COALESCE($7, token_hash),
+      status_envio = $8::VARCHAR,
+      erro_envio = $9,
+      tentativas = tentativas + 1,
+      enviado_em = CASE WHEN $8::VARCHAR = 'ENVIADO' THEN NOW() ELSE enviado_em END
+    WHERE empresa_id = $1
+      AND tipo_documento = $2
+      AND numero_documento = $3
+      AND codigo_chave = $4
+      AND numero_envio = $5
+      AND transportadora_id = $6
+    RETURNING *`,
+    [
+      fornecedor.empresaId,
+      fornecedor.tipoDocumento,
+      fornecedor.numeroDocumento,
+      fornecedor.codigoChave,
+      fornecedor.numeroEnvio,
+      fornecedor.transportadoraId,
+      dados.tokenId ? String(dados.tokenId) : null,
+      dados.status,
+      dados.erro ?? null
+    ]
+  );
+}
+
+export async function concluirEnvio(dados: {
+  envioId: string | number;
+  usuarioId: number;
+  status: string;
+}) {
+  const envio = parseIdEnvio(dados.envioId);
+  return consultarUm(
+    `UPDATE cotacoes_frete_envios
+    SET status_envio = $6,
+      enviado_em = NOW()
+    WHERE empresa_id = $1
+      AND tipo_documento = $2
+      AND numero_documento = $3
+      AND codigo_chave = $4
+      AND numero_envio = $5
+    RETURNING CONCAT_WS('|', empresa_id, tipo_documento, numero_documento, codigo_chave, numero_envio) AS id, *`,
+    [
+      envio.empresaId,
+      envio.tipoDocumento,
+      envio.numeroDocumento,
+      envio.codigoChave,
+      envio.numeroEnvio,
+      dados.status
+    ]
+  );
+}
+
+export async function listarItensDoEnvio(envioId: string | number) {
+  const envio = parseIdEnvio(envioId);
+  return consultar(
+    `SELECT
+      i.codigo_item,
+      i.descricao_item,
+      COALESCE(ei.quantidade_enviada, i.quantidade) AS quantidade,
+      i.cubagem_item,
+      i.largura,
+      i.altura,
+      i.comprimento,
+      i.peso_item
+    FROM cotacoes_frete_envios_itens ei
+    INNER JOIN cotacoes_frete_itens i
+      ON i.empresa_id = ei.empresa_id
+     AND i.tipo_documento = ei.tipo_documento
+     AND i.numero_documento = ei.numero_documento
+     AND i.codigo_chave = ei.codigo_chave
+     AND i.item_sequencia = ei.item_sequencia
+    WHERE ei.empresa_id = $1
+      AND ei.tipo_documento = $2
+      AND ei.numero_documento = $3
+      AND ei.codigo_chave = $4
+      AND ei.numero_envio = $5
+    ORDER BY i.item_sequencia ASC`,
+    [
+      envio.empresaId,
+      envio.tipoDocumento,
+      envio.numeroDocumento,
+      envio.codigoChave,
+      envio.numeroEnvio
+    ]
+  );
+}

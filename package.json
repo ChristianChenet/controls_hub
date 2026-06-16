@@ -1,0 +1,16 @@
+{
+  "name": "control-s-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CONTROL S HUB - plataforma modular corporativa da Control S.",
+  "scripts": {
+    "dev:backend": "npm --workspace apps/backend run dev",
+    "dev:frontend": "npm --workspace apps/frontend run dev",
+    "build": "npm --workspace apps/backend run build && npm --workspace apps/frontend run build"
+  },
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ]
+}
+

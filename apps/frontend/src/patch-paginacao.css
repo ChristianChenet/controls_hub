@@ -1,0 +1,18 @@
+
+.paginacaoCotacao {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin: 8px 0 12px;
+}
+
+.paginacaoCotacao span {
+  color: #526174;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.paginacaoCotacao select {
+  max-width: 150px;
+}

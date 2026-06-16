@@ -1,0 +1,14 @@
+node_modules/
+apps/*/node_modules/
+apps/*/dist/
+.env
+.env.local
+*.log
+release/
+backups/
+logs/
+dist-atualizacao/
+dist-instalador/
+backend-*.log
+logs_*.txt
+VALIDACAO_BUILD.txt

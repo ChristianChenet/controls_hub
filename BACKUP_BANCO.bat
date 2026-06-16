@@ -1,0 +1,27 @@
+@ECHO OFF
+SETLOCAL ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
+SET "BASE_DIR=%~dp0"
+IF "%BASE_DIR:~-1%"=="\" SET "BASE_DIR=%BASE_DIR:~0,-1%"
+SET "BACKUP_DIR=%BASE_DIR%\backups"
+SET "LOG_DIR=%BASE_DIR%\logs"
+IF NOT EXIST "%BACKUP_DIR%" MKDIR "%BACKUP_DIR%"
+IF NOT EXIST "%LOG_DIR%" MKDIR "%LOG_DIR%"
+SET "ARQUIVO=%BACKUP_DIR%\backup_controlshub_%DATE:~-4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%.backup"
+SET "ARQUIVO=%ARQUIVO: =0%"
+SET "PGPASSWORD=controls"
+CALL :LOCALIZAR_PG pg_dump.exe PGDUMP
+IF NOT DEFINED PGDUMP EXIT /B 1
+"%PGDUMP%" -h 127.0.0.1 -U postgres -d controlshub -F c -f "%ARQUIVO%" > "%LOG_DIR%\BACKUP_BANCO.log" 2>&1
+IF ERRORLEVEL 1 (
+  ECHO Falha no backup. Veja logs\BACKUP_BANCO.log
+  EXIT /B 1
+)
+ECHO Backup gerado: %ARQUIVO%
+EXIT /B 0
+
+:LOCALIZAR_PG
+FOR /F "tokens=* USEBACKQ" %%A IN (`WHERE %1 2^>NUL`) DO SET "%2=%%A"
+IF DEFINED %2 EXIT /B 0
+FOR /D %%D IN ("C:\Program Files\PostgreSQL\*") DO IF EXIST "%%D\bin\%1" SET "%2=%%D\bin\%1"
+IF NOT DEFINED %2 ECHO %1 nao encontrado.
+EXIT /B 0
