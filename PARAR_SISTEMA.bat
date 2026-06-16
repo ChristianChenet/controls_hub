@@ -1,3 +1,3 @@
 @ECHO OFF
 ECHO Parando processos Node do Control S Hub...
-POWERSHELL -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='node.exe'\" | Where-Object { $_.CommandLine -like '*CS_ControlSHub*' -or $_.CommandLine -like '*control-s-hub*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+POWERSHELL -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='node.exe'\" | Where-Object { $_.CommandLine -like '*CS_ControlSHub*' -or $_.CommandLine -like '*Control S Hub*' -or $_.CommandLine -like '*control-s-hub*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
