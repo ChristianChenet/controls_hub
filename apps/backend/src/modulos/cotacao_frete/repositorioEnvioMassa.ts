@@ -79,6 +79,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   envio?: string;
   vendedor?: string;
   transportadora?: string;
+  faturado?: string;
 }) {
   const situacao = filtros.situacao ?? 'ATIVOS';
   const busca = `%${String(filtros.busca ?? '').toLowerCase()}%`;
@@ -104,6 +105,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.cidade_destino,
       c.uf_destino,
       c.valor_mercadoria,
+      c.faturado_em,
+      nfes.numeros_nfe,
+      COALESCE(nfes.total_nfes, 0) AS total_nfes,
       COALESCE(c.bloqueado_para_alteracao, FALSE) AS bloqueado_para_alteracao,
       CASE
         WHEN c.status IN ('COTACAO_PENDENTE', 'COTACAO_AUTOMATICA') THEN TRUE
@@ -152,6 +156,16 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
      AND ef.numero_envio = env.numero_envio
     LEFT JOIN LATERAL (
       SELECT
+        STRING_AGG(nf.numero_nfe::TEXT, ', ' ORDER BY nf.data_nfe DESC NULLS LAST, nf.numero_nfe::TEXT) AS numeros_nfe,
+        COUNT(*) AS total_nfes
+      FROM cotacoes_frete_notas_fiscais nf
+      WHERE nf.empresa_id = c.empresa_id
+        AND nf.tipo_documento = c.tipo_documento
+        AND nf.numero_documento = c.numero_documento
+        AND nf.codigo_chave = c.codigo_chave
+    ) nfes ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
         cftr.transportadora_id,
         t.nome_fantasia,
         cftr.origem_cotacao,
@@ -194,6 +208,11 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         OR LOWER(COALESCE(c.transportadora_pedido_nome, '')) LIKE $6
         OR LOWER(COALESCE(melhor.nome_fantasia, '')) LIKE $6
       )
+      AND (
+        $7::VARCHAR IS NULL
+        OR ($7 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR nfes.total_nfes > 0))
+        OR ($7 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND COALESCE(nfes.total_nfes, 0) = 0)
+      )
     GROUP BY
       c.empresa_id,
       c.tipo_documento,
@@ -210,6 +229,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.cidade_destino,
       c.uf_destino,
       c.valor_mercadoria,
+      c.faturado_em,
+      nfes.numeros_nfe,
+      nfes.total_nfes,
       c.bloqueado_para_alteracao,
       e.nome,
       melhor.nome_fantasia,
@@ -223,7 +245,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       OR ($4 = 'JA_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') > 0)
     )
     ORDER BY c.criado_em DESC`,
-    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora]
+    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora, filtros.faturado ?? null]
   );
 }
 

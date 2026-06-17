@@ -204,13 +204,14 @@ export async function listarCotacoes(filtros?: {
   vendedor?: string;
   transportadora?: string;
   bloqueado?: string;
+  faturado?: string;
   pagina?: string;
   limite?: string;
 }) {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/cotacoes${montarQuery(filtros)}`);
 }
 
-export async function listarPedidosEnvioMassa(filtros: { situacao?: string; busca?: string; envio?: string; vendedor?: string; transportadora?: string }) {
+export async function listarPedidosEnvioMassa(filtros: { situacao?: string; busca?: string; envio?: string; vendedor?: string; transportadora?: string; faturado?: string }) {
   const parametros = new URLSearchParams();
   Object.entries(filtros).forEach(([chave, valor]) => {
     if (valor !== undefined && valor !== null && valor !== '') {
@@ -245,7 +246,7 @@ export async function enviarCotacoesMassa(dados: {
   });
 }
 
-export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string }) {
+export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string }) {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/kanban${montarQuery(filtros)}`);
 }
 

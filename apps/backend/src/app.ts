@@ -647,18 +647,19 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
     return sucesso(await listarKanbanCotacao(usuario!.empresaAtivaId!, {
       dataInicial: request.query.data_inicial,
       dataFinal: request.query.data_final,
-      etapaCodigo: request.query.etapa_codigo
+      etapaCodigo: request.query.etapa_codigo,
+      faturado: request.query.faturado
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; faturado?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -675,12 +676,13 @@ export async function criarApp() {
       vendedor: request.query.vendedor,
       transportadora: request.query.transportadora,
       bloqueado: request.query.bloqueado,
+      faturado: request.query.faturado,
       pagina: Number(request.query.pagina ?? 1),
       limite: Number(request.query.limite ?? 15)
     }));
   });
 
-  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; vendedor?: string; transportadora?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; vendedor?: string; transportadora?: string; faturado?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);

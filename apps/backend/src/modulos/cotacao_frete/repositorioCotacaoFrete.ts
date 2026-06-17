@@ -187,6 +187,8 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
         COUNT(*) FILTER (
           WHERE COALESCE(t.valor_frete, 0) > 0
             AND UPPER(COALESCE(t.origem_cotacao, '')) IN ('ERP', 'AUTOMATICA', 'BANCO')
+            AND UPPER(COALESCE(t.status, '')) NOT IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
+            AND t.respondida_em IS NULL
         ) AS total_automaticas
       FROM cotacoes_frete_transportadoras t
       WHERE t.empresa_id = c.empresa_id
@@ -198,11 +200,19 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
       SELECT
         COUNT(*) FILTER (
           WHERE COALESCE(t.valor_frete, 0) > 0
-            AND UPPER(COALESCE(t.origem_cotacao, '')) NOT IN ('ERP', 'AUTOMATICA', 'BANCO')
+            AND (
+              UPPER(COALESCE(t.origem_cotacao, '')) NOT IN ('ERP', 'AUTOMATICA', 'BANCO')
+              OR UPPER(COALESCE(t.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
+              OR t.respondida_em IS NOT NULL
+            )
         ) AS total_externas,
         COUNT(*) FILTER (
           WHERE COALESCE(t.valor_frete, 0) > 0
-            AND UPPER(COALESCE(t.origem_cotacao, '')) NOT IN ('ERP', 'AUTOMATICA', 'BANCO')
+            AND (
+              UPPER(COALESCE(t.origem_cotacao, '')) NOT IN ('ERP', 'AUTOMATICA', 'BANCO')
+              OR UPPER(COALESCE(t.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
+              OR t.respondida_em IS NOT NULL
+            )
             AND (t.respondida_em IS NOT NULL OR COALESCE(t.status, '') IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTADA'))
         ) AS total_externas_respondidas
       FROM cotacoes_frete_transportadoras t
@@ -577,6 +587,7 @@ export type FiltrosCotacao = {
   vendedor?: string;
   transportadora?: string;
   bloqueado?: string;
+  faturado?: string;
   pagina?: number;
   limite?: number;
 };
@@ -610,6 +621,9 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       c.valor_frete_final,
       c.vendedor_nome,
       c.numero_nfe_faturada,
+      c.faturado_em,
+      nfes.numeros_nfe,
+      COALESCE(nfes.total_nfes, 0) AS total_nfes,
       c.numero_cte,
       c.bloqueado_para_alteracao,
       COALESCE(t_escolhida.nome_fantasia, melhor.nome_fantasia) AS transportadora_vencedora_nome,
@@ -625,7 +639,36 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       AND c.situacao_pedido = 'ATIVO'
       AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
       AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
+      AND (
+        $5::VARCHAR IS NULL
+        OR ($5 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_notas_fiscais nf
+          WHERE nf.empresa_id = c.empresa_id
+            AND nf.tipo_documento = c.tipo_documento
+            AND nf.numero_documento = c.numero_documento
+            AND nf.codigo_chave = c.codigo_chave
+        )))
+        OR ($5 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND NOT EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_notas_fiscais nf
+          WHERE nf.empresa_id = c.empresa_id
+            AND nf.tipo_documento = c.tipo_documento
+            AND nf.numero_documento = c.numero_documento
+            AND nf.codigo_chave = c.codigo_chave
+        ))
+      )
     LEFT JOIN transportadoras t_escolhida ON t_escolhida.id = c.transportadora_escolhida_id
+    LEFT JOIN LATERAL (
+      SELECT
+        STRING_AGG(nf.numero_nfe::TEXT, ', ' ORDER BY nf.data_nfe DESC NULLS LAST, nf.numero_nfe::TEXT) AS numeros_nfe,
+        COUNT(*) AS total_nfes
+      FROM cotacoes_frete_notas_fiscais nf
+      WHERE nf.empresa_id = c.empresa_id
+        AND nf.tipo_documento = c.tipo_documento
+        AND nf.numero_documento = c.numero_documento
+        AND nf.codigo_chave = c.codigo_chave
+    ) nfes ON TRUE
     LEFT JOIN LATERAL (
       SELECT
         t.nome_fantasia,
@@ -655,7 +698,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       AND e.ativa = TRUE
       AND ($4::VARCHAR IS NULL OR e.codigo = $4)
     ORDER BY e.ordem ASC, c.criado_em DESC`,
-    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null]
+    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null]
   );
 }
 
@@ -676,7 +719,8 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     filtros.numeroNfe ? `%${filtros.numeroNfe}%` : null,
     filtros.cliente ? `%${filtros.cliente}%` : null,
     filtros.cidade ? `%${filtros.cidade}%` : null,
-    filtros.codigoChave ? `%${filtros.codigoChave}%` : null
+    filtros.codigoChave ? `%${filtros.codigoChave}%` : null,
+    filtros.faturado || null
   ];
   const where = `
     c.empresa_id = $1
@@ -710,6 +754,11 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     AND ($11::VARCHAR IS NULL OR COALESCE(c.nome_destinatario, '') ILIKE $11)
     AND ($12::VARCHAR IS NULL OR COALESCE(c.cidade_destino, '') ILIKE $12)
     AND ($13::VARCHAR IS NULL OR c.codigo_chave ILIKE $13)
+    AND (
+      $14::VARCHAR IS NULL
+      OR ($14 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR nfes.total_nfes > 0))
+      OR ($14 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND COALESCE(nfes.total_nfes, 0) = 0)
+    )
   `;
   const itens = await consultar(
     `SELECT
@@ -735,6 +784,9 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
       c.vendedor_nome,
       c.transportadora_pedido_nome,
       c.numero_nfe_faturada,
+      c.faturado_em,
+      nfes.numeros_nfe,
+      COALESCE(nfes.total_nfes, 0) AS total_nfes,
       c.numero_cte,
       c.bloqueado_para_alteracao,
       e.nome AS etapa_nome,
@@ -742,9 +794,19 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     FROM cotacoes_frete c
     LEFT JOIN etapas_kanban e ON e.id = c.etapa_kanban_id
     LEFT JOIN transportadoras t ON t.id = c.transportadora_escolhida_id
+    LEFT JOIN LATERAL (
+      SELECT
+        STRING_AGG(nf.numero_nfe::TEXT, ', ' ORDER BY nf.data_nfe DESC NULLS LAST, nf.numero_nfe::TEXT) AS numeros_nfe,
+        COUNT(*) AS total_nfes
+      FROM cotacoes_frete_notas_fiscais nf
+      WHERE nf.empresa_id = c.empresa_id
+        AND nf.tipo_documento = c.tipo_documento
+        AND nf.numero_documento = c.numero_documento
+        AND nf.codigo_chave = c.codigo_chave
+    ) nfes ON TRUE
     WHERE ${where}
     ORDER BY c.criado_em DESC
-    LIMIT $14 OFFSET $15`,
+    LIMIT $15 OFFSET $16`,
     [...parametros, limite, offset]
   );
   const total = await consultarUm<{ total: string }>(
@@ -752,6 +814,14 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     FROM cotacoes_frete c
     LEFT JOIN etapas_kanban e ON e.id = c.etapa_kanban_id
     LEFT JOIN transportadoras t ON t.id = c.transportadora_escolhida_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total_nfes
+      FROM cotacoes_frete_notas_fiscais nf
+      WHERE nf.empresa_id = c.empresa_id
+        AND nf.tipo_documento = c.tipo_documento
+        AND nf.numero_documento = c.numero_documento
+        AND nf.codigo_chave = c.codigo_chave
+    ) nfes ON TRUE
     WHERE ${where}`,
     parametros
   );
