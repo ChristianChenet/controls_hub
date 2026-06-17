@@ -1971,11 +1971,16 @@ function statusCotacaoTransportadora(status: unknown) {
 }
 
 function ehCotacaoTransportadora(item: RegistroGenerico) {
-  return origemCotacaoTransportadora(item.origem_cotacao) || statusCotacaoTransportadora(item.status);
+  const origemDetalhada = String(item.origem_detalhada ?? '').trim().toUpperCase();
+  return origemDetalhada === 'DIGITACAO_ERP' || origemCotacaoTransportadora(item.origem_cotacao) || statusCotacaoTransportadora(item.status);
 }
 
 function ehCotacaoAutomatica(item: RegistroGenerico) {
-  return origemCotacaoAutomatica(item.origem_cotacao) && !statusCotacaoTransportadora(item.status);
+  const origemDetalhada = String(item.origem_detalhada ?? '').trim().toUpperCase();
+  if (origemDetalhada === 'DIGITACAO_ERP') {
+    return false;
+  }
+  return (origemDetalhada === 'COTACAO_AUTOMATICA' || origemCotacaoAutomatica(item.origem_cotacao)) && !statusCotacaoTransportadora(item.status);
 }
 
 function obterTransportadoraEscolhidaReal(cotacao: RegistroGenerico, transportadoras: RegistroGenerico[]) {

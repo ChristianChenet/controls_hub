@@ -186,7 +186,11 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
       SELECT
         COUNT(*) FILTER (
           WHERE COALESCE(t.valor_frete, 0) > 0
-            AND UPPER(COALESCE(t.origem_cotacao, '')) IN ('ERP', 'AUTOMATICA', 'BANCO')
+            AND (
+              UPPER(COALESCE(t.origem_detalhada, '')) = 'COTACAO_AUTOMATICA'
+              OR UPPER(COALESCE(t.origem_cotacao, '')) IN ('AUTOMATICA', 'BANCO')
+              OR (UPPER(COALESCE(t.origem_cotacao, '')) = 'ERP' AND UPPER(COALESCE(t.origem_detalhada, '')) <> 'DIGITACAO_ERP')
+            )
             AND UPPER(COALESCE(t.status, '')) NOT IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
         ) AS total_automaticas
       FROM cotacoes_frete_transportadoras t
@@ -201,6 +205,7 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
           WHERE COALESCE(t.valor_frete, 0) > 0
             AND (
               UPPER(COALESCE(t.origem_cotacao, '')) NOT IN ('ERP', 'AUTOMATICA', 'BANCO')
+              OR UPPER(COALESCE(t.origem_detalhada, '')) = 'DIGITACAO_ERP'
               OR UPPER(COALESCE(t.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
             )
         ) AS total_externas,
@@ -208,6 +213,7 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
           WHERE COALESCE(t.valor_frete, 0) > 0
             AND (
               UPPER(COALESCE(t.origem_cotacao, '')) NOT IN ('ERP', 'AUTOMATICA', 'BANCO')
+              OR UPPER(COALESCE(t.origem_detalhada, '')) = 'DIGITACAO_ERP'
               OR UPPER(COALESCE(t.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
             )
             AND (t.respondida_em IS NOT NULL OR COALESCE(t.status, '') IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTADA'))
