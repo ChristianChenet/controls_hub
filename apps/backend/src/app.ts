@@ -696,6 +696,13 @@ export async function criarApp() {
   app.post<{
     Body: {
       cotacoes_ids?: Array<string | number>;
+      transportadoras_ids?: Array<string | number>;
+      grupos?: Array<{
+        transportadora_id?: string | number;
+        cotacoes_ids?: Array<string | number>;
+        assunto?: string;
+        html?: string;
+      }>;
       reenviar?: boolean;
       ignorar_ja_enviados?: boolean;
       itens_por_cotacao?: Record<string, number[]>;
@@ -709,8 +716,180 @@ export async function criarApp() {
       return reply.status(400).send(falha('EMAIL_USUARIO_NAO_LIBERADO', 'Configure e libere o e-mail do usuario para envio de cotacoes.'));
     }
 
+    if (request.body.grupos?.length) {
+      const resultados: any[] = [];
+
+      for (const grupo of request.body.grupos) {
+        const transportadoraIdGrupo = Number(grupo.transportadora_id);
+        const cotacoesGrupo = grupo.cotacoes_ids ?? [];
+        const preparacaoGrupo = (await prepararEnvioMassa(usuario!.empresaAtivaId!, cotacoesGrupo as any) as any[])
+          .filter((item: any) => Number(item.transportadora_id) === transportadoraIdGrupo);
+        const documentosEmail: Array<{ numero: string; chave: string; url: string; valor: string; sla: string }> = [];
+        const atualizacoes: any[] = [];
+        const fornecedorBase = preparacaoGrupo[0];
+
+        if (!fornecedorBase?.email) {
+          resultados.push({ transportadora_id: transportadoraIdGrupo, status: 'ERRO', mensagem: 'Transportadora sem e-mail cadastrado.' });
+          continue;
+        }
+
+        for (const fornecedor of preparacaoGrupo) {
+          if (fornecedor.situacao_pedido !== 'ATIVO' || fornecedor.excluido) {
+            resultados.push({ cotacao_id: fornecedor.cotacao_id, transportadora_id: fornecedor.transportadora_id, status: 'BLOQUEADO', mensagem: 'Pedido cancelado ou excluido.' });
+            continue;
+          }
+
+          if (fornecedor.ja_enviado && !request.body.reenviar) {
+            resultados.push({ cotacao_id: fornecedor.cotacao_id, transportadora_id: fornecedor.transportadora_id, status: 'IGNORADO', mensagem: 'Ja enviado anteriormente.' });
+            continue;
+          }
+
+          const codigoChave = `${fornecedor.numero_documento}-P${Date.now().toString().slice(-8)}-${randomBytes(2).toString('hex').toUpperCase()}`;
+          const envio = await criarEnvioCotacao({
+            empresaId: usuario!.empresaAtivaId!,
+            cotacaoId: fornecedor.cotacao_id,
+            codigoChave,
+            parcial: false,
+            usuarioId: usuario!.id,
+            itensIds: []
+          });
+
+          if (!envio) {
+            resultados.push({ cotacao_id: fornecedor.cotacao_id, transportadora_id: fornecedor.transportadora_id, status: 'ERRO', mensagem: 'Cotacao nao localizada para criar envio.' });
+            continue;
+          }
+
+          const token = randomBytes(32).toString('hex');
+          const tokenHash = createHash('sha256').update(token).digest('hex');
+          const expiraEm = new Date(Date.now() + 72 * 60 * 60 * 1000);
+          const slaLimiteEm = new Date(Date.now() + Number(fornecedor.sla_resposta_horas ?? 24) * 60 * 60 * 1000);
+          const registroToken = await registrarTokenCotacao({
+            cotacaoId: fornecedor.cotacao_id,
+            empresaId: usuario!.empresaAtivaId!,
+            transportadoraId: Number(fornecedor.transportadora_id),
+            tokenHash,
+            numeroEnvio: Number(envio.numero_envio),
+            geradoPorUsuarioId: usuario!.id,
+            expiraEm
+          });
+          const { ambienteLink, urlCotacao } = await montarUrlCotacao(token);
+          if (registroToken?.token_hash) {
+            await registrarUrlTokenCotacao({ tokenHash: registroToken.token_hash, urlPublica: urlCotacao, ambienteLink });
+          }
+
+          await registrarFornecedorEnvio({
+            empresaId: Number(envio.empresa_id),
+            tipoDocumento: String(envio.tipo_documento),
+            numeroDocumento: String(envio.numero_documento),
+            codigoChave: String(envio.codigo_chave_base ?? fornecedor.codigo_chave),
+            numeroEnvio: Number(envio.numero_envio),
+            transportadoraId: Number(fornecedor.transportadora_id),
+            emailDestino: fornecedor.email,
+            primeiroEnvio: !fornecedor.ja_enviado,
+            reenvio: Boolean(fornecedor.ja_enviado),
+            urlPublica: urlCotacao,
+            slaLimiteEm,
+            tokenHash
+          });
+
+          await marcarTransportadoraSolicitadaPorLink({
+            cotacaoId: fornecedor.cotacao_id,
+            transportadoraId: Number(fornecedor.transportadora_id),
+            slaLimiteEm,
+            exigePrazo: Boolean(fornecedor.prazo_resposta_obrigatorio)
+          });
+
+          documentosEmail.push({
+            numero: String(fornecedor.numero_documento),
+            chave: String(fornecedor.codigo_chave),
+            url: urlCotacao,
+            valor: String(fornecedor.valor_frete ?? '0'),
+            sla: slaLimiteEm.toLocaleString('pt-BR')
+          });
+          atualizacoes.push({ envio, fornecedor, tokenHash: registroToken?.token_hash ?? tokenHash, cotacaoId: fornecedor.cotacao_id });
+        }
+
+        if (!documentosEmail.length) {
+          continue;
+        }
+
+        const linhas = documentosEmail.map((documento) => (
+          `<tr><td>${documento.numero}</td><td>${documento.chave}</td><td>R$ ${documento.valor}</td><td>${documento.sla}</td><td><a href="${documento.url}">${documento.url}</a></td></tr>`
+        )).join('');
+        const htmlBase = grupo.html?.trim()
+          ? `<div>${grupo.html}</div>`
+          : `<p>Olá, ${fornecedorBase.nome_fantasia}.</p><p>Solicitamos a cotação de frete dos documentos abaixo.</p>`;
+        const html = `${htmlBase}
+          <table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">
+            <thead><tr><th>Documento</th><th>Chave</th><th>Valor referência</th><th>SLA</th><th>Link</th></tr></thead>
+            <tbody>${linhas}</tbody>
+          </table>
+          ${configuracaoEmail.assinatura_html ?? ''}`;
+
+        try {
+          await enviarEmail(configuracaoEmail, {
+            para: fornecedorBase.email,
+            assunto: grupo.assunto || `Cotacao de frete - ${fornecedorBase.nome_fantasia}`,
+            html,
+            texto: documentosEmail.map((documento) => `${documento.numero} ${documento.chave}: ${documento.url}`).join('\n')
+          });
+
+          for (const item of atualizacoes) {
+            await atualizarFornecedorEnvio({
+              empresaId: Number(item.envio.empresa_id),
+              tipoDocumento: String(item.envio.tipo_documento),
+              numeroDocumento: String(item.envio.numero_documento),
+              codigoChave: String(item.envio.codigo_chave_base ?? item.fornecedor.codigo_chave),
+              numeroEnvio: Number(item.envio.numero_envio),
+              transportadoraId: Number(item.fornecedor.transportadora_id),
+              tokenHash: item.tokenHash,
+              status: 'ENVIADO'
+            });
+            await concluirEnvio({
+              empresaId: Number(item.envio.empresa_id),
+              tipoDocumento: String(item.envio.tipo_documento),
+              numeroDocumento: String(item.envio.numero_documento),
+              codigoChave: String(item.envio.codigo_chave_base ?? item.fornecedor.codigo_chave),
+              numeroEnvio: Number(item.envio.numero_envio),
+              status: 'ENVIADO'
+            });
+            await avancarEtapaAposEnvio({
+              empresaId: usuario!.empresaAtivaId!,
+              cotacaoId: item.cotacaoId,
+              usuarioId: usuario!.id,
+              envioId: Number(item.envio.numero_envio),
+              codigoChave: item.envio.codigo_chave
+            });
+            resultados.push({ cotacao_id: item.cotacaoId, transportadora_id: item.fornecedor.transportadora_id, status: 'ENVIADO' });
+          }
+        } catch (error) {
+          const mensagem = error instanceof Error ? error.message : 'Falha ao enviar e-mail.';
+          for (const item of atualizacoes) {
+            await atualizarFornecedorEnvio({
+              empresaId: Number(item.envio.empresa_id),
+              tipoDocumento: String(item.envio.tipo_documento),
+              numeroDocumento: String(item.envio.numero_documento),
+              codigoChave: String(item.envio.codigo_chave_base ?? item.fornecedor.codigo_chave),
+              numeroEnvio: Number(item.envio.numero_envio),
+              transportadoraId: Number(item.fornecedor.transportadora_id),
+              tokenHash: item.tokenHash,
+              status: 'ERRO',
+              erro: mensagem
+            });
+          }
+          resultados.push({ transportadora_id: transportadoraIdGrupo, status: 'ERRO', mensagem });
+        }
+      }
+
+      return sucesso({ resultados });
+    }
+
     const cotacoesIds = request.body.cotacoes_ids ?? [];
-    const preparacao = await prepararEnvioMassa(usuario!.empresaAtivaId!, cotacoesIds as any) as any[];
+    const transportadorasFiltro = new Set((request.body.transportadoras_ids ?? []).map((item) => String(item)));
+    const preparacaoBase = await prepararEnvioMassa(usuario!.empresaAtivaId!, cotacoesIds as any) as any[];
+    const preparacao = transportadorasFiltro.size
+      ? preparacaoBase.filter((item: any) => transportadorasFiltro.has(String(item.transportadora_id)))
+      : preparacaoBase;
     const agrupado = new Map<string, any[]>();
     const resultados: any[] = [];
 
@@ -1333,6 +1512,47 @@ export async function criarApp() {
       ip: request.ip,
       agenteUsuario: request.headers['user-agent']
     });
+
+    try {
+      const usuarioGeradorId = Number((resumo as any).gerado_por_usuario_id ?? 0);
+      const emailTransportadora = String((resumo as any).transportadora_email ?? '').trim();
+      const configuracaoEmail = usuarioGeradorId
+        ? await obterConfiguracaoEmailUsuario(usuarioGeradorId, true) as any
+        : null;
+
+      if (emailTransportadora && configuracaoEmail?.ativo && configuracaoEmail.permite_envio_cotacao) {
+        const valorMercadoria = Number((resumo as any).valor_mercadoria ?? 0);
+        const percentualFrete = valorMercadoria > 0 ? (valorFrete / valorMercadoria) * 100 : 0;
+        const htmlComprovante = `
+          <div style="font-family:Arial,sans-serif;color:#172033">
+            <h2 style="margin:0 0 8px">Cotacao de frete registrada</h2>
+            <p>Recebemos a resposta da transportadora <strong>${String((resumo as any).transportadora_nome ?? 'Transportadora')}</strong>.</p>
+            <table style="width:100%;border-collapse:collapse;margin-top:12px" border="1" cellpadding="7">
+              <tbody>
+                <tr><td><strong>Documento</strong></td><td>${String((resumo as any).tipo_documento ?? '')} ${String((resumo as any).numero_documento ?? '')}</td></tr>
+                <tr><td><strong>Chave</strong></td><td>${String((resumo as any).codigo_chave ?? '')}</td></tr>
+                <tr><td><strong>Cliente</strong></td><td>${String((resumo as any).nome_destinatario ?? '')}</td></tr>
+                <tr><td><strong>Destino</strong></td><td>${String((resumo as any).cidade_destino ?? '')}/${String((resumo as any).uf_destino ?? '')}</td></tr>
+                <tr><td><strong>Valor informado</strong></td><td>R$ ${valorFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+                <tr><td><strong>% frete sobre o total</strong></td><td>${percentualFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</td></tr>
+                <tr><td><strong>Prazo informado</strong></td><td>${Number(prazoDias ?? 0)} dia(s)</td></tr>
+                <tr><td><strong>Observacao</strong></td><td>${String(request.body.observacao ?? '-')}</td></tr>
+              </tbody>
+            </table>
+            <p style="margin-top:12px">Este e-mail confirma o registro da cotacao no Control S Hub.</p>
+          </div>
+          ${configuracaoEmail.assinatura_html ?? ''}`;
+
+        await enviarEmail(configuracaoEmail, {
+          para: emailTransportadora,
+          assunto: `Cotacao registrada - ${String((resumo as any).numero_documento ?? '')}`,
+          html: htmlComprovante,
+          texto: `Cotacao registrada. Documento ${String((resumo as any).numero_documento ?? '')}. Valor R$ ${valorFrete}. Prazo ${Number(prazoDias ?? 0)} dia(s).`
+        });
+      }
+    } catch (erroEmailConfirmacao) {
+      request.log.warn({ erro: erroEmailConfirmacao }, 'Falha ao enviar comprovante de cotacao para transportadora.');
+    }
 
     return sucesso({ mensagem: 'Cotacao respondida com sucesso.' });
   });

@@ -11,7 +11,7 @@
   Users
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 
 
@@ -102,6 +102,16 @@ type TelaAtual =
   | 'auditoria'
   | 'emailConfiguracoes'
   | 'configuracoes';
+
+type DetalheCotacaoNormalizado = {
+  cotacao: RegistroGenerico;
+  itens: RegistroGenerico[];
+  transportadoras: RegistroGenerico[];
+  historicos: RegistroGenerico[];
+  timeline?: RegistroGenerico[];
+  notasFiscais?: RegistroGenerico[];
+  ctes?: RegistroGenerico[];
+};
 
 const menus: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = [
   { id: 'dashboard' as TelaAtual, nome: 'Dashboard', icone: LayoutDashboard },
@@ -872,6 +882,7 @@ function KanbanCotacoes({
     const salvas = localStorage.getItem('controlSHubKanbanEtapas');
     return salvas ? JSON.parse(salvas) : [];
   });
+  const [detalheKanban, setDetalheKanban] = useState<DetalheCotacaoNormalizado | null>(null);
   const [ordemColunas, setOrdemColunas] = useState<string[]>(() => {
     const salva = localStorage.getItem('controlSHubKanbanOrdem');
     return ordemInicial?.length ? ordemInicial : salva ? JSON.parse(salva) : [];
@@ -923,6 +934,20 @@ function KanbanCotacoes({
     await carregarKanban();
   }
 
+  async function abrirDetalheKanban(cotacaoId: string | number) {
+    setErro('');
+    try {
+      const detalheNormalizado = normalizarDetalheCotacao(await obterCotacao(String(cotacaoId)));
+      if (!detalheNormalizado) {
+        setErro('Cotação não encontrada para abrir os detalhes.');
+        return;
+      }
+      setDetalheKanban(detalheNormalizado);
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao abrir detalhe da cotação.');
+    }
+  }
+
   const linhasFiltradas = linhas.filter((linha: any) => {
     const codigoEtapa = String(linha.etapa_codigo ?? '');
     if (etapasSelecionadas.length && !etapasSelecionadas.includes(codigoEtapa)) {
@@ -933,7 +958,19 @@ function KanbanCotacoes({
     }
     const buscaChave = chaveFiltro.trim().toUpperCase();
     if (buscaChave) {
-      const valores = [linha.codigo_chave, linha.numero_documento, linha.nome_destinatario]
+      const valores = [
+        linha.codigo_chave,
+        linha.numero_documento,
+        linha.nome_destinatario,
+        linha.numeros_nfe,
+        linha.numero_nfe_faturada,
+        linha.numeros_cte,
+        linha.numero_cte,
+        linha.transportadora_vencedora_nome,
+        linha.transportadora_pedido_nome,
+        linha.transportadora_cte_nome,
+        linha.vendedor_nome
+      ]
         .map((item: unknown) => String(item ?? '').toUpperCase());
       if (!valores.some((valor) => valor.includes(buscaChave))) {
         return false;
@@ -983,7 +1020,7 @@ function KanbanCotacoes({
       <div className="filtrosLinha kanbanFiltros kanbanFiltrosPremium">
         <input type="date" value={dataInicial} onChange={(evento) => setDataInicial(evento.target.value)} />
         <input type="date" value={dataFinal} onChange={(evento) => setDataFinal(evento.target.value)} />
-        <input placeholder="Pedido, chave ou cliente" value={chaveFiltro} onChange={(evento) => setChaveFiltro(evento.target.value)} />
+        <input placeholder="Pedido, chave, cliente, NF-e, CT-e, transportadora ou vendedor" value={chaveFiltro} onChange={(evento) => setChaveFiltro(evento.target.value)} />
         <label className="toggleLinha compacto" title="Mostra somente etapas em aberto, ocultando CT-e emitido e cotações canceladas.">
           <input type="checkbox" checked={somentePendentes} onChange={(evento) => setSomentePendentes(evento.target.checked)} />
           Pendentes
@@ -1016,6 +1053,7 @@ function KanbanCotacoes({
         {listaEtapas.map(({ etapa, cards }) => (
           <div
           className="coluna"
+          style={{ '--cor-etapa': String(etapa.etapa_cor ?? '#22c55e') } as CSSProperties}
           draggable
           key={String(etapa.etapa_codigo)}
           onDragStart={(evento) => {
@@ -1042,9 +1080,10 @@ function KanbanCotacoes({
           {cards.map((card) => (
             <article
               className="cartao"
+              style={{ '--cor-etapa': String(card.etapa_cor ?? etapa.etapa_cor ?? '#22c55e') } as CSSProperties}
               key={String(card.cotacao_id)}
               draggable={!card.bloqueado_para_alteracao}
-              onClick={() => aoAbrirCotacao(String(card.cotacao_id))}
+              onClick={() => abrirDetalheKanban(String(card.cotacao_id))}
               onDragStart={() => setArrastandoId(String(card.cotacao_id))}
             >
               <small>{String(card.tipo_documento)} {String(card.numero_documento)}</small>
@@ -1058,26 +1097,24 @@ function KanbanCotacoes({
               <small>Respostas {String(card.total_respostas ?? 0)}/{String(card.total_transportadoras ?? 0)} · SLA vencido {String(card.total_sla_vencido ?? 0)}</small>
               {Number(card.total_transportadoras ?? 0) > Number(card.total_respostas ?? 0) && <em>Pendência externa</em>}
               {String(card.etapa_codigo) === 'EM_ANALISE' && <em>Ação interna: definir vencedor</em>}
-              {(card.numeros_nfe || card.numero_nfe_faturada) && <em>Faturado</em>}
+              {(card.numeros_nfe || card.numero_nfe_faturada) && <em className="tagFaturadoKanban">Faturado</em>}
               {card.numeros_nfe && <small>NF-e {String(card.numeros_nfe)}</small>}
               {card.numeros_cte && <small>CTe {String(card.numeros_cte)}</small>}
               {card.bloqueado_para_alteracao && <em>Bloqueada Banco</em>}
-              {!card.bloqueado_para_alteracao && (
-                <select
-                  value={String(card.etapa_id)}
-                  onClick={(evento) => evento.stopPropagation()}
-                  onChange={(evento) => moverCotacao(String(card.cotacao_id), Number(evento.target.value))}
-                >
-                  {etapasDisponiveis.map((item: any) => (
-                    <option key={String(item.id)} value={String(item.id)}>{String(item.nome)}</option>
-                  ))}
-                </select>
-              )}
             </article>
           ))}
           </div>
         ))}
       </section>
+      <PainelContextual
+        aberto={Boolean(detalheKanban)}
+        largura="amplo"
+        titulo={detalheKanban ? `${String(detalheKanban.cotacao.tipo_documento)} ${String(detalheKanban.cotacao.numero_documento)}` : 'Detalhe da seleção'}
+        subtitulo={detalheKanban ? `Chave ${String(detalheKanban.cotacao.codigo_chave ?? '-')} · ${String(detalheKanban.cotacao.nome_destinatario ?? '-')}` : undefined}
+        aoFechar={() => setDetalheKanban(null)}
+      >
+        {detalheKanban && <DetalheCotacaoConteudo detalhe={detalheKanban} usuario={null} aoAtualizar={async () => setDetalheKanban(normalizarDetalheCotacao(await obterCotacao(String(detalheKanban.cotacao.id))))} />}
+      </PainelContextual>
     </>
   );
 }
@@ -1353,6 +1390,40 @@ function CotacoesOperacional({
       let linkGerado = '';
       let transportadoraLinkGerado = '';
       if (tipo === 'escolher' && transportadora?.id) {
+        if (String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO') {
+          setErro('Cotação com CT-e emitido não permite alteração da transportadora escolhida.');
+          return;
+        }
+
+        const origemAutomatica = origemCotacaoAutomatica(transportadora.origem_cotacao);
+        const existeCotacaoTransportadora = detalhe.transportadoras.some((item: any) => origemCotacaoTransportadora(item.origem_cotacao) && Number(item.valor_frete ?? 0) > 0);
+
+        if (origemAutomatica && existeCotacaoTransportadora) {
+          const seguir = window.confirm('Esta cotação já possui cotação transportadora respondida. Deseja escolher a cotação automática mesmo assim?');
+          if (!seguir) {
+            return;
+          }
+        } else if (origemAutomatica && detalhe.cotacao.sugestao_cotacao) {
+          const seguir = window.confirm('Esta cotação possui sugestão de cotação adicional. Deseja escolher a transportadora mesmo assim?');
+          if (!seguir) {
+            return;
+          }
+        }
+
+        if (detalhe.cotacao.transportadora_escolhida_id || detalhe.cotacao.transportadora_escolhida) {
+          const motivo = window.prompt('Já existe transportadora escolhida. Informe o motivo da alteração para continuar:') ?? '';
+          if (!motivo.trim()) {
+            setErro('Informe o motivo para alterar a transportadora escolhida.');
+            return;
+          }
+          await registrarTimelineCotacao(String(detalhe.cotacao.id), {
+            transportadora_id: transportadora.transportadora_id ?? null,
+            tipo_evento: 'ALTERACAO_TRANSPORTADORA_ESCOLHIDA',
+            titulo: 'Alteração da transportadora escolhida',
+            descricao: motivo
+          });
+        }
+
         await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id));
         setMensagem('Transportadora escolhida com sucesso.');
       }
@@ -1877,6 +1948,10 @@ function origemCotacaoTransportadora(origem: unknown) {
 }
 
 function obterTransportadoraEscolhidaReal(cotacao: RegistroGenerico, transportadoras: RegistroGenerico[]) {
+  if (!cotacao) {
+    return null;
+  }
+
   const selecionada = transportadoras.find((item: any) =>
     Boolean(item.selecionada)
     || ['SELECIONADA', 'ESCOLHIDA'].includes(String(item.status ?? '').toUpperCase())
@@ -1893,6 +1968,28 @@ function obterTransportadoraEscolhidaReal(cotacao: RegistroGenerico, transportad
   return null;
 }
 
+function montarIdCotacaoLocal(cotacao?: RegistroGenerico | null) {
+  if (!cotacao) {
+    return '';
+  }
+
+  const idAtual = cotacao.id;
+  if (idAtual && String(idAtual).includes('|')) {
+    return String(idAtual);
+  }
+
+  const empresaId = cotacao.empresa_id ?? cotacao.empresaId ?? 1;
+  const tipoDocumento = cotacao.tipo_documento;
+  const numeroDocumento = cotacao.numero_documento;
+  const codigoChave = cotacao.codigo_chave;
+
+  if (empresaId && tipoDocumento && numeroDocumento && codigoChave) {
+    return `${String(empresaId)}|${String(tipoDocumento)}|${String(numeroDocumento)}|${String(codigoChave)}`;
+  }
+
+  return idAtual ? String(idAtual) : '';
+}
+
 function normalizarDetalheCotacao(detalhe: {
   cotacao: RegistroGenerico;
   itens: RegistroGenerico[];
@@ -1902,7 +1999,7 @@ function normalizarDetalheCotacao(detalhe: {
   notasFiscais?: RegistroGenerico[];
   ctes?: RegistroGenerico[];
 } | null) {
-  if (!detalhe) {
+  if (!detalhe?.cotacao) {
     return null;
   }
 
@@ -1923,7 +2020,8 @@ function normalizarDetalheCotacao(detalhe: {
     ...detalhe,
     cotacao: {
       ...detalhe.cotacao,
-      transportadora_escolhida: escolhidaReal?.nome_fantasia ?? null,
+      id: montarIdCotacaoLocal(detalhe.cotacao),
+      transportadora_escolhida: escolhidaReal?.nome_fantasia ?? detalhe.cotacao.transportadora_escolhida ?? null,
       valor_frete_final: escolhidaReal
         ? Number(detalhe.cotacao.valor_frete_final ?? escolhidaReal.valor_frete ?? 0)
         : 0,
@@ -1941,6 +2039,9 @@ function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGener
   const prazoPedido = Number(cotacao.prazo_pedido_dias ?? cotacao.prazo_informado_venda_dias ?? cotacao.prazo_vendedor_dias ?? 0);
   const automatica = transportadoras.find((item: any) => origemCotacaoAutomatica(item.origem_cotacao) && Number(item.valor_frete ?? 0) > 0);
   const resposta = transportadoras.find((item: any) => origemCotacaoTransportadora(item.origem_cotacao) && Number(item.valor_frete ?? 0) > 0);
+  const valorCte = Number(cotacao.valor_frete_cte_total ?? 0);
+  const economiaPedidoCte = valorPedido - valorCte;
+  const economiaAutomaticaCte = Number(automatica?.valor_frete ?? 0) - valorCte;
   const fases = [
     {
       titulo: 'Pedido',
@@ -1986,6 +2087,13 @@ function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGener
             <small>{fase.detalhe}</small>
             <em>{percentualContraBase(fase.valor, valorPedido)} vs Pedido</em>
             <b>{fase.prazo ? `${String(fase.prazo)} dias` : '0 dia(s)'}{diferencaPrazo !== null ? ` · ${diferencaPrazo > 0 ? '+' : ''}${diferencaPrazo} dia(s) vs Pedido` : ''}</b>
+            {fase.titulo === 'CT-e' && (
+              <>
+                <em className={economiaPedidoCte >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>Economia Pedido: {formatarMoeda(economiaPedidoCte)}</em>
+                <em>vs Cotação Aut.</em>
+                <em className={economiaAutomaticaCte >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>Economia Cotação Aut: {formatarMoeda(economiaAutomaticaCte)}</em>
+              </>
+            )}
           </article>
         );
       })}
@@ -2084,11 +2192,12 @@ function AbaTransportadoras({
 
 function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes }: { cotacao: RegistroGenerico; itens: RegistroGenerico[]; notasFiscais?: RegistroGenerico[]; ctes?: RegistroGenerico[] }) {
   const campos = [
-    'origem_comercial', 'vendedor_nome', 'tipo_documento', 'numero_documento', 'numero_pedido', 'data_documento', 'status',
-    'loja_origem', 'loja_destino', 'valor_mercadoria', 'peso_real', 'volumes_total', 'cubagem_total',
-    'cep_destino', 'uf_destino', 'cidade_destino',
-    'endereco_destinatario', 'nome_destinatario', 'documento_destinatario', 'destino_zona_rural', 'destinatario_pessoa_fisica',
-    'bloqueado_para_alteracao', 'numeros_cte', 'total_ctes', 'transportadora_cte_nome', 'transportadora_pedido_nome'
+    'origem_comercial', 'vendedor_nome', 'tipo_documento', 'numero_documento',
+    'numero_pedido', 'data_documento', 'status', 'valor_mercadoria',
+    'loja_origem', 'loja_destino', 'peso_real', 'volumes_total', 'cubagem_total',
+    'nome_destinatario', 'documento_destinatario', 'endereco_destinatario',
+    'cep_destino', 'cidade_destino', 'uf_destino',
+    'destino_zona_rural', 'destinatario_pessoa_fisica', 'bloqueado_para_alteracao'
   ];
 
   return (
@@ -2138,6 +2247,146 @@ function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes }: { c
       <TabelaDocumentosFiscais titulo="Notas fiscais vinculadas" dados={notasFiscais ?? []} colunas={['numero_nfe', 'chave_nfe', 'data_nfe', 'finalidade_nfe', 'valorfrete_nfe', 'alterado_em']} />
       <TabelaDocumentosFiscais titulo="CT-es vinculados" dados={ctes ?? []} colunas={['numero_cte', 'chave_cte', 'transportadora_cte_nome', 'data_cte', 'finalidade_cte', 'valorfrete_cte', 'alterado_em']} />
     </details>
+  );
+}
+
+function montarTextoSugestaoCotacao(cotacao: RegistroGenerico, linhaEnvio?: RegistroGenerico) {
+  const base = linhaEnvio ?? cotacao;
+  const motivos: string[] = [];
+  const fretePedido = Number(base.valor_frete_pedido ?? cotacao.valor_frete_pedido ?? 0);
+  const freteAutomatico = Number(base.valor_cotacao_automatica ?? cotacao.valor_cotacao_automatica ?? 0);
+  const diferencaValor = Number(base.diferenca_valor_cotacao ?? (freteAutomatico - fretePedido));
+  const diferencaPercentual = Number(base.diferenca_percentual_cotacao ?? (fretePedido > 0 ? ((freteAutomatico - fretePedido) / fretePedido) * 100 : 0));
+  const prazoPedido = Number(base.prazo_pedido_dias ?? cotacao.prazo_pedido_dias ?? 0);
+  const prazoAutomatico = Number(base.prazo_cotacao_automatica ?? 0);
+
+  if (Boolean(base.sugestao_cotacao)) {
+    motivos.push('A cotação está em uma etapa que recomenda validação adicional com a transportadora antes da escolha direta.');
+  }
+  if (freteAutomatico > 0 && fretePedido > 0 && freteAutomatico > fretePedido) {
+    motivos.push(`Diferença frete cotado: cotação automática ${formatarMoeda(freteAutomatico)} contra pedido ${formatarMoeda(fretePedido)}.`);
+  }
+  if (diferencaValor > 0) {
+    motivos.push(`Diferença em valor: ${formatarMoeda(diferencaValor)} acima do pedido.`);
+  }
+  if (diferencaPercentual > 0) {
+    motivos.push(`Diferença percentual: ${formatarPercentual(diferencaPercentual)} acima do pedido.`);
+  }
+  if (prazoAutomatico > prazoPedido && prazoPedido > 0) {
+    motivos.push(`Diferença no prazo: cotação automática ${prazoAutomatico} dia(s), pedido ${prazoPedido} dia(s).`);
+  }
+
+  return motivos.length ? motivos.join(' ') : 'Sem sugestão crítica calculada para esta cotação.';
+}
+
+function agruparPreparacaoPorTransportadora(preparacao: RegistroGenerico[]) {
+  const mapa = new Map<string, { chave: string; transportadoraId: number; nome: string; email: string; itens: RegistroGenerico[] }>();
+
+  for (const item of preparacao) {
+    const transportadoraId = Number(item.transportadora_id ?? 0);
+    const chave = String(transportadoraId || item.nome_fantasia || 'SEM_TRANSPORTADORA');
+    if (!mapa.has(chave)) {
+      mapa.set(chave, {
+        chave,
+        transportadoraId,
+        nome: String(item.nome_fantasia ?? 'Transportadora'),
+        email: String(item.email ?? ''),
+        itens: []
+      });
+    }
+    mapa.get(chave)!.itens.push(item);
+  }
+
+  return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+function criarEmailsPadraoPorTransportadora(preparacao: RegistroGenerico[]) {
+  const grupos = agruparPreparacaoPorTransportadora(preparacao);
+  return grupos.reduce<Record<string, string>>((acc, grupo) => {
+    acc[grupo.chave] = `
+      <div style="font-family:Arial,sans-serif;color:#172033">
+        <p>Olá, ${grupo.nome}.</p>
+        <p>Solicitamos a cotação de frete dos documentos abaixo. O sistema vai gerar um novo link individual para cada documento no momento do envio.</p>
+        <p>Obrigado.</p>
+      </div>
+    `.trim();
+    return acc;
+  }, {});
+}
+
+function DetalheCotacaoConteudo({
+  detalhe,
+  usuario,
+  aoAtualizar
+}: {
+  detalhe: DetalheCotacaoNormalizado;
+  usuario: UsuarioLogado | null;
+  aoAtualizar: () => Promise<void>;
+}) {
+  const [aba, setAba] = useState('VENDAS');
+  const pode = (codigo: string) => Boolean(!usuario || usuario.superadmin || usuario.administrador || usuario.permissoes?.includes(codigo));
+
+  async function copiarLink(link?: unknown) {
+    if (!link) {
+      return;
+    }
+    await navigator.clipboard.writeText(String(link));
+  }
+
+  async function escolher(transportadora: RegistroGenerico) {
+    if (String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO') {
+      window.alert('Cotação com CT-e emitido não permite alteração da transportadora escolhida.');
+      return;
+    }
+
+    if (detalhe.cotacao.transportadora_escolhida_id || detalhe.cotacao.transportadora_escolhida) {
+      const motivo = window.prompt('Já existe transportadora escolhida. Informe o motivo da alteração para continuar:') ?? '';
+      if (!motivo.trim()) {
+        return;
+      }
+      await registrarTimelineCotacao(String(detalhe.cotacao.id), {
+        transportadora_id: transportadora.transportadora_id ?? null,
+        tipo_evento: 'ALTERACAO_TRANSPORTADORA_ESCOLHIDA',
+        titulo: 'Alteração da transportadora escolhida',
+        descricao: motivo
+      });
+    }
+
+    await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id));
+    await aoAtualizar();
+  }
+
+  return (
+    <section className="detalheCotacao detalheCotacaoContextual">
+      <header>
+        <div>
+          <span>Detalhe operacional</span>
+          <h2>{String(detalhe.cotacao.tipo_documento)} {String(detalhe.cotacao.numero_documento)}</h2>
+          <p>{String(detalhe.cotacao.nome_destinatario ?? '')} - {String(detalhe.cotacao.cidade_destino ?? '')}/{String(detalhe.cotacao.uf_destino ?? '')}</p>
+        </div>
+        <div className="statusRapidoDetalhe">
+          {String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status ?? '').trim() && <i className="tagStatusDetalhe etapaKanban">{String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status)}</i>}
+          {(detalhe.cotacao.numeros_nfe || detalhe.cotacao.numero_nfe_faturada || Number(detalhe.cotacao.total_nfes ?? 0) > 0 || detalhe.cotacao.faturado_em) && <i className="tagStatusDetalhe faturado">Faturado</i>}
+        </div>
+      </header>
+      <ComparativoFases cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras} />
+      <ResumoInicialCotacao cotacao={detalhe.cotacao} />
+      <nav className="abasCotacao">
+        {[
+          { id: 'VENDAS', nome: 'Vendas' },
+          { id: 'AUTOMATICA', nome: 'Cotação Aut.' },
+          { id: 'TRANSPORTADORA', nome: 'Cotação Trasp.' },
+          { id: 'APROVADA', nome: 'Transp. Escolhida' },
+          { id: 'CTE', nome: 'CT-e' }
+        ].map((item) => <button key={item.id} className={aba === item.id ? 'active' : ''} onClick={() => setAba(item.id)}>{item.nome}</button>)}
+      </nav>
+      {aba === 'VENDAS' && <AbaCampos titulo="Vendas" cotacao={detalhe.cotacao} campos={['origem_comercial', 'vendedor_nome', 'data_documento', 'transportadora_pedido_nome', 'valor_frete_pedido', 'prazo_pedido_dias', 'valor_mercadoria', 'nome_destinatario', 'cidade_destino', 'uf_destino']} />}
+      {aba === 'AUTOMATICA' && <AbaTransportadoras titulo="Cotação Automática" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => origemCotacaoAutomatica(item.origem_cotacao))} pode={pode} copiarLink={copiarLink} acao={async (tipo, transportadora) => tipo === 'escolher' ? escolher(transportadora) : undefined} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} />}
+      {aba === 'TRANSPORTADORA' && <AbaTransportadoras titulo="Cotação Transportadora" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => origemCotacaoTransportadora(item.origem_cotacao))} pode={pode} copiarLink={copiarLink} acao={async (tipo, transportadora) => tipo === 'escolher' ? escolher(transportadora) : undefined} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} />}
+      {aba === 'APROVADA' && <AbaCampos titulo="Transportadora Escolhida" cotacao={detalhe.cotacao} campos={['transportadora_escolhida', 'valor_frete_final', 'prazo_final_dias', 'aprovado_em', 'observacao_analista']} />}
+      {aba === 'CTE' && <AbaCampos titulo="CT-e" cotacao={detalhe.cotacao} campos={['transportadora_cte_nome', 'numeros_cte', 'valor_frete_cte_total', 'ultimo_cte_em']} />}
+      <DetalhamentoCompletoCotacao cotacao={detalhe.cotacao} itens={detalhe.itens} notasFiscais={detalhe.notasFiscais ?? []} ctes={detalhe.ctes ?? []} />
+    </section>
   );
 }
 
@@ -2512,7 +2761,9 @@ function EnvioMassaCotacoes() {
   const [pedidos, setPedidos] = useState<RegistroGenerico[]>([]);
   const [selecionados, setSelecionados] = useState<Array<string | number>>([]);
   const [preparacao, setPreparacao] = useState<RegistroGenerico[]>([]);
+  const [emailsPorTransportadora, setEmailsPorTransportadora] = useState<Record<string, string>>({});
   const [detalheEnvio, setDetalheEnvio] = useState<{ cotacao: RegistroGenerico; itens: RegistroGenerico[]; transportadoras: RegistroGenerico[] } | null>(null);
+  const [detalheCotacaoCompleto, setDetalheCotacaoCompleto] = useState<DetalheCotacaoNormalizado | null>(null);
   const [envio, setEnvio] = useState('TODOS');
   const [somenteTop3, setSomenteTop3] = useState(false);
   const [busca, setBusca] = useState('');
@@ -2609,6 +2860,14 @@ function EnvioMassaCotacoes() {
     carregar().catch(() => setPedidos([]));
   }, [envio]);
 
+  useEffect(() => {
+    if (!mensagem) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMensagem(''), 7000);
+    return () => window.clearTimeout(timer);
+  }, [mensagem]);
+
   async function preparar() {
     setErro('');
     setMensagem('');
@@ -2618,30 +2877,73 @@ function EnvioMassaCotacoes() {
       ? dados.filter((item: any) => Number(item.ranking_frete ?? item.posicao_cotacao ?? 999) <= 3)
       : dados;
     setPreparacao(filtrados);
+    setEmailsPorTransportadora(criarEmailsPadraoPorTransportadora(filtrados));
   }
 
   async function abrirDetalheEnvio(cotacaoId: string | number) {
     setErro('');
     try {
       const detalhe = await obterCotacao(cotacaoId);
+      if (!detalhe?.cotacao) {
+        setErro('Cotação não encontrada para abrir os detalhes.');
+        return;
+      }
       setDetalheEnvio({
-        cotacao: detalhe.cotacao,
-        itens: detalhe.itens,
-        transportadoras: detalhe.transportadoras
+        cotacao: {
+          ...detalhe.cotacao,
+          id: montarIdCotacaoLocal(detalhe.cotacao)
+        },
+        itens: Array.isArray(detalhe.itens) ? detalhe.itens : [],
+        transportadoras: Array.isArray(detalhe.transportadoras) ? detalhe.transportadoras : []
       });
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao abrir detalhe da cotação.');
     }
   }
 
-  async function enviar(reenviar: boolean) {
+  async function abrirDetalheCotacaoCompleto(cotacaoId: string | number) {
+    setErro('');
+    try {
+      const detalheNormalizado = normalizarDetalheCotacao(await obterCotacao(cotacaoId));
+      if (!detalheNormalizado) {
+        setErro('Cotação não encontrada para abrir o detalhe completo.');
+        return;
+      }
+      setDetalheCotacaoCompleto(detalheNormalizado);
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao abrir detalhe completo da cotação.');
+    }
+  }
+
+  async function enviar(reenviar: boolean, itensEnvio?: RegistroGenerico[], grupoEnvio?: { chave: string; transportadoraId: number; nome: string }) {
     setErro('');
     setMensagem('');
     try {
-      const resposta = await enviarCotacoesMassa({ cotacoes_ids: selecionados, reenviar });
+      const lista = itensEnvio ?? preparacaoLista;
+      const cotacoes = Array.from(new Set(lista.map((item: any) => String(item.cotacao_id ?? item.cotacao_frete_id)).filter(Boolean)));
+      const transportadorasIds = Array.from(new Set(lista.map((item: any) => Number(item.transportadora_id)).filter(Boolean)));
+      const resposta = await enviarCotacoesMassa(grupoEnvio ? {
+        cotacoes_ids: cotacoes,
+        grupos: [{
+          transportadora_id: grupoEnvio.transportadoraId,
+          cotacoes_ids: cotacoes,
+          assunto: `Cotação de frete - ${grupoEnvio.nome}`,
+          html: emailsPorTransportadora[grupoEnvio.chave] ?? ''
+        }],
+        reenviar
+      } : {
+        cotacoes_ids: cotacoes.length ? cotacoes : selecionados,
+        transportadoras_ids: transportadorasIds,
+        reenviar
+      });
       setMensagem(`Envio processado. Resultado: ${JSON.stringify(resposta.resultados ?? [])}`);
-      setSelecionados([]);
-      setPreparacao([]);
+      if (itensEnvio?.length) {
+        const enviados = new Set(itensEnvio.map((item: any) => `${String(item.cotacao_id)}|${String(item.transportadora_id)}`));
+        setPreparacao((atuais) => atuais.filter((item: any) => !enviados.has(`${String(item.cotacao_id)}|${String(item.transportadora_id)}`)));
+      } else {
+        setSelecionados([]);
+        setPreparacao([]);
+      }
       setDetalheEnvio(null);
       await carregar();
     } catch (error) {
@@ -2670,6 +2972,7 @@ function EnvioMassaCotacoes() {
 
   async function escolherTransportadoraAutomatica(pedido: RegistroGenerico) {
     const transportadoraId = pedido.transportadora_cotacao_automatica_id ?? pedido.transportadora_referencia_id;
+    const origemCotacao = String(pedido.origem_cotacao_automatica ?? 'ERP');
     if (!transportadoraId) {
       await abrirDetalheEnvio(String(pedido.id));
       setErro('Abra os detalhes e escolha a transportadora desejada. Esta linha não trouxe o identificador da melhor cotação automática.');
@@ -2677,14 +2980,52 @@ function EnvioMassaCotacoes() {
     }
 
     await escolherTransportadoraEnvio(String(pedido.id), {
-      id: `${String(pedido.id)}|${String(transportadoraId)}|ERP`,
+      id: `${String(pedido.id)}|${String(transportadoraId)}|${origemCotacao}`,
       transportadora_id: transportadoraId,
       nome_fantasia: pedido.transportadora_cotacao_automatica ?? pedido.transportadora_referencia,
-      origem_cotacao: 'ERP'
+      origem_cotacao: origemCotacao
     });
   }
 
+  async function escolherTransportadorasSelecionadas() {
+    const selecionadas = pedidosFiltrados.filter((pedido: RegistroGenerico) => selecionados.map(String).includes(String(pedido.id)));
+    if (!selecionadas.length) {
+      setErro('Selecione ao menos uma cotação para escolher a transportadora.');
+      return;
+    }
+
+    if (selecionadas.some((pedido: RegistroGenerico) => Boolean(pedido.sugestao_cotacao))) {
+      const seguir = window.confirm('Esta cotação possui sugestão de cotação adicional. Deseja escolher a transportadora mesmo assim?');
+      if (!seguir) {
+        return;
+      }
+    }
+
+    setErro('');
+    setMensagem('Escolhendo transportadora de menor valor dos pedidos selecionados...');
+    const falhas: string[] = [];
+
+    for (const pedido of selecionadas) {
+      const transportadoraId = pedido.transportadora_cotacao_automatica_id ?? pedido.transportadora_referencia_id;
+      if (!transportadoraId) {
+        falhas.push(`${String(pedido.numero_documento ?? pedido.codigo_chave)} sem transportadora automática identificada`);
+        continue;
+      }
+
+      try {
+        await escolherTransportadora(String(pedido.id), `${String(pedido.id)}|${String(transportadoraId)}|${String(pedido.origem_cotacao_automatica ?? 'ERP')}`);
+      } catch (error) {
+        falhas.push(`${String(pedido.numero_documento ?? pedido.codigo_chave)}: ${error instanceof Error ? error.message : 'falha ao escolher'}`);
+      }
+    }
+
+    await carregar();
+    setSelecionados([]);
+    setMensagem(falhas.length ? `Escolha concluída com alertas: ${falhas.join('; ')}` : 'Transportadora de menor valor escolhida para os pedidos selecionados.');
+  }
+
   const temReenvio = preparacaoLista.some((item: any) => item.ja_enviado);
+  const gruposPreparacao = agruparPreparacaoPorTransportadora(preparacaoLista);
 
   return (
     <section className="painelTabela envioMassa">
@@ -2696,7 +3037,10 @@ function EnvioMassaCotacoes() {
         </div>
         <div className="acoesDashboard">
           <button className="ghost" onClick={() => setFiltrosAbertos(!filtrosAbertos)}>{filtrosAbertos ? 'Recolher filtros' : 'Filtros'}</button>
-          <button className="primary" onClick={preparar} disabled={!selecionados.length}>Enviar cotação transportadora</button>
+          <div className="acoesEnvioPrincipal">
+            <button className="primary" onClick={preparar} disabled={!selecionados.length}>Enviar cotação transportadora</button>
+            <button className="ghost botaoEscolherMassa" onClick={escolherTransportadorasSelecionadas} disabled={!selecionados.length}>Escolher Transportadora</button>
+          </div>
         </div>
       </header>
       {erro && <div className="alerta">{erro}</div>}
@@ -2766,7 +3110,12 @@ function EnvioMassaCotacoes() {
           </thead>
           <tbody>
             {pedidosPagina.map((pedido, indice) => (
-              <tr className={pedido.sugestao_cotacao ? 'linhaAlertaSugestao' : ''} title={pedido.sugestao_cotacao ? 'Essa cotação está em fase que sugere novo envio para transportadora antes da escolha direta.' : ''} key={`${String(pedido.id ?? pedido.numero_documento ?? 'pedido')}-${String(pedido.codigo_chave ?? indice)}`}>
+              <tr
+                className={pedido.sugestao_cotacao ? 'linhaAlertaSugestao' : ''}
+                title={pedido.sugestao_cotacao ? 'Essa cotação está em fase que sugere novo envio para transportadora antes da escolha direta.' : ''}
+                key={`${String(pedido.id ?? pedido.numero_documento ?? 'pedido')}-${String(pedido.codigo_chave ?? indice)}`}
+                onDoubleClick={() => abrirDetalheEnvio(String(pedido.id))}
+              >
                 <td>
                   <input
                     type="checkbox"
@@ -2819,6 +3168,11 @@ function EnvioMassaCotacoes() {
             </div>
             <button className="ghost" onClick={() => setDetalheEnvio(null)}>Fechar</button>
           </header>
+          <div className="motivoSugestaoCotacao">
+            <strong>Motivo da sugestão</strong>
+            <p>{montarTextoSugestaoCotacao(detalheEnvio.cotacao, pedidosLista.find((pedido: RegistroGenerico) => String(pedido.id) === String(detalheEnvio.cotacao.id)))}</p>
+            <button className="ghost" onClick={() => abrirDetalheCotacaoCompleto(String(detalheEnvio.cotacao.id))}>Abrir detalhe da cotação</button>
+          </div>
           <div className="detalheEnvioResumo">
             <article><span>Valor mercadoria</span><strong>R$ {String(detalheEnvio.cotacao.valor_mercadoria ?? '0')}</strong></article>
             <article><span>Peso</span><strong>{String(detalheEnvio.cotacao.peso_real ?? '0')}</strong></article>
@@ -2856,24 +3210,52 @@ function EnvioMassaCotacoes() {
         </section>
         )}
       </PainelContextual>
+      <PainelContextual
+        aberto={Boolean(detalheCotacaoCompleto)}
+        largura="amplo"
+        titulo={detalheCotacaoCompleto ? `${String(detalheCotacaoCompleto.cotacao.tipo_documento)} ${String(detalheCotacaoCompleto.cotacao.numero_documento)}` : 'Detalhe da cotação'}
+        subtitulo={detalheCotacaoCompleto ? `Chave ${String(detalheCotacaoCompleto.cotacao.codigo_chave ?? '-')} · ${String(detalheCotacaoCompleto.cotacao.nome_destinatario ?? '-')}` : undefined}
+        aoFechar={() => setDetalheCotacaoCompleto(null)}
+      >
+        {detalheCotacaoCompleto && <DetalheCotacaoConteudo detalhe={detalheCotacaoCompleto} usuario={null} aoAtualizar={async () => setDetalheCotacaoCompleto(normalizarDetalheCotacao(await obterCotacao(String(detalheCotacaoCompleto.cotacao.id))))} />}
+      </PainelContextual>
       {preparacao.length > 0 && (
         <section className="preEnvio">
-          <h3>Conferência antes do envio</h3>
+          <h3>Conferência e envio por transportadora</h3>
           {temReenvio && <div className="alerta">Existem fornecedores que já receberam cotação. Confirme se deseja reenviar.</div>}
-          <div className="chipsEnvio">
-            {preparacaoLista.map((item, indice) => (
-              <span className={item.ja_enviado ? 'reenvio' : 'inedito'} key={indice}>
-                {String(item.numero_documento)} · #{String(item.ranking_frete ?? item.posicao_cotacao ?? '-')} · {String(item.nome_fantasia)} · R$ {String(item.valor_frete ?? '0')} · {String(item.origem_cotacao ?? 'Banco')} · {item.ja_enviado ? 'já enviado' : 'inédito'}
-                {item.ultimo_link_enviado && <button className="miniBotao" onClick={() => navigator.clipboard.writeText(String(item.ultimo_link_enviado))}>Copiar link</button>}
-              </span>
-            ))}
-          </div>
-          <div className="historicoPainel">
-            <p>Todos os itens da cotação serão enviados automaticamente para a transportadora. O envio parcial foi removido desta rotina.</p>
-          </div>
-          <div className="rodapeAcoes">
-            <button className="primary" onClick={() => enviar(false)}>Enviar apenas inéditos</button>
-            {temReenvio && <button className="ghost" onClick={() => enviar(true)}>Confirmar reenvio também</button>}
+          <div className="gruposEmailEnvio">
+            {gruposPreparacao.map((grupo) => {
+              const chave = grupo.chave;
+              const emailHtml = emailsPorTransportadora[chave] ?? '';
+              return (
+                <article key={chave} className="grupoEmailTransportadora">
+                  <header>
+                    <div>
+                      <span>Transportadora</span>
+                      <h4>{grupo.nome}</h4>
+                      <p>{grupo.email || 'Transportadora sem e-mail cadastrado'} · {grupo.itens.length} documento(s)</p>
+                    </div>
+                    <button className="primary" onClick={() => enviar(false, grupo.itens, grupo)} disabled={!grupo.email}>Enviar para esta transportadora</button>
+                  </header>
+                  <div className="chipsEnvio">
+                    {grupo.itens.map((item, indice) => (
+                      <span className={item.ja_enviado ? 'reenvio' : 'inedito'} key={`${chave}-${indice}`}>
+                        {String(item.numero_documento)} · chave {String(item.codigo_chave)} · #{String(item.ranking_frete ?? item.posicao_cotacao ?? '-')} · R$ {String(item.valor_frete ?? '0')} · {item.ja_enviado ? 'já enviado' : 'inédito'}
+                        {item.ultimo_link_enviado && <button className="miniBotao" onClick={() => navigator.clipboard.writeText(String(item.ultimo_link_enviado))}>Copiar link</button>}
+                      </span>
+                    ))}
+                  </div>
+                  <label className="editorEmailEnvio">
+                    Prévia/editável do e-mail
+                    <textarea
+                      value={emailHtml}
+                      onChange={(evento) => setEmailsPorTransportadora((atuais) => ({ ...atuais, [chave]: evento.target.value }))}
+                    />
+                  </label>
+                  <div className="previewEmailEnvio" dangerouslySetInnerHTML={{ __html: emailHtml }} />
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
@@ -2948,6 +3330,61 @@ function ConfiguracaoEmailUsuario() {
         <button className="primary">Salvar e-mail</button>
       </form>
     </section>
+  );
+}
+
+function TransportadorasOperacional() {
+  const [filtro, setFiltro] = useState('');
+  const [versao, setVersao] = useState(0);
+
+  async function carregar() {
+    const dados = await listarTransportadoras();
+    const busca = filtro.trim().toLowerCase();
+    if (!busca) {
+      return dados;
+    }
+    return dados.filter((item: RegistroGenerico) => {
+      const texto = `${item.codigo_interno ?? ''} ${item.nome_fantasia ?? ''} ${item.razao_social ?? ''} ${item.documento ?? ''}`.toLowerCase();
+      return texto.includes(busca);
+    });
+  }
+
+  return (
+    <>
+      <div className="filtrosLinha">
+        <input placeholder="Filtrar por nome, código, razão social ou documento" value={filtro} onChange={(evento) => setFiltro(evento.target.value)} />
+        <button className="ghost" onClick={() => setVersao((atual) => atual + 1)}>Filtrar</button>
+      </div>
+      <TabelaOperacional
+        key={`${filtro}-${versao}`}
+        titulo="Transportadoras"
+        subtitulo="Transportadoras disponíveis para cotação automática e retorno público por link."
+        carregar={carregar}
+        colunas={['codigo_interno', 'nome_fantasia', 'documento', 'email', 'aceita_cotacao_externa', 'ativa']}
+        salvar={salvarTransportadora}
+        excluir={excluirTransportadora}
+        camposFormulario={[
+          { nome: 'codigo_interno', rotulo: 'Código interno' },
+          { nome: 'razao_social', rotulo: 'Razão social' },
+          { nome: 'nome_fantasia', rotulo: 'Nome fantasia' },
+          { nome: 'documento', rotulo: 'CNPJ/CPF' },
+          { nome: 'email', rotulo: 'E-mail' },
+          { nome: 'telefone', rotulo: 'Telefone' },
+          { nome: 'responsavel', rotulo: 'Responsável' },
+          { nome: 'aceita_cotacao_externa', rotulo: 'Aceita cotação externa', tipo: 'checkbox' },
+          { nome: 'apresenta_menor_cotacao', rotulo: 'Mostrar menor cotação', tipo: 'checkbox' },
+          { nome: 'apresenta_cubagem', rotulo: 'Mostrar cubagem', tipo: 'checkbox' },
+          { nome: 'apresenta_peso', rotulo: 'Mostrar peso', tipo: 'checkbox' },
+          { nome: 'apresenta_valor_tabela', rotulo: 'Mostrar valor tabela', tipo: 'checkbox' },
+          { nome: 'sla_resposta_horas', rotulo: 'SLA resposta horas', tipo: 'number' },
+          { nome: 'recebe_prazo_solicitado', rotulo: 'Mostrar prazo da venda', tipo: 'checkbox' },
+          { nome: 'exige_prazo_resposta', rotulo: 'Solicitar prazo no link', tipo: 'checkbox' },
+          { nome: 'prazo_resposta_obrigatorio', rotulo: 'Prazo obrigatório', tipo: 'checkbox' },
+          { nome: 'apresenta_lista_produtos', rotulo: 'Mostrar produtos no link', tipo: 'checkbox' },
+          { nome: 'ativa', rotulo: 'Ativa', tipo: 'checkbox' }
+        ]}
+      />
+    </>
   );
 }
 
@@ -3504,36 +3941,7 @@ export function App() {
           />
         )}
         {tela === 'direitos' && <MatrizPermissoes />}
-        {tela === 'transportadoras' && (
-          <TabelaOperacional
-            titulo="Transportadoras"
-            subtitulo="Transportadoras disponiveis para cotacao automatica e retorno publico por link."
-            carregar={listarTransportadoras}
-            colunas={['codigo_interno', 'nome_fantasia', 'documento', 'email', 'aceita_cotacao_externa', 'ativa']}
-            salvar={salvarTransportadora}
-            excluir={excluirTransportadora}
-            camposFormulario={[
-              { nome: 'codigo_interno', rotulo: 'Codigo interno' },
-              { nome: 'razao_social', rotulo: 'Razao social' },
-              { nome: 'nome_fantasia', rotulo: 'Nome fantasia' },
-              { nome: 'documento', rotulo: 'CNPJ/CPF' },
-              { nome: 'email', rotulo: 'E-mail' },
-              { nome: 'telefone', rotulo: 'Telefone' },
-              { nome: 'responsavel', rotulo: 'Responsavel' },
-              { nome: 'aceita_cotacao_externa', rotulo: 'Aceita cotacao externa', tipo: 'checkbox' },
-              { nome: 'apresenta_menor_cotacao', rotulo: 'Mostrar menor cotação', tipo: 'checkbox' },
-              { nome: 'apresenta_cubagem', rotulo: 'Mostrar cubagem', tipo: 'checkbox' },
-              { nome: 'apresenta_peso', rotulo: 'Mostrar peso', tipo: 'checkbox' },
-              { nome: 'apresenta_valor_tabela', rotulo: 'Mostrar valor tabela', tipo: 'checkbox' },
-              { nome: 'sla_resposta_horas', rotulo: 'SLA resposta horas', tipo: 'number' },
-              { nome: 'recebe_prazo_solicitado', rotulo: 'Mostrar prazo da venda', tipo: 'checkbox' },
-              { nome: 'exige_prazo_resposta', rotulo: 'Solicitar prazo no link', tipo: 'checkbox' },
-              { nome: 'prazo_resposta_obrigatorio', rotulo: 'Prazo obrigatorio', tipo: 'checkbox' },
-              { nome: 'apresenta_lista_produtos', rotulo: 'Mostrar produtos no link', tipo: 'checkbox' },
-              { nome: 'ativa', rotulo: 'Ativa', tipo: 'checkbox' }
-            ]}
-          />
-        )}
+        {tela === 'transportadoras' && <TransportadorasOperacional />}
         {tela === 'etapas' && (
           <TabelaOperacional
             titulo="Etapas do Kanban"

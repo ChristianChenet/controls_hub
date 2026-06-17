@@ -229,6 +229,13 @@ export async function prepararEnvioMassa(cotacoes_ids: Array<string | number>) {
 
 export async function enviarCotacoesMassa(dados: {
   cotacoes_ids: Array<string | number>;
+  transportadoras_ids?: Array<string | number>;
+  grupos?: Array<{
+    transportadora_id: string | number;
+    cotacoes_ids: Array<string | number>;
+    assunto?: string;
+    html?: string;
+  }>;
   reenviar: boolean;
   itens_por_cotacao?: Record<string, number[]>;
 }) {

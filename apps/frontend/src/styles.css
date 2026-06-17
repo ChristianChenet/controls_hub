@@ -242,6 +242,105 @@ button.danger {
   text-transform: uppercase;
 }
 
+.detalheEnvioMassa,
+.detalheEnvioMassa strong,
+.detalheEnvioMassa h3,
+.detalheEnvioMassa h4,
+.detalheEnvioMassa p,
+.detalheEnvioMassa small {
+  color: #172033;
+}
+
+.detalheEnvioMassa .detalheEnvioResumo span,
+.detalheEnvioMassa .linhaFornecedorEnvio span,
+.detalheEnvioMassa .listaItensCompacta span {
+  color: var(--verde-escuro);
+}
+
+.motivoSugestaoCotacao {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #172033;
+}
+
+.motivoSugestaoCotacao strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #92400e;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.motivoSugestaoCotacao p {
+  margin: 0 0 10px;
+  color: #344054;
+  line-height: 1.45;
+}
+
+.gruposEmailEnvio {
+  display: grid;
+  gap: 14px;
+}
+
+.grupoEmailTransportadora {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8e2ec;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .06);
+}
+
+.grupoEmailTransportadora header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.grupoEmailTransportadora h4 {
+  margin: 3px 0;
+}
+
+.grupoEmailTransportadora p {
+  margin: 0;
+  color: #475467;
+}
+
+.editorEmailEnvio {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.editorEmailEnvio textarea {
+  min-height: 150px;
+  border: 1px solid #d8e2ec;
+  border-radius: 8px;
+  padding: 10px;
+  color: #172033;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.previewEmailEnvio {
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #e3ebf4;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #172033;
+}
+
 .painelContextualAberto {
   overflow: hidden;
 }
@@ -1359,6 +1458,27 @@ h2 {
   text-transform: uppercase;
 }
 
+.tagStatusDetalhe.faturado,
+.tagFaturadoKanban {
+  border: 1px solid #bfdbfe;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.tagStatusDetalhe.etapaKanban {
+  border: 1px solid #bbf7d0;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.economiaPositiva {
+  color: #166534 !important;
+}
+
+.economiaNegativa {
+  color: #b42318 !important;
+}
+
 .tagStatusDetalhe.faturado {
   background: #dcfce7;
   color: #166534;
@@ -2160,12 +2280,37 @@ h2 {
   accent-color: #16a34a;
 }
 
-.painelContextualConteudo .abasCotacao button {
+.painelContextualConteudo .abasCotacao button,
+.painelContextualConteudo .abasCotacao button * {
+  border-color: #d8e2ec !important;
+  background: #f8fafc !important;
   color: #1d2939 !important;
+  text-shadow: none !important;
 }
 
-.painelContextualConteudo .abasCotacao button.active {
+.painelContextualConteudo .abasCotacao button.active,
+.painelContextualConteudo .abasCotacao button.active * {
+  border-color: rgba(34, 197, 94, .45) !important;
+  background-color: #052615 !important;
+  background: linear-gradient(180deg, #073b1d, #052615) !important;
   color: #ffffff !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .28) !important;
+}
+
+.painelContextualConteudo .detalheEnvioMassa,
+.painelContextualConteudo .detalheEnvioMassa *:not(button):not(input):not(select):not(svg):not(path),
+.painelContextualConteudo .detalheEnvioGrid,
+.painelContextualConteudo .detalheEnvioGrid *:not(button):not(input):not(select):not(svg):not(path),
+.painelContextualConteudo .detalheEnvioResumo,
+.painelContextualConteudo .detalheEnvioResumo *:not(button):not(input):not(select):not(svg):not(path) {
+  color: #172033 !important;
+  text-shadow: none !important;
+}
+
+.painelContextualConteudo .detalheEnvioMassa span,
+.painelContextualConteudo .detalheEnvioGrid span,
+.painelContextualConteudo .detalheEnvioResumo span {
+  color: #475467 !important;
 }
 
 .kanbanFiltrosPremium {
@@ -2516,4 +2661,107 @@ h2 {
 .cardDocumentoFiscal ul {
   margin: 0;
   padding-left: 18px;
+}
+
+/* Ajustes premium locais do Kanban e Envio, sem alterar o restante do tema. */
+.acoesEnvioPrincipal {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+}
+
+.botaoEscolherMassa {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.kanbanPremium {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 4px 2px 18px;
+}
+
+.kanbanPremium .coluna {
+  flex: 0 0 320px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--cor-etapa, var(--verde)) 42%, rgba(148, 163, 184, .26));
+  border-top: 5px solid var(--cor-etapa, var(--verde));
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--cor-etapa, var(--verde)) 12%, rgba(18, 31, 49, .98)), rgba(8, 18, 31, .98));
+  box-shadow: 0 16px 38px rgba(2, 6, 23, .22);
+  scrollbar-width: thin;
+}
+
+.kanbanPremium .coluna::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kanbanPremium .coluna::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, .62);
+}
+
+.kanbanPremium .coluna header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 2px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cor-etapa, var(--verde)) 34%, rgba(148, 163, 184, .20));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cor-etapa, var(--verde)) 13%, rgba(18, 31, 49, .99)), rgba(18, 31, 49, .94));
+}
+
+.kanbanPremium .cartao {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-top: 0;
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(31, 43, 64, .98), rgba(18, 29, 47, .99));
+}
+
+.kanbanPremium .cartao::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--cor-etapa, var(--verde));
+}
+
+.kanbanPremium .cartao:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px rgba(0, 0, 0, .24);
+}
+
+.kanbanPremium .cartao .tagFaturadoKanban,
+.kanbanPremium .cartao em.tagFaturadoKanban {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.detalheEnvioResumo article,
+.linhaFornecedorEnvio,
+.listaItensCompacta,
+.dadosCotacaoGrid div {
+  color: #172033;
+}
+
+.dadosCotacaoGrid strong,
+.dadosCotacaoGrid small {
+  color: #172033;
+}
+
+.dadosCotacaoGrid small {
+  color: #475467;
+}
+
+.tagStatusDetalhe.faturado {
+  border: 1px solid #bfdbfe;
+  background: #dbeafe;
+  color: #1d4ed8;
 }

@@ -115,6 +115,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       COALESCE(melhor.nome_fantasia, c.transportadora_pedido_nome, 'Sem transportadora') AS transportadora_referencia,
       melhor.transportadora_id AS transportadora_cotacao_automatica_id,
       melhor.nome_fantasia AS transportadora_cotacao_automatica,
+      melhor.origem_cotacao AS origem_cotacao_automatica,
       COALESCE(melhor.valor_frete, 0) AS valor_cotacao_automatica,
       COALESCE(melhor.prazo_dias, 0) AS prazo_cotacao_automatica,
       CASE
@@ -153,6 +154,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       SELECT
         cftr.transportadora_id,
         t.nome_fantasia,
+        cftr.origem_cotacao,
         cftr.valor_frete,
         COALESCE(cftr.prazo_dias, 0) AS prazo_dias
       FROM cotacoes_frete_transportadoras cftr
@@ -212,6 +214,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       e.nome,
       melhor.nome_fantasia,
       melhor.transportadora_id,
+      melhor.origem_cotacao,
       melhor.valor_frete,
       melhor.prazo_dias
     HAVING (

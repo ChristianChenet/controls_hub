@@ -977,6 +977,7 @@ export async function obterResumoPublicoPorToken(tokenHash: string) {
       tok.utilizado,
       tok.expira_em,
       tok.transportadora_id,
+      tok.gerado_por_usuario_id,
       tok.numero_envio AS envio_id,
       ${montarIdCotacaoSql('c')} AS cotacao_frete_id,
       c.tipo_documento,
@@ -1009,6 +1010,7 @@ export async function obterResumoPublicoPorToken(tokenHash: string) {
       menor.valor_frete AS menor_frete_atual,
       menor.prazo_dias AS menor_prazo_atual,
       t.nome_fantasia AS transportadora_nome,
+      t.email AS transportadora_email,
       t.apresenta_menor_cotacao,
       t.apresenta_cubagem,
       t.apresenta_peso,
@@ -1511,8 +1513,16 @@ export async function escolherTransportadora(dados: {
       AND c.numero_documento = $3
       AND c.codigo_chave = $4
       AND cft.transportadora_id = $5
-      AND ($6::VARCHAR IS NULL OR cft.origem_cotacao = $6)
-      AND c.excluido = FALSE`,
+      AND c.excluido = FALSE
+    ORDER BY
+      CASE
+        WHEN $6::VARCHAR IS NULL THEN 0
+        WHEN cft.origem_cotacao = $6 THEN 0
+        ELSE 1
+      END,
+      COALESCE(cft.valor_frete, 0) ASC,
+      cft.alterado_em DESC NULLS LAST
+    LIMIT 1`,
     [dados.empresaId, cotacaoBase.tipo_documento, cotacaoBase.numero_documento, cotacaoBase.codigo_chave, transportadoraId, origemCotacao]
   );
 
