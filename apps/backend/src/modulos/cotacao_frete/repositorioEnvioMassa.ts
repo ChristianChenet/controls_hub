@@ -110,9 +110,34 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       COALESCE(nfes.total_nfes, 0) AS total_nfes,
       COALESCE(c.bloqueado_para_alteracao, FALSE) AS bloqueado_para_alteracao,
       CASE
-        WHEN c.status IN ('COTACAO_PENDENTE', 'COTACAO_AUTOMATICA') THEN TRUE
+        WHEN params.limite_valor_auto IS NOT NULL AND COALESCE(melhor.valor_frete, 0) > params.limite_valor_auto THEN TRUE
+        WHEN params.limite_diferenca_valor IS NOT NULL AND ROUND(COALESCE(melhor.valor_frete, 0) - COALESCE(c.valor_frete_pedido, 0), 2) > params.limite_diferenca_valor THEN TRUE
+        WHEN params.limite_diferenca_percentual IS NOT NULL
+          AND COALESCE(c.valor_frete_pedido, 0) > 0
+          AND ROUND(((COALESCE(melhor.valor_frete, 0) - c.valor_frete_pedido) / c.valor_frete_pedido) * 100, 2) > params.limite_diferenca_percentual THEN TRUE
+        WHEN params.limite_dias_prazo IS NOT NULL
+          AND COALESCE(c.prazo_pedido_dias, 0) > 0
+          AND (COALESCE(melhor.prazo_dias, 0) - COALESCE(c.prazo_pedido_dias, 0)) > params.limite_dias_prazo THEN TRUE
         ELSE FALSE
       END AS sugestao_cotacao,
+      CONCAT_WS(' ',
+        CASE WHEN params.limite_valor_auto IS NOT NULL AND COALESCE(melhor.valor_frete, 0) > params.limite_valor_auto
+          THEN CONCAT('Valor frete cotado aut. alto: ', COALESCE(melhor.valor_frete, 0), ' acima do parâmetro ', params.limite_valor_auto, '.')
+        END,
+        CASE WHEN params.limite_diferenca_valor IS NOT NULL AND ROUND(COALESCE(melhor.valor_frete, 0) - COALESCE(c.valor_frete_pedido, 0), 2) > params.limite_diferenca_valor
+          THEN CONCAT('Diferença frete cotado: ', ROUND(COALESCE(melhor.valor_frete, 0) - COALESCE(c.valor_frete_pedido, 0), 2), ' acima do parâmetro ', params.limite_diferenca_valor, '.')
+        END,
+        CASE WHEN params.limite_diferenca_percentual IS NOT NULL
+          AND COALESCE(c.valor_frete_pedido, 0) > 0
+          AND ROUND(((COALESCE(melhor.valor_frete, 0) - c.valor_frete_pedido) / c.valor_frete_pedido) * 100, 2) > params.limite_diferenca_percentual
+          THEN CONCAT('Diferença percentual: ', ROUND(((COALESCE(melhor.valor_frete, 0) - c.valor_frete_pedido) / c.valor_frete_pedido) * 100, 2), '% acima do parâmetro ', params.limite_diferenca_percentual, '%.')
+        END,
+        CASE WHEN params.limite_dias_prazo IS NOT NULL
+          AND COALESCE(c.prazo_pedido_dias, 0) > 0
+          AND (COALESCE(melhor.prazo_dias, 0) - COALESCE(c.prazo_pedido_dias, 0)) > params.limite_dias_prazo
+          THEN CONCAT('Diferença no prazo: ', (COALESCE(melhor.prazo_dias, 0) - COALESCE(c.prazo_pedido_dias, 0)), ' dia(s) acima do parâmetro ', params.limite_dias_prazo, '.')
+        END
+      ) AS motivo_sugestao_cotacao,
       e.nome AS etapa_nome,
       COUNT(DISTINCT cft.transportadora_id) AS fornecedores_vinculados,
       COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') AS fornecedores_enviados,
@@ -185,6 +210,20 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       ORDER BY cftr.valor_frete ASC NULLS LAST, COALESCE(cftr.ranking_frete, 999999) ASC, cftr.transportadora_id ASC
       LIMIT 1
     ) melhor ON TRUE
+    CROSS JOIN LATERAL (
+      SELECT
+        MAX(CASE WHEN chave = 'VALOR_FRETE_COTADO_AUT_MAIOR_QUE' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_valor_auto,
+        MAX(CASE WHEN chave = 'DIFERENCA_FRETE_COTADO' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_diferenca_valor,
+        MAX(CASE WHEN chave = 'PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_diferenca_percentual,
+        MAX(CASE WHEN chave = 'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_dias_prazo
+      FROM parametros_sistema
+      WHERE chave IN (
+        'VALOR_FRETE_COTADO_AUT_MAIOR_QUE',
+        'DIFERENCA_FRETE_COTADO',
+        'PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT',
+        'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO'
+      )
+    ) params
     WHERE c.empresa_id = $1
       AND COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE
       AND c.status IN ('COTACAO_PENDENTE', 'COTACAO_AUTOMATICA', 'COTACAO_TRANSPORTADORA', 'EM_ANALISE')
@@ -238,7 +277,11 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       melhor.transportadora_id,
       melhor.origem_cotacao,
       melhor.valor_frete,
-      melhor.prazo_dias
+      melhor.prazo_dias,
+      params.limite_valor_auto,
+      params.limite_diferenca_valor,
+      params.limite_diferenca_percentual,
+      params.limite_dias_prazo
     HAVING (
       $4 = 'TODOS'
       OR ($4 = 'NAO_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') = 0)

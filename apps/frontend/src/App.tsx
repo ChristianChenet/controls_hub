@@ -2288,6 +2288,14 @@ function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes }: { c
 
 function montarTextoSugestaoCotacao(cotacao: RegistroGenerico, linhaEnvio?: RegistroGenerico) {
   const base = linhaEnvio ?? cotacao;
+  const motivoCalculado = String(base.motivo_sugestao_cotacao ?? cotacao.motivo_sugestao_cotacao ?? '').trim();
+  if (motivoCalculado) {
+    return motivoCalculado;
+  }
+  if (!Boolean(base.sugestao_cotacao)) {
+    return 'Sem sugestão crítica calculada para esta cotação.';
+  }
+
   const motivos: string[] = [];
   const fretePedido = Number(base.valor_frete_pedido ?? cotacao.valor_frete_pedido ?? 0);
   const freteAutomatico = Number(base.valor_cotacao_automatica ?? cotacao.valor_cotacao_automatica ?? 0);
@@ -2296,9 +2304,6 @@ function montarTextoSugestaoCotacao(cotacao: RegistroGenerico, linhaEnvio?: Regi
   const prazoPedido = Number(base.prazo_pedido_dias ?? cotacao.prazo_pedido_dias ?? 0);
   const prazoAutomatico = Number(base.prazo_cotacao_automatica ?? 0);
 
-  if (Boolean(base.sugestao_cotacao)) {
-    motivos.push('A cotação está em uma etapa que recomenda validação adicional com a transportadora antes da escolha direta.');
-  }
   if (freteAutomatico > 0 && fretePedido > 0 && freteAutomatico > fretePedido) {
     motivos.push(`Diferença frete cotado: cotação automática ${formatarMoeda(freteAutomatico)} contra pedido ${formatarMoeda(fretePedido)}.`);
   }
@@ -3188,7 +3193,7 @@ function EnvioMassaCotacoes() {
             {pedidosPagina.map((pedido, indice) => (
               <tr
                 className={pedido.sugestao_cotacao ? 'linhaAlertaSugestao' : ''}
-                title={pedido.sugestao_cotacao ? 'Essa cotação está em fase que sugere novo envio para transportadora antes da escolha direta.' : ''}
+                title={pedido.sugestao_cotacao ? montarTextoSugestaoCotacao(pedido, pedido) : ''}
                 key={`${String(pedido.id ?? pedido.numero_documento ?? 'pedido')}-${String(pedido.codigo_chave ?? indice)}`}
                 onDoubleClick={() => abrirDetalheEnvio(String(pedido.id))}
               >
