@@ -8,6 +8,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5174,
+    host: '0.0.0.0',
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '192.168.1.70',
+      'frete.monvizo.com.br'
+    ],
     proxy: {
       // Em desenvolvimento local o frontend roda no Vite, mas a API fica no backend.
       // Em producao/publicacao o Nginx faz esse mesmo papel com /api.
