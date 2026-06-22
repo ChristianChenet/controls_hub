@@ -4,7 +4,7 @@
 
 Publicar o Control S Hub de cotacoes em:
 
-- Publico: `http://cotacoes.monvizo.com.br:8080/`
+- Publico: `http://frete.monvizo.com.br:8080/`
 - Interno frontend: `http://192.168.1.70:5174/`
 - Interno backend Control S Hub: `http://192.168.1.70:3334/`
 
@@ -18,31 +18,67 @@ Arquivo pronto no projeto:
 
 `deploy/nginx/controlshub-cotacoes-monvizo.conf`
 
-Copie esse arquivo para o servidor Nginx, normalmente em:
+No Windows, copie o conteudo desse arquivo para a configuracao do Nginx, normalmente em:
 
-`/etc/nginx/conf.d/controlshub-cotacoes-monvizo.conf`
+`C:\nginx\conf\nginx.conf`
 
-ou, em servidores com `sites-available`:
+ou em um arquivo importado por ele, por exemplo:
 
-`/etc/nginx/sites-available/controlshub-cotacoes-monvizo.conf`
+`C:\nginx\conf\conf.d\controlshub-cotacoes-monvizo.conf`
 
-e crie o link simbolico para `sites-enabled`.
+## Configuracao aplicada
 
-## Comandos de validacao e reload
+O bloco dessa aplicacao deve publicar apenas o frontend de cotacoes:
 
-```bash
-nginx -t
-systemctl reload nginx
+```nginx
+server {
+  listen 8080;
+  server_name frete.monvizo.com.br;
+
+  location / {
+    proxy_pass http://192.168.1.70:5174;
+
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+  }
+}
+```
+
+Nao incluir `/api/` nem `/swagger/` nesse bloco, porque esses caminhos pertencem a outras publicacoes do ecossistema. No ambiente atual, o frontend em `5174` usa o proxy do Vite para encaminhar `/api` ao backend do Control S Hub.
+
+## Comandos de validacao e reload no Windows
+
+No servidor Windows:
+
+```bat
+cd C:\nginx
+nginx.exe -t
+nginx.exe -s reload
+```
+
+Se o Nginx nao estiver rodando como servico:
+
+```bat
+cd C:\nginx
+taskkill /F /IM nginx.exe
+start nginx.exe
 ```
 
 ## DNS ou hosts
 
-O DNS de `cotacoes.monvizo.com.br` deve apontar para o mesmo IP publico usado por `api.monvizo.com.br`.
+O DNS de `frete.monvizo.com.br` deve apontar para o mesmo IP publico usado por `api.monvizo.com.br`.
 
 Para teste local antes do DNS, adicionar no arquivo `hosts` da maquina cliente:
 
 ```text
-IP_PUBLICO_DO_SERVIDOR cotacoes.monvizo.com.br
+IP_PUBLICO_DO_SERVIDOR frete.monvizo.com.br
 ```
 
 ## Variaveis de ambiente
@@ -60,20 +96,14 @@ Frontend:
 VITE_API_BASE=
 ```
 
-Com `VITE_API_BASE` vazio, o frontend chama `/api/...` na mesma origem publica:
-
-`http://cotacoes.monvizo.com.br:8080/api/...`
-
-O Nginx encaminha `/api/` para:
-
-`http://192.168.1.70:3334/api/`
+Com `VITE_API_BASE` vazio, o frontend chama `/api/...`. Em desenvolvimento/publicacao via Vite, o proxy configurado em `apps/frontend/vite.config.ts` encaminha `/api` para `http://127.0.0.1:3334`.
 
 ## Tela Configuracoes
 
 Preencher:
 
-- Dominio publico: `cotacoes.monvizo.com.br:8080`
-- Link publico: `http://cotacoes.monvizo.com.br:8080/`
+- Dominio publico: `frete.monvizo.com.br:8080`
+- Link publico: `http://frete.monvizo.com.br:8080/`
 - Link interno: `http://192.168.1.70:5174/`
 - Ambiente do link: `HOMOLOGACAO`
 
@@ -83,23 +113,23 @@ Observacao: os links enviados para transportadoras usam sempre `Link publico`. O
 
 Para preencher os parametros via banco:
 
-```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/020_parametros_publicacao_cotacoes_monvizo.sql
+```bat
+psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f database\migrations\020_parametros_publicacao_cotacoes_monvizo.sql
 ```
 
 ## Testes no navegador
 
 Abrir:
 
-`http://cotacoes.monvizo.com.br:8080/`
+`http://frete.monvizo.com.br:8080/`
 
 Testar:
 
 - Login.
 - Dashboard.
-- Cotações.
+- Cotacoes.
 - Gerar novo link de transportadora.
-- Verificar se o link gerado começa com `http://cotacoes.monvizo.com.br:8080/cotacao/token/`.
+- Verificar se o link gerado comeca com `http://frete.monvizo.com.br:8080/cotacao/token/`.
 - Abrir o link publico em aba anonima.
 
 Confirmar que a aplicacao antiga continua funcionando:

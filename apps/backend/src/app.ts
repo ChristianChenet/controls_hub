@@ -115,7 +115,7 @@ export async function criarApp() {
 
   async function montarUrlCotacao(token: string) {
     const ambienteLink = (await obterValorParametroSistema('AMBIENTE_LINK_COTACAO', 'HOMOLOGACAO')).toUpperCase();
-    const urlBase = await obterValorParametroSistema('URL_PUBLICA_COTACAO', 'http://cotacoes.monvizo.com.br:8080/');
+    const urlBase = await obterValorParametroSistema('URL_PUBLICA_COTACAO', 'http://frete.monvizo.com.br:8080/');
 
     return {
       ambienteLink,
