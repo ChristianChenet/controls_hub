@@ -7,6 +7,15 @@ export default defineConfig({
   },
   plugins: [react()],
   server: {
-    port: 5174
+    port: 5174,
+    proxy: {
+      // Em desenvolvimento local o frontend roda no Vite, mas a API fica no backend.
+      // Em producao/publicacao o Nginx faz esse mesmo papel com /api.
+      '/api': {
+        target: 'http://127.0.0.1:3334',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   }
 });

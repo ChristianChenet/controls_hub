@@ -281,8 +281,10 @@ function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: Empr
   return (
     <main className="loginScreen">
       <form className="loginPanel" onSubmit={enviar}>
-        <img src="/brand/logo-s-novo.jpg" alt="Control S" />
-        <span>Plataforma modular corporativa</span>
+        <div className="loginBrand">
+          <img src="/brand/logo-s-novo.jpg" alt="Control S" />
+          <span>Plataforma modular corporativa</span>
+        </div>
         <h1>Control S Hub</h1>
         <label>
           E-mail

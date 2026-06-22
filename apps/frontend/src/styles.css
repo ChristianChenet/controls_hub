@@ -625,14 +625,20 @@ button.danger {
   box-shadow: 0 26px 70px rgba(0, 0, 0, .34), 0 0 44px rgba(46, 230, 111, .12);
 }
 
-.loginPanel img {
+.loginBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loginBrand img {
   width: 48px;
   height: 48px;
   border-radius: 7px;
   object-fit: cover;
 }
 
-.loginPanel span,
+.loginBrand span,
 .painelOperacional span,
 .metrics span {
   color: var(--muted);
