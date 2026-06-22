@@ -1,5 +1,5 @@
 -- CONTROL S HUB
--- Views de integracao para consumo externo por N8N/ERP.
+-- Reaplica views operacionais garantindo que cotacoes excluidas logicamente nao aparecam.
 
 CREATE OR REPLACE VIEW vw_cotacoes_frete_resumo AS
 SELECT
@@ -70,3 +70,7 @@ FROM vw_cotacoes_frete_resumo
 WHERE transportadora_escolhida_id IS NOT NULL
   AND atualizado_no_erp = FALSE
   AND bloqueado_para_alteracao = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_cotacoes_frete_ativas_empresa
+  ON cotacoes_frete (empresa_id, data_documento, status)
+  WHERE COALESCE(excluido, FALSE) = FALSE;

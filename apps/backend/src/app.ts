@@ -1038,7 +1038,11 @@ export async function criarApp() {
     if (!usuario) return;
     const chaveCotacao = obterChaveCotacaoParametro(request.params.id);
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!, chaveCotacao);
-    return sucesso(await obterCotacaoFrete(usuario!.empresaAtivaId!, chaveCotacao));
+    const cotacao = await obterCotacaoFrete(usuario!.empresaAtivaId!, chaveCotacao);
+    if (!cotacao) {
+      return reply.status(404).send(falha('COTACAO_NAO_ENCONTRADA', 'Cotacao nao encontrada.'));
+    }
+    return sucesso(cotacao);
   });
 
   app.post<{ Params: { id: string }; Body: { transportadora_id?: number; observacao?: string } }>('/api/cotacao-frete/cotacoes/:id/transportadoras', { preHandler: (app as any).autenticar }, async (request, reply) => {

@@ -48,7 +48,8 @@ async function resolverCotacaoBase(empresaId: number, cotacaoId: string | number
       WHERE empresa_id = $1
         AND tipo_documento = $2
         AND numero_documento = $3
-        AND codigo_chave = $4`,
+        AND codigo_chave = $4
+        AND COALESCE(excluido, FALSE) = FALSE`,
       [chave.empresaId, chave.tipoDocumento, chave.numeroDocumento, chave.codigoChave]
     );
   }
@@ -68,7 +69,8 @@ async function resolverCotacaoBase(empresaId: number, cotacaoId: string | number
     `SELECT id, empresa_id, tipo_documento, numero_documento, codigo_chave
     FROM cotacoes_frete
     WHERE empresa_id = $1
-      AND id = $2`,
+      AND id = $2
+      AND COALESCE(excluido, FALSE) = FALSE`,
     [empresaId, idNumerico]
   );
 }
@@ -225,14 +227,15 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       )
     ) params
     WHERE c.empresa_id = $1
+      AND COALESCE(c.excluido, FALSE) = FALSE
       AND COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE
       AND c.status IN ('COTACAO_PENDENTE', 'COTACAO_AUTOMATICA', 'COTACAO_TRANSPORTADORA', 'EM_ANALISE')
       AND (
         $2 = 'TODOS'
-        OR ($2 = 'ATIVOS' AND c.situacao_pedido = 'ATIVO' AND COALESCE(c.excluido, FALSE) = FALSE)
+        OR ($2 = 'ATIVOS' AND c.situacao_pedido = 'ATIVO')
         OR ($2 = 'CANCELADOS' AND c.situacao_pedido = 'CANCELADO')
-        OR ($2 = 'EXCLUIDOS' AND (c.situacao_pedido = 'EXCLUIDO' OR COALESCE(c.excluido, FALSE) = TRUE))
-        OR ($2 = 'CANCELADOS_EXCLUIDOS' AND (c.situacao_pedido IN ('CANCELADO', 'EXCLUIDO') OR COALESCE(c.excluido, FALSE) = TRUE))
+        OR ($2 = 'EXCLUIDOS' AND c.situacao_pedido = 'EXCLUIDO')
+        OR ($2 = 'CANCELADOS_EXCLUIDOS' AND c.situacao_pedido IN ('CANCELADO', 'EXCLUIDO'))
       )
       AND (
         $3 = '%%'
@@ -356,6 +359,7 @@ export async function prepararEnvioMassa(empresaId: number, cotacoesIds: Array<s
       LIMIT 1
     ) ultimo_envio ON TRUE
     WHERE c.empresa_id = $1
+      AND COALESCE(c.excluido, FALSE) = FALSE
       AND ${montarIdCotacaoSql('c')} = ANY($2::TEXT[])
     ORDER BY c.numero_documento ASC, t.nome_fantasia ASC`,
     [empresaId, cotacoesIds.map((item) => String(item))]
@@ -603,6 +607,11 @@ export async function listarItensDoEnvio(chave: {
       i.comprimento,
       i.peso_item
     FROM cotacoes_frete_itens i
+    INNER JOIN cotacoes_frete c
+      ON c.empresa_id = i.empresa_id
+     AND c.tipo_documento = i.tipo_documento
+     AND c.numero_documento = i.numero_documento
+     AND c.codigo_chave = i.codigo_chave
     LEFT JOIN cotacoes_frete_envios_itens ei
       ON ei.empresa_id = i.empresa_id
      AND ei.tipo_documento = i.tipo_documento
@@ -614,6 +623,7 @@ export async function listarItensDoEnvio(chave: {
       AND i.tipo_documento = $2
       AND i.numero_documento = $3
       AND i.codigo_chave = $4
+      AND COALESCE(c.excluido, FALSE) = FALSE
     ORDER BY i.item_sequencia ASC NULLS LAST, i.codigo_item ASC NULLS LAST`,
     [chave.empresaId, chave.tipoDocumento, chave.numeroDocumento, chave.codigoChave, chave.numeroEnvio]
   );

@@ -90,7 +90,7 @@ async function obterMapaEtapasAtivas(empresaId: number) {
 }
 
 function definirStatusOperacionalCotacao(resumo: Record<string, any>) {
-  const cancelada = Boolean(resumo.excluido) || ['CANCELADO', 'EXCLUIDO'].includes(String(resumo.situacao_pedido ?? '').toUpperCase());
+  const cancelada = ['CANCELADO', 'EXCLUIDO'].includes(String(resumo.situacao_pedido ?? '').toUpperCase());
   if (cancelada) {
     return 'COTACAO_CANCELADA';
   }
@@ -132,7 +132,7 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
     ? interpretarChaveCotacao(empresaId, cotacaoId)
     : null;
   const etapasAtivas = await obterMapaEtapasAtivas(empresaId);
-  const filtros: Array<string> = ['c.empresa_id = $1'];
+  const filtros: Array<string> = ['c.empresa_id = $1', 'COALESCE(c.excluido, FALSE) = FALSE'];
   const parametros: Array<string | number> = [empresaId];
 
   if (chave?.tipoDocumento && chave.numeroDocumento && chave.codigoChave) {
@@ -290,7 +290,8 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
       WHERE c.empresa_id = dados.empresa_id::BIGINT
         AND c.tipo_documento = dados.tipo_documento
         AND c.numero_documento = dados.numero_documento
-        AND c.codigo_chave = dados.codigo_chave`,
+        AND c.codigo_chave = dados.codigo_chave
+        AND COALESCE(c.excluido, FALSE) = FALSE`,
       valores
     );
   }
@@ -320,7 +321,8 @@ async function resolverCotacaoBase(empresaId: number, cotacaoId: string | number
         COALESCE(bloqueado_para_alteracao, FALSE) AS bloqueado_para_alteracao,
         COALESCE(excluido, FALSE) AS excluido
       FROM cotacoes_frete c
-      WHERE ${montarCondicaoChave('c')}`,
+      WHERE ${montarCondicaoChave('c')}
+        AND COALESCE(c.excluido, FALSE) = FALSE`,
       parametrosChave(chave)
     );
   }
@@ -638,7 +640,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
     FROM etapas_kanban e
     LEFT JOIN cotacoes_frete c ON c.etapa_kanban_id = e.id
       AND c.empresa_id = $1
-      AND c.excluido = FALSE
+      AND COALESCE(c.excluido, FALSE) = FALSE
       AND c.situacao_pedido = 'ATIVO'
       AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
       AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
@@ -727,7 +729,7 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
   ];
   const where = `
     c.empresa_id = $1
-    AND c.excluido = FALSE
+    AND COALESCE(c.excluido, FALSE) = FALSE
     AND c.situacao_pedido = 'ATIVO'
     AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
     AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
@@ -1138,7 +1140,8 @@ export async function obterResumoPublicoPorToken(tokenHash: string) {
         AND cft.codigo_chave = c.codigo_chave
         AND cft.origem_cotacao IN ('ERP', 'AUTOMATICA', 'BANCO')
     ) menor ON TRUE
-    WHERE tok.token_hash = $1`,
+    WHERE tok.token_hash = $1
+      AND COALESCE(c.excluido, FALSE) = FALSE`,
     [tokenHash]
   );
 }
@@ -1184,13 +1187,19 @@ export async function listarItensPublicosPorToken(tokenHash: string) {
     numero_envio: number | null;
   }>(
     `SELECT
-      empresa_id,
-      tipo_documento,
-      numero_documento,
-      codigo_chave,
-      numero_envio
-    FROM cotacoes_frete_tokens
-    WHERE token_hash = $1`,
+      tok.empresa_id,
+      tok.tipo_documento,
+      tok.numero_documento,
+      tok.codigo_chave,
+      tok.numero_envio
+    FROM cotacoes_frete_tokens tok
+    INNER JOIN cotacoes_frete c
+      ON c.empresa_id = tok.empresa_id
+     AND c.tipo_documento = tok.tipo_documento
+     AND c.numero_documento = tok.numero_documento
+     AND c.codigo_chave = tok.codigo_chave
+    WHERE tok.token_hash = $1
+      AND COALESCE(c.excluido, FALSE) = FALSE`,
     [tokenHash]
   );
 
@@ -1521,7 +1530,8 @@ export async function avancarParaAnaliseQuandoCompleto(cotacaoId: string | numbe
     WHERE empresa_id = $1
       AND tipo_documento = $2
       AND numero_documento = $3
-      AND codigo_chave = $4`,
+      AND codigo_chave = $4
+      AND COALESCE(excluido, FALSE) = FALSE`,
     [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave]
   );
 
@@ -1586,7 +1596,7 @@ export async function escolherTransportadora(dados: {
       AND c.numero_documento = $3
       AND c.codigo_chave = $4
       AND cft.transportadora_id = $5
-      AND c.excluido = FALSE
+      AND COALESCE(c.excluido, FALSE) = FALSE
     ORDER BY
       CASE
         WHEN $6::VARCHAR IS NULL THEN 0
@@ -1609,7 +1619,8 @@ export async function escolherTransportadora(dados: {
     WHERE empresa_id = $1
       AND tipo_documento = $2
       AND numero_documento = $3
-      AND codigo_chave = $4`,
+      AND codigo_chave = $4
+      AND COALESCE(excluido, FALSE) = FALSE`,
     [dados.empresaId, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave]
   );
 
@@ -1650,7 +1661,8 @@ export async function escolherTransportadora(dados: {
     WHERE empresa_id = $1
       AND tipo_documento = $2
       AND numero_documento = $3
-      AND codigo_chave = $4`,
+      AND codigo_chave = $4
+      AND COALESCE(excluido, FALSE) = FALSE`,
     [
       dados.empresaId,
       cotacao.tipo_documento,
@@ -1737,7 +1749,7 @@ export async function alterarValorFreteManual(dados: {
       AND ($5::VARCHAR IS NULL OR cft.numero_documento = $5)
       AND ($6::VARCHAR IS NULL OR cft.codigo_chave = $6)
       AND c.bloqueado_para_alteracao = FALSE
-      AND c.excluido = FALSE
+      AND COALESCE(c.excluido, FALSE) = FALSE
       AND cft.origem_cotacao NOT IN ('ERP', 'AUTOMATICA')`,
     [
       transportadoraId,
@@ -1875,7 +1887,7 @@ export async function alterarEtapaCotacao(dados: {
       AND numero_documento = $3
       AND codigo_chave = $4
       AND bloqueado_para_alteracao = FALSE
-      AND excluido = FALSE
+      AND COALESCE(excluido, FALSE) = FALSE
     RETURNING ${montarIdCotacaoSql('cotacoes_frete')} AS id, etapa_kanban_id`,
     [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave, dados.etapaId, dados.usuarioId]
   );
@@ -1938,7 +1950,7 @@ export async function avancarEtapaAposEnvio(dados: {
       AND c.numero_documento = $3
       AND c.codigo_chave = $4
       AND c.bloqueado_para_alteracao = FALSE
-      AND c.excluido = FALSE
+      AND COALESCE(c.excluido, FALSE) = FALSE
     LIMIT 1`,
     [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave]
   );
@@ -1957,6 +1969,7 @@ export async function avancarEtapaAposEnvio(dados: {
       AND tipo_documento = $2
       AND numero_documento = $3
       AND codigo_chave = $4
+      AND COALESCE(excluido, FALSE) = FALSE
     RETURNING ${montarIdCotacaoSql('cotacoes_frete')} AS id, etapa_kanban_id, status`,
     [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave, destino.etapa_id, dados.usuarioId]
   );
@@ -2008,7 +2021,7 @@ export async function bloquearCotacaoPorErp(dados: {
       alterado_por_usuario_id = $3
     WHERE id = $1
       AND empresa_id = $2
-      AND excluido = FALSE
+      AND COALESCE(excluido, FALSE) = FALSE
     RETURNING id, atualizado_no_erp, bloqueado_para_alteracao, status`,
     [
       dados.cotacaoId,
@@ -2083,6 +2096,7 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       identificador_externo = EXCLUDED.identificador_externo,
       payload_recebido = EXCLUDED.payload_recebido,
       alterado_em = NOW()
+    WHERE COALESCE(cotacoes_frete.excluido, FALSE) = FALSE
     RETURNING id`,
     [
       empresaId,
@@ -2134,7 +2148,8 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       numero_cte = COALESCE($13, numero_cte),
       idempotencia_origem = $14,
       alterado_em = NOW()
-    WHERE id = $1`,
+    WHERE id = $1
+      AND COALESCE(excluido, FALSE) = FALSE`,
     [
       cotacao.id,
       String(dados.origem_comercial ?? dados.origem ?? 'ERP').toUpperCase(),
@@ -2225,7 +2240,8 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
         await consultar(
           `UPDATE cotacoes_frete
           SET transportadora_pedido_id = $2
-          WHERE id = $1`,
+          WHERE id = $1
+            AND COALESCE(excluido, FALSE) = FALSE`,
           [cotacao.id, transportadora.id]
         );
       }
@@ -2329,7 +2345,7 @@ export async function adicionarTransportadoraCotacao(dados: {
       bloqueado_para_alteracao
     FROM cotacoes_frete
     WHERE ${montarCondicaoChave('cotacoes_frete')}
-      AND excluido = FALSE`,
+      AND COALESCE(excluido, FALSE) = FALSE`,
     parametrosChave(interpretarChaveCotacao(dados.empresaId, dados.cotacaoId))
   );
 
@@ -2475,6 +2491,7 @@ export async function atualizarFluxoCotacaoErp(dados: {
     FROM etapas_kanban e
     WHERE c.id = $1
       AND c.empresa_id = $2
+      AND COALESCE(c.excluido, FALSE) = FALSE
       AND e.empresa_id = c.empresa_id
       AND e.codigo = $13
       AND e.ativa = TRUE
@@ -2530,3 +2547,4 @@ export async function listarCotacoesPendentesErp(empresaId: number) {
     [empresaId]
   );
 }
+
