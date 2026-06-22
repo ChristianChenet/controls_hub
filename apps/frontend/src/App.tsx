@@ -17,7 +17,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 async function obterSessaoAtualLocal() {
   const token = localStorage.getItem('controlSHubToken');
-  const apiBase = import.meta.env.VITE_API_BASE ?? `${window.location.protocol}//${window.location.hostname}:3334`;
+  const apiBase = import.meta.env.VITE_API_BASE ?? '';
 
   const resposta = await fetch(`${apiBase}/api/auth/sessao`, {
     headers: {

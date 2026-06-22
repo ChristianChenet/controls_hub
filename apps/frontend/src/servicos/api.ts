@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? `${window.location.protocol}//${window.location.hostname}:3334`;
+const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
 export type UsuarioLogado = {
   id: number;
