@@ -1,16 +1,44 @@
 # Publicacao externa das cotacoes Monvizo
 
-## Objetivo
+## Arquitetura atual
 
-Publicar o Control S Hub de cotacoes em:
+O firewall/NAT externo entrega a porta publica `8080` na porta interna `3333` do servidor `192.168.1.70`.
 
-- Publico: `http://frete.monvizo.com.br:8080/`
-- Interno frontend: `http://192.168.1.70:5174/`
-- Interno backend Control S Hub: `http://192.168.1.70:3334/`
+Fluxo do Control S API Hub:
 
-Sem alterar a publicacao existente:
+`http://api.monvizo.com.br:8080/`
 
-- `http://api.monvizo.com.br:8080/` -> `http://192.168.1.70:3333/`
+-> firewall/NAT
+
+-> `http://192.168.1.70:3333/`
+
+-> Nginx
+
+-> `http://127.0.0.1:3335/`
+
+-> Control S API Hub
+
+Fluxo do Control S Hub Frete:
+
+`http://frete.monvizo.com.br:8080/`
+
+-> firewall/NAT
+
+-> `http://192.168.1.70:3333/`
+
+-> Nginx
+
+-> `http://192.168.1.70:5174/`
+
+-> Frontend Control S Hub
+
+## Portas
+
+- `3333`: Nginx/proxy no servidor.
+- `3335`: porta interna do Control S API Hub Node.
+- `5174`: frontend Control S Hub.
+- `3334`: backend Control S Hub.
+- `8080`: porta externa publicada no dominio.
 
 ## Arquivo Nginx
 
@@ -28,11 +56,9 @@ ou em um arquivo importado por ele, por exemplo:
 
 ## Configuracao aplicada
 
-O bloco dessa aplicacao deve publicar apenas o frontend de cotacoes:
-
 ```nginx
 server {
-  listen 8080;
+  listen 3333;
   server_name frete.monvizo.com.br;
 
   location / {
@@ -49,9 +75,26 @@ server {
     proxy_set_header X-Forwarded-Host $host;
   }
 }
-```
 
-Nao incluir `/api/` nem `/swagger/` nesse bloco, porque esses caminhos pertencem a outras publicacoes do ecossistema. No ambiente atual, o frontend em `5174` usa o proxy do Vite para encaminhar `/api` ao backend do Control S Hub.
+server {
+  listen 3333;
+  server_name api.monvizo.com.br;
+
+  location / {
+    proxy_pass http://127.0.0.1:3335;
+
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+  }
+}
+```
 
 ## Comandos de validacao e reload no Windows
 
@@ -63,7 +106,14 @@ nginx.exe -t
 nginx.exe -s reload
 ```
 
-Se o Nginx nao estiver rodando como servico:
+Se o Nginx ainda nao estiver rodando:
+
+```bat
+cd C:\nginx
+start nginx.exe
+```
+
+Se precisar reiniciar sem servico:
 
 ```bat
 cd C:\nginx
@@ -71,43 +121,42 @@ taskkill /F /IM nginx.exe
 start nginx.exe
 ```
 
-## DNS ou hosts
+## DNS
 
-O DNS de `frete.monvizo.com.br` deve apontar para o mesmo IP publico usado por `api.monvizo.com.br`.
+Os dois dominios devem apontar para o mesmo IP publico:
 
-Para teste local antes do DNS, adicionar no arquivo `hosts` da maquina cliente:
+- `api.monvizo.com.br`
+- `frete.monvizo.com.br`
 
-```text
-IP_PUBLICO_DO_SERVIDOR frete.monvizo.com.br
-```
+O roteador/firewall deve continuar direcionando a porta externa `8080` para `192.168.1.70:3333`.
 
 ## Variaveis de ambiente
 
-Backend Control S Hub:
+Control S Hub backend:
 
 ```env
 PORTA_API=3334
 ORIGEM_FRONTEND=true
 ```
 
-Frontend:
+Control S Hub frontend:
 
 ```env
 VITE_API_BASE=
 ```
 
-Com `VITE_API_BASE` vazio, o frontend chama `/api/...`. Em desenvolvimento/publicacao via Vite, o proxy configurado em `apps/frontend/vite.config.ts` encaminha `/api` para `http://127.0.0.1:3334`.
+Com `VITE_API_BASE` vazio, o frontend chama `/api/...`. Como o frontend publicado ainda roda no Vite em `5174`, o proxy do `apps/frontend/vite.config.ts` encaminha `/api` para `http://127.0.0.1:3334`.
 
 ## Tela Configuracoes
 
-Preencher:
+Preencher no Control S Hub:
 
 - Dominio publico: `frete.monvizo.com.br:8080`
 - Link publico: `http://frete.monvizo.com.br:8080/`
 - Link interno: `http://192.168.1.70:5174/`
 - Ambiente do link: `HOMOLOGACAO`
 
-Observacao: os links enviados para transportadoras usam sempre `Link publico`. O `Link interno` permanece documentado para referencia tecnica e chamadas internas futuras.
+Os links enviados para transportadoras usam sempre `Link publico`. O `Link interno` fica mantido como referencia tecnica/documentacao.
 
 ## Migration opcional
 
@@ -117,27 +166,30 @@ Para preencher os parametros via banco:
 psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f database\migrations\020_parametros_publicacao_cotacoes_monvizo.sql
 ```
 
-## Testes no navegador
+## Testes
 
-Abrir:
+No servidor:
 
-`http://frete.monvizo.com.br:8080/`
+```bat
+curl http://127.0.0.1:3335/
+curl http://192.168.1.70:3333/ -H "Host: api.monvizo.com.br"
+curl http://192.168.1.70:3333/ -H "Host: frete.monvizo.com.br"
+```
 
-Testar:
+No navegador:
 
-- Login.
-- Dashboard.
-- Cotacoes.
+- `http://api.monvizo.com.br:8080/`
+- `http://frete.monvizo.com.br:8080/`
+
+No Control S Hub:
+
+- Fazer login.
 - Gerar novo link de transportadora.
-- Verificar se o link gerado comeca com `http://frete.monvizo.com.br:8080/cotacao/token/`.
-- Abrir o link publico em aba anonima.
-
-Confirmar que a aplicacao antiga continua funcionando:
-
-`http://api.monvizo.com.br:8080/`
+- Confirmar que o link comeca com `http://frete.monvizo.com.br:8080/cotacao/token/`.
+- Abrir o link em aba anonima.
 
 ## Observacoes tecnicas
 
 - Nao configurar cookie como `secure=true` obrigatorio enquanto estiver em HTTP.
 - O Nginx envia `X-Forwarded-Host`, `X-Forwarded-Proto`, `X-Real-IP` e `X-Forwarded-For`.
-- O server block de cotacoes e separado por `server_name`, portanto nao altera `api.monvizo.com.br`.
+- A separacao entre API Hub e Frete e feita por `server_name`.
