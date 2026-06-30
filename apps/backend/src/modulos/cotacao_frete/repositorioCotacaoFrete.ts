@@ -594,12 +594,15 @@ export type FiltrosCotacao = {
   bloqueado?: string;
   faturado?: string;
   multiplasCotacoes?: boolean;
-  fluxoLogistico?: boolean;
+  fluxoLogistico?: boolean | string;
   pagina?: number;
   limite?: number;
 };
 
 export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCotacao = {}) {
+  const filtroFluxoLogistico = filtros.fluxoLogistico === true || String(filtros.fluxoLogistico ?? '').toLowerCase() === 'true'
+    ? 'SOMENTE'
+    : String(filtros.fluxoLogistico ?? '').trim().toUpperCase() || null;
   return consultar(
     `SELECT
       e.id AS etapa_id,
@@ -676,11 +679,23 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
             AND COALESCE(cx.excluido, FALSE) = FALSE
             AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
             AND cx.codigo_chave <> c.codigo_chave
+            AND (
+              $7::VARCHAR IS DISTINCT FROM 'SOMENTE'
+              OR COALESCE(NULLIF(TRIM(cx.lote_fluxo_logistico), ''), '') <> ''
+            )
         )
       )
       AND (
-        $7::BOOLEAN IS DISTINCT FROM TRUE
-        OR COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> ''
+        $7::VARCHAR IS NULL
+        OR ($7 = 'SOMENTE' AND COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> '')
+        OR ($7 = 'SEM_PEDIDO' AND NOT EXISTS (
+          SELECT 1
+          FROM cotacoes_frete cf
+          WHERE cf.empresa_id = c.empresa_id
+            AND COALESCE(cf.excluido, FALSE) = FALSE
+            AND COALESCE(cf.numero_pedido, cf.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+            AND COALESCE(NULLIF(TRIM(cf.lote_fluxo_logistico), ''), '') <> ''
+        ))
       )
     LEFT JOIN transportadoras t_escolhida ON t_escolhida.id = c.transportadora_escolhida_id
     LEFT JOIN LATERAL (
@@ -729,12 +744,16 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
           AND cx.numero_documento = c.numero_documento
           AND cx.codigo_chave = c.codigo_chave
         )
+        AND (
+          $7::VARCHAR IS DISTINCT FROM 'SOMENTE'
+          OR COALESCE(NULLIF(TRIM(cx.lote_fluxo_logistico), ''), '') <> ''
+        )
     ) outras ON TRUE
     WHERE e.empresa_id = $1
       AND e.ativa = TRUE
       AND ($4::VARCHAR IS NULL OR e.codigo = $4)
     ORDER BY e.ordem ASC, c.criado_em DESC`,
-    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtros.fluxoLogistico === true]
+    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico]
   );
 }
 
@@ -742,6 +761,9 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
   const pagina = Math.max(1, Number(filtros.pagina ?? 1) || 1);
   const limite = Math.min(200, Math.max(15, Number(filtros.limite ?? 15) || 15));
   const offset = (pagina - 1) * limite;
+  const filtroFluxoLogistico = filtros.fluxoLogistico === true || String(filtros.fluxoLogistico ?? '').toLowerCase() === 'true'
+    ? 'SOMENTE'
+    : String(filtros.fluxoLogistico ?? '').trim().toUpperCase() || null;
   const parametros = [
     empresaId,
     filtros.dataInicial || null,
@@ -758,7 +780,7 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     filtros.codigoChave ? `%${filtros.codigoChave}%` : null,
     filtros.faturado || null,
     filtros.multiplasCotacoes === true,
-    filtros.fluxoLogistico === true
+    filtroFluxoLogistico
   ];
   const where = `
     c.empresa_id = $1
@@ -797,20 +819,32 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
       OR ($14 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR nfes.total_nfes > 0))
       OR ($14 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND COALESCE(nfes.total_nfes, 0) = 0)
     )
-    AND (
-      $15::BOOLEAN IS DISTINCT FROM TRUE
-      OR EXISTS (
-        SELECT 1
-        FROM cotacoes_frete cx
+      AND (
+        $15::BOOLEAN IS DISTINCT FROM TRUE
+        OR EXISTS (
+          SELECT 1
+          FROM cotacoes_frete cx
         WHERE cx.empresa_id = c.empresa_id
           AND COALESCE(cx.excluido, FALSE) = FALSE
           AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
           AND cx.codigo_chave <> c.codigo_chave
+          AND (
+            $16::VARCHAR IS DISTINCT FROM 'SOMENTE'
+            OR COALESCE(NULLIF(TRIM(cx.lote_fluxo_logistico), ''), '') <> ''
+          )
       )
     )
     AND (
-      $16::BOOLEAN IS DISTINCT FROM TRUE
-      OR COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> ''
+      $16::VARCHAR IS NULL
+      OR ($16 = 'SOMENTE' AND COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> '')
+      OR ($16 = 'SEM_PEDIDO' AND NOT EXISTS (
+        SELECT 1
+        FROM cotacoes_frete cf
+        WHERE cf.empresa_id = c.empresa_id
+          AND COALESCE(cf.excluido, FALSE) = FALSE
+          AND COALESCE(cf.numero_pedido, cf.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+          AND COALESCE(NULLIF(TRIM(cf.lote_fluxo_logistico), ''), '') <> ''
+      ))
     )
   `;
   const itens = await consultar(
@@ -869,6 +903,10 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
           cx.tipo_documento = c.tipo_documento
           AND cx.numero_documento = c.numero_documento
           AND cx.codigo_chave = c.codigo_chave
+        )
+        AND (
+          $16::VARCHAR IS DISTINCT FROM 'SOMENTE'
+          OR COALESCE(NULLIF(TRIM(cx.lote_fluxo_logistico), ''), '') <> ''
         )
     ) outras ON TRUE
     WHERE ${where}
@@ -1718,7 +1756,7 @@ export async function escolherTransportadora(dados: {
   const identificador = decodeURIComponent(String(dados.cotacaoTransportadoraId ?? '')).trim();
   const partes = identificador.split('|');
   const transportadoraId = Number(partes.length >= 5 ? partes[4] : dados.cotacaoTransportadoraId);
-  const origemCotacao = partes.length >= 6 ? partes.slice(5).join('|') : null;
+  const origemCotacao = partes.length >= 6 ? partes.slice(5).join('|').trim().toUpperCase() : null;
 
   if (!Number.isFinite(transportadoraId) || transportadoraId <= 0) {
     return null;
@@ -1872,7 +1910,12 @@ export async function escolherTransportadora(dados: {
     ]
   );
 
-  await consultar(
+  const cabecalhoAtualizado = await consultarUm<{
+    transportadora_escolhida_id: number;
+    valor_frete_final: string | null;
+    prazo_final_dias: number | null;
+    escolhido_em: Date | string | null;
+  }>(
     `UPDATE cotacoes_frete
     SET transportadora_escolhida_id = $5,
       escolhido_por_usuario_id = $6,
@@ -1887,7 +1930,8 @@ export async function escolherTransportadora(dados: {
       AND tipo_documento = $2
       AND numero_documento = $3
       AND codigo_chave = $4
-      AND COALESCE(excluido, FALSE) = FALSE`,
+      AND COALESCE(excluido, FALSE) = FALSE
+    RETURNING transportadora_escolhida_id, valor_frete_final, prazo_final_dias, escolhido_em`,
     [
       dados.empresaId,
       cotacao.tipo_documento,
@@ -1901,6 +1945,10 @@ export async function escolherTransportadora(dados: {
       motivoDescricao
     ]
   );
+
+  if (!cabecalhoAtualizado?.escolhido_em) {
+    throw new Error('Nao foi possivel gravar a data da escolha da transportadora.');
+  }
 
   await sincronizarStatusCotacoes(dados.empresaId, cotacaoBase.id);
 
@@ -1921,7 +1969,14 @@ export async function escolherTransportadora(dados: {
     }
   });
 
-  return { transportadora_id: cotacao.transportadora_id, valor_frete_final: cotacao.valor_frete, prazo_final_dias: cotacao.prazo_dias, motivo_id: motivoId, motivo_descricao: motivoDescricao };
+  return {
+    transportadora_id: cotacao.transportadora_id,
+    valor_frete_final: cabecalhoAtualizado.valor_frete_final ?? cotacao.valor_frete,
+    prazo_final_dias: cabecalhoAtualizado.prazo_final_dias ?? cotacao.prazo_dias,
+    escolhido_em: cabecalhoAtualizado.escolhido_em,
+    motivo_id: motivoId,
+    motivo_descricao: motivoDescricao
+  };
 }
 
 export async function alterarValorFreteManual(dados: {
@@ -2655,7 +2710,7 @@ export async function adicionarTransportadoraCotacao(dados: {
         ELSE 'PENDENTE_ENVIO'
       END
     RETURNING
-      id AS registro_id,
+      0 AS registro_id,
       CONCAT_WS('|', empresa_id, tipo_documento, numero_documento, codigo_chave, transportadora_id, origem_cotacao) AS id,
       *`,
     [
@@ -2720,15 +2775,18 @@ export async function excluirTransportadoraCotacao(dados: {
       AND numero_documento = $3
       AND codigo_chave = $4
       AND transportadora_id = $5
-      AND ($6::VARCHAR IS NULL OR origem_cotacao = $6)
+      AND ($6::VARCHAR IS NULL OR UPPER(COALESCE(origem_cotacao, '')) = $6)
       AND COALESCE(valor_frete, 0) = 0
       AND COALESCE(validada, FALSE) = FALSE
       AND COALESCE(selecionada, FALSE) = FALSE
       AND COALESCE(escolhida_plataforma, FALSE) = FALSE
       AND respondida_em IS NULL
       AND UPPER(COALESCE(status, '')) NOT IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTACAO_TRANSPORTADORA_RECEBIDA')
-      AND UPPER(COALESCE(origem_cotacao, '')) IN ('MANUAL', 'EXTERNA')
-    RETURNING id AS registro_id, transportadora_id, origem_cotacao, valor_frete`,
+      AND (
+        UPPER(COALESCE(origem_cotacao, '')) IN ('MANUAL', 'EXTERNA')
+        OR UPPER(COALESCE(origem_detalhada, '')) = 'ADICIONADA_ANALISTA'
+      )
+    RETURNING 0 AS registro_id, transportadora_id, origem_cotacao, valor_frete`,
     [
       dados.empresaId,
       cotacao.tipo_documento,

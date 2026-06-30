@@ -703,7 +703,7 @@ export async function criarApp() {
       etapaCodigo: request.query.etapa_codigo,
       faturado: request.query.faturado,
       multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
-      fluxoLogistico: request.query.fluxo_logistico === 'true'
+      fluxoLogistico: request.query.fluxo_logistico
     }));
   });
 
@@ -726,7 +726,7 @@ export async function criarApp() {
       bloqueado: request.query.bloqueado,
       faturado: request.query.faturado,
       multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
-      fluxoLogistico: request.query.fluxo_logistico === 'true',
+      fluxoLogistico: request.query.fluxo_logistico,
       pagina: Number(request.query.pagina ?? 1),
       limite: Number(request.query.limite ?? 15)
     }));

@@ -89,6 +89,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   const busca = `%${String(filtros.busca ?? '').toLowerCase()}%`;
   const vendedor = filtros.vendedor ? `%${String(filtros.vendedor).toLowerCase()}%` : null;
   const transportadora = filtros.transportadora ? `%${String(filtros.transportadora).toLowerCase()}%` : null;
+  const filtroFluxoLogistico = String(filtros.fluxo_logistico ?? '').toLowerCase() === 'true'
+    ? 'SOMENTE'
+    : String(filtros.fluxo_logistico ?? '').trim().toUpperCase() || null;
 
   return consultar(
     `SELECT
@@ -304,8 +307,16 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         OR ($7 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND COALESCE(nfes.total_nfes, 0) = 0)
       )
       AND (
-        $9::VARCHAR IS DISTINCT FROM 'true'
-        OR COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> ''
+        $9::VARCHAR IS NULL
+        OR ($9 = 'SOMENTE' AND COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> '')
+        OR ($9 = 'SEM_PEDIDO' AND NOT EXISTS (
+          SELECT 1
+          FROM cotacoes_frete cf
+          WHERE cf.empresa_id = c.empresa_id
+            AND COALESCE(cf.excluido, FALSE) = FALSE
+            AND COALESCE(cf.numero_pedido, cf.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+            AND COALESCE(NULLIF(TRIM(cf.lote_fluxo_logistico), ''), '') <> ''
+        ))
       )
     GROUP BY
       c.empresa_id,
@@ -347,7 +358,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       OR ($4 = 'JA_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') > 0)
     )
     ORDER BY c.criado_em DESC`,
-    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora, filtros.faturado ?? null, filtros.status ?? null, filtros.fluxo_logistico ?? null]
+    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora, filtros.faturado ?? null, filtros.status ?? null, filtroFluxoLogistico]
   );
 }
 

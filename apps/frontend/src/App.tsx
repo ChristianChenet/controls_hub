@@ -1127,7 +1127,7 @@ function KanbanCotacoes({
   const [chaveFiltro, setChaveFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
-  const [somenteFluxoLogistico, setSomenteFluxoLogistico] = useState(true);
+  const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
   const [somentePendentes, setSomentePendentes] = useState(true);
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     const salvas = localStorage.getItem('controlSHubKanbanEtapas');
@@ -1140,7 +1140,7 @@ function KanbanCotacoes({
   });
 
   async function carregarKanban() {
-    await listarKanbanCotacoes({ data_inicial: dataInicial, data_final: dataFinal, faturado: faturadoFiltro || undefined, multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined, fluxo_logistico: somenteFluxoLogistico ? 'true' : undefined })
+    await listarKanbanCotacoes({ data_inicial: dataInicial, data_final: dataFinal, faturado: faturadoFiltro || undefined, multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined, fluxo_logistico: fluxoLogisticoFiltro || undefined })
       .then(setLinhas)
       .catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.'));
   }
@@ -1280,10 +1280,11 @@ function KanbanCotacoes({
           <input type="checkbox" checked={multiplasCotacoesFiltro} onChange={(evento) => setMultiplasCotacoesFiltro(evento.target.checked)} />
           Mais de uma cotação
         </label>
-        <label className="toggleLinha compacto" title="Mostra somente cotações com lote de fluxo logístico informado.">
-          <input type="checkbox" checked={somenteFluxoLogistico} onChange={(evento) => setSomenteFluxoLogistico(evento.target.checked)} />
-          Fluxo logístico
-        </label>
+        <select value={fluxoLogisticoFiltro} onChange={(evento) => setFluxoLogisticoFiltro(evento.target.value)} title="Filtra cotações conforme o lote de fluxo logístico do pedido.">
+          <option value="">Fluxo: todos</option>
+          <option value="SOMENTE">Somente com fluxo</option>
+          <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
+        </select>
         <select value={faturadoFiltro} onChange={(evento) => setFaturadoFiltro(evento.target.value)}>
           <option value="">Faturamento: todos</option>
           <option value="SOMENTE">Somente faturados</option>
@@ -1352,7 +1353,6 @@ function KanbanCotacoes({
             >
               <small>{String(card.tipo_documento)} {String(card.numero_documento)}</small>
               <small className="chaveKanban">Chave {String(card.codigo_chave ?? '-')}</small>
-              {card.lote_fluxo_logistico && <small className="chaveKanban">Fluxo {String(card.lote_fluxo_logistico)}</small>}
               <small>{String(card.origem_comercial ?? 'Banco')} · {String(card.situacao_pedido ?? 'ATIVO')}</small>
               <strong>{String(card.nome_destinatario ?? 'Destinatario')}</strong>
               <p>{String(card.cidade_destino ?? '')}/{String(card.uf_destino ?? '')}</p>
@@ -1364,6 +1364,7 @@ function KanbanCotacoes({
               {Number(card.total_transportadoras ?? 0) > Number(card.total_respostas ?? 0) && <em>Pendência externa</em>}
               {String(card.etapa_codigo) === 'EM_ANALISE' && <em>Ação interna: definir vencedor</em>}
               {(card.numeros_nfe || card.numero_nfe_faturada || Number(card.total_nfes ?? 0) > 0 || card.faturado_em) && <em className="tagFaturadoKanban">Faturado</em>}
+              {card.lote_fluxo_logistico && <em className="tagFluxoLogisticoKanban">Fluxo {String(card.lote_fluxo_logistico)}</em>}
               {Number(card.total_outras_cotacoes ?? 0) > 0 && <em className="tagOutrasCotacoesKanban">Outras cotações</em>}
               {card.numeros_nfe && <small>NF-e {String(card.numeros_nfe)}</small>}
               {card.numeros_cte && <small>CTe {String(card.numeros_cte)}</small>}
@@ -1573,7 +1574,7 @@ function CotacoesOperacional({
   const [bloqueadoFiltro, setBloqueadoFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
-  const [somenteFluxoLogistico, setSomenteFluxoLogistico] = useState(true);
+  const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [dataInicial, setDataInicial] = useState(() => obterDataDiasAtras(30));
   const [dataFinal, setDataFinal] = useState(() => obterDataIso(new Date()));
@@ -1621,7 +1622,7 @@ function CotacoesOperacional({
         bloqueado: bloqueadoFiltro || undefined,
         faturado: faturadoFiltro || undefined,
         multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
-        fluxo_logistico: somenteFluxoLogistico ? 'true' : undefined,
+        fluxo_logistico: fluxoLogisticoFiltro || undefined,
         pagina: String(paginaCotacao),
         limite: String(limiteCotacao)
       });
@@ -1961,10 +1962,11 @@ function CotacoesOperacional({
           <input type="checkbox" checked={multiplasCotacoesFiltro} onChange={(evento) => { setMultiplasCotacoesFiltro(evento.target.checked); setPaginaCotacao(1); }} />
           Mais de uma cotação
         </label>
-        <label className="toggleLinha compacto" title="Mostra somente cotações com lote de fluxo logístico informado.">
-          <input type="checkbox" checked={somenteFluxoLogistico} onChange={(evento) => { setSomenteFluxoLogistico(evento.target.checked); setPaginaCotacao(1); }} />
-          Fluxo logístico
-        </label>
+        <select value={fluxoLogisticoFiltro} onChange={(evento) => { setFluxoLogisticoFiltro(evento.target.value); setPaginaCotacao(1); }} title="Filtra cotações conforme o lote de fluxo logístico do pedido.">
+          <option value="">Fluxo: todos</option>
+          <option value="SOMENTE">Somente com fluxo</option>
+          <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
+        </select>
       </div>
       {filtrosAbertos && (
         <div className="filtrosLinha">
@@ -1978,7 +1980,7 @@ function CotacoesOperacional({
         </div>
       )}
       <TabelaOperacional
-        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${faturadoFiltro}-${multiplasCotacoesFiltro}-${somenteFluxoLogistico}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
+        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${faturadoFiltro}-${multiplasCotacoesFiltro}-${fluxoLogisticoFiltro}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
         titulo="Cotações de Frete"
         subtitulo="Clique em uma cotação para abrir o detalhe operacional, comparar transportadoras e acompanhar o fluxo completo."
         carregar={carregar}
@@ -3473,7 +3475,7 @@ function EnvioMassaCotacoes() {
   const [transportadoraFiltro, setTransportadoraFiltro] = useState('');
   const [sugestaoFiltro, setSugestaoFiltro] = useState('TODOS');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
-  const [somenteFluxoLogistico, setSomenteFluxoLogistico] = useState(true);
+  const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [colunasAbertas, setColunasAbertas] = useState(false);
   const [pagina, setPagina] = useState(1);
@@ -3563,7 +3565,7 @@ function EnvioMassaCotacoes() {
   }
 
   async function carregar() {
-    const retorno = await listarPedidosEnvioMassa({ situacao: 'ATIVOS', envio, status: statusFiltro || undefined, busca, vendedor: vendedorFiltro, transportadora: transportadoraFiltro, faturado: faturadoFiltro || undefined, fluxo_logistico: somenteFluxoLogistico ? 'true' : undefined });
+    const retorno = await listarPedidosEnvioMassa({ situacao: 'ATIVOS', envio, status: statusFiltro || undefined, busca, vendedor: vendedorFiltro, transportadora: transportadoraFiltro, faturado: faturadoFiltro || undefined, fluxo_logistico: fluxoLogisticoFiltro || undefined });
     const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
     setPedidos(dados);
     setPagina(1);
@@ -3571,7 +3573,7 @@ function EnvioMassaCotacoes() {
 
   useEffect(() => {
     carregar().catch(() => setPedidos([]));
-  }, [envio, faturadoFiltro, statusFiltro, somenteFluxoLogistico]);
+  }, [envio, faturadoFiltro, statusFiltro, fluxoLogisticoFiltro]);
 
   useEffect(() => {
     if (!mensagem) {
@@ -3852,10 +3854,11 @@ function EnvioMassaCotacoes() {
           <input type="checkbox" checked={somenteTop3} onChange={(evento) => setSomenteTop3(evento.target.checked)} />
           Enviar somente Top 3
         </label>
-        <label className="toggleLinha compacto" title="Mostra somente cotações com lote de fluxo logístico informado.">
-          <input type="checkbox" checked={somenteFluxoLogistico} onChange={(evento) => { setSomenteFluxoLogistico(evento.target.checked); setPagina(1); }} />
-          Fluxo logístico
-        </label>
+        <select value={fluxoLogisticoFiltro} onChange={(evento) => { setFluxoLogisticoFiltro(evento.target.value); setPagina(1); }} title="Filtra cotações conforme o lote de fluxo logístico do pedido.">
+          <option value="">Fluxo: todos</option>
+          <option value="SOMENTE">Somente com fluxo</option>
+          <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
+        </select>
         <button className="ghost" onClick={() => {
           const bloqueados = pedidosPagina.filter((pedido: any) => pedidoSemOfertaBloqueante(pedido));
           if (bloqueados.length) {

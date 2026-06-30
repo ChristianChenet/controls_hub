@@ -307,7 +307,8 @@ export async function adicionarTransportadoraCotacao(cotacaoId: string | number,
 }
 
 export async function excluirTransportadoraCotacao(cotacaoId: string | number, cotacaoTransportadoraId: string | number) {
-  return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/transportadoras/${codificarChaveCotacao(cotacaoTransportadoraId)}`, {
+  const idTransportadoraCotacao = encodeURIComponent(String(cotacaoTransportadoraId ?? ''));
+  return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/transportadoras/${idTransportadoraCotacao}`, {
     method: 'DELETE'
   });
 }

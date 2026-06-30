@@ -1681,7 +1681,8 @@ h2 {
 }
 
 .tagStatusDetalhe.faturado,
-.tagFaturadoKanban {
+.tagFaturadoKanban,
+.tagFluxoLogisticoKanban {
   border: 1px solid #bfdbfe;
   background: #dbeafe;
   color: #1d4ed8;
@@ -3017,7 +3018,9 @@ h2 {
 }
 
 .kanbanPremium .cartao .tagFaturadoKanban,
-.kanbanPremium .cartao em.tagFaturadoKanban {
+.kanbanPremium .cartao em.tagFaturadoKanban,
+.kanbanPremium .cartao .tagFluxoLogisticoKanban,
+.kanbanPremium .cartao em.tagFluxoLogisticoKanban {
   background: #dbeafe;
   color: #1d4ed8;
 }
