@@ -79,9 +79,11 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   situacao?: string;
   busca?: string;
   envio?: string;
+  status?: string;
   vendedor?: string;
   transportadora?: string;
   faturado?: string;
+  fluxo_logistico?: string;
 }) {
   const situacao = filtros.situacao ?? 'ATIVOS';
   const busca = `%${String(filtros.busca ?? '').toLowerCase()}%`;
@@ -97,6 +99,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.numero_pedido,
       c.data_documento,
       c.codigo_chave,
+      c.lote_fluxo_logistico,
       c.situacao_pedido,
       c.status,
       c.vendedor_nome,
@@ -110,8 +113,29 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.faturado_em,
       nfes.numeros_nfe,
       COALESCE(nfes.total_nfes, 0) AS total_nfes,
+      COALESCE(outras.total_outras_cotacoes, 0) AS total_outras_cotacoes,
       COALESCE(c.bloqueado_para_alteracao, FALSE) AS bloqueado_para_alteracao,
+      (
+        c.status = 'COTACAO_PENDENTE'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_transportadoras cft_sem
+          WHERE cft_sem.empresa_id = c.empresa_id
+            AND cft_sem.tipo_documento = c.tipo_documento
+            AND cft_sem.numero_documento = c.numero_documento
+            AND cft_sem.codigo_chave = c.codigo_chave
+        )
+      ) AS sem_oferta_disponivel,
       CASE
+        WHEN EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_transportadoras cft_vinc
+          WHERE cft_vinc.empresa_id = c.empresa_id
+            AND cft_vinc.tipo_documento = c.tipo_documento
+            AND cft_vinc.numero_documento = c.numero_documento
+            AND cft_vinc.codigo_chave = c.codigo_chave
+            AND COALESCE(cft_vinc.valor_frete, 0) <= 0
+        ) THEN TRUE
         WHEN params.limite_valor_auto IS NOT NULL AND COALESCE(melhor.valor_frete, 0) > params.limite_valor_auto THEN TRUE
         WHEN params.limite_diferenca_valor IS NOT NULL AND ROUND(COALESCE(melhor.valor_frete, 0) - COALESCE(c.valor_frete_pedido, 0), 2) > params.limite_diferenca_valor THEN TRUE
         WHEN params.limite_diferenca_percentual IS NOT NULL
@@ -123,6 +147,17 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         ELSE FALSE
       END AS sugestao_cotacao,
       CONCAT_WS(' ',
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_transportadoras cft_vinc
+          WHERE cft_vinc.empresa_id = c.empresa_id
+            AND cft_vinc.tipo_documento = c.tipo_documento
+            AND cft_vinc.numero_documento = c.numero_documento
+            AND cft_vinc.codigo_chave = c.codigo_chave
+            AND COALESCE(cft_vinc.valor_frete, 0) <= 0
+        )
+          THEN 'Transportadora vinculada sem valor de frete: enviar cotação para preenchimento.'
+        END,
         CASE WHEN params.limite_valor_auto IS NOT NULL AND COALESCE(melhor.valor_frete, 0) > params.limite_valor_auto
           THEN CONCAT('Valor frete cotado aut. alto: ', COALESCE(melhor.valor_frete, 0), ' acima do parâmetro ', params.limite_valor_auto, '.')
         END,
@@ -192,6 +227,18 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         AND nf.codigo_chave = c.codigo_chave
     ) nfes ON TRUE
     LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total_outras_cotacoes
+      FROM cotacoes_frete cx
+      WHERE cx.empresa_id = c.empresa_id
+        AND COALESCE(cx.excluido, FALSE) = FALSE
+        AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+        AND NOT (
+          cx.tipo_documento = c.tipo_documento
+          AND cx.numero_documento = c.numero_documento
+          AND cx.codigo_chave = c.codigo_chave
+        )
+    ) outras ON TRUE
+    LEFT JOIN LATERAL (
       SELECT
         cftr.transportadora_id,
         t.nome_fantasia,
@@ -230,6 +277,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       AND COALESCE(c.excluido, FALSE) = FALSE
       AND COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE
       AND c.status IN ('COTACAO_PENDENTE', 'COTACAO_AUTOMATICA', 'COTACAO_TRANSPORTADORA', 'EM_ANALISE')
+      AND ($8::VARCHAR IS NULL OR c.status = $8)
       AND (
         $2 = 'TODOS'
         OR ($2 = 'ATIVOS' AND c.situacao_pedido = 'ATIVO')
@@ -255,12 +303,18 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         OR ($7 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR nfes.total_nfes > 0))
         OR ($7 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND COALESCE(nfes.total_nfes, 0) = 0)
       )
+      AND (
+        $9::VARCHAR IS DISTINCT FROM 'true'
+        OR COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> ''
+      )
     GROUP BY
       c.empresa_id,
       c.tipo_documento,
       c.numero_documento,
       c.numero_pedido,
+      c.data_documento,
       c.codigo_chave,
+      c.lote_fluxo_logistico,
       c.situacao_pedido,
       c.status,
       c.vendedor_nome,
@@ -274,7 +328,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.faturado_em,
       nfes.numeros_nfe,
       nfes.total_nfes,
+      outras.total_outras_cotacoes,
       c.bloqueado_para_alteracao,
+      c.criado_em,
       e.nome,
       melhor.nome_fantasia,
       melhor.transportadora_id,
@@ -291,7 +347,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       OR ($4 = 'JA_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') > 0)
     )
     ORDER BY c.criado_em DESC`,
-    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora, filtros.faturado ?? null]
+    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora, filtros.faturado ?? null, filtros.status ?? null, filtros.fluxo_logistico ?? null]
   );
 }
 
@@ -315,6 +371,7 @@ export async function prepararEnvioMassa(empresaId: number, cotacoesIds: Array<s
       t.email,
       t.sla_resposta_horas,
       t.prazo_resposta_obrigatorio,
+      t.solicita_numero_cotacao,
       t.recebe_prazo_solicitado,
       t.apresenta_lista_produtos,
       cft.valor_frete,

@@ -576,6 +576,112 @@ export async function obterValorParametroSistema(chave: string, valorPadrao: str
   return parametro?.valor ?? valorPadrao;
 }
 
+async function garantirEstruturaMotivosEscolhaTransportadora() {
+  await consultar(
+    `CREATE TABLE IF NOT EXISTS motivos_escolha_transportadora (
+      id BIGSERIAL PRIMARY KEY,
+      codigo VARCHAR(80) NOT NULL UNIQUE,
+      descricao VARCHAR(220) NOT NULL,
+      padrao_transportadora_pedido BOOLEAN NOT NULL DEFAULT FALSE,
+      ativo BOOLEAN NOT NULL DEFAULT TRUE,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      alterado_em TIMESTAMPTZ
+    )`
+  );
+
+  await consultar(
+    `ALTER TABLE cotacoes_frete
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_id BIGINT REFERENCES motivos_escolha_transportadora(id),
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_descricao TEXT`
+  );
+
+  await consultar(
+    `INSERT INTO motivos_escolha_transportadora (
+      codigo,
+      descricao,
+      padrao_transportadora_pedido,
+      ativo
+    )
+    VALUES (
+      'TRANSPORTADORA_DEFINIDA_NO_PEDIDO',
+      'Transportadora definida no pedido/origem comercial',
+      TRUE,
+      TRUE
+    )
+    ON CONFLICT (codigo) DO UPDATE SET
+      descricao = EXCLUDED.descricao,
+      padrao_transportadora_pedido = TRUE,
+      ativo = TRUE,
+      alterado_em = NOW()`
+  );
+}
+
+export async function listarOrigensComerciaisCotacao() {
+  return consultar<{ origem_comercial: string }>(
+    `SELECT DISTINCT origem_comercial
+    FROM cotacoes_frete
+    WHERE origem_comercial IS NOT NULL
+      AND TRIM(origem_comercial) <> ''
+    ORDER BY origem_comercial ASC`
+  );
+}
+
+export async function listarMotivosEscolhaTransportadora() {
+  await garantirEstruturaMotivosEscolhaTransportadora();
+
+  return consultar(
+    `SELECT
+      id,
+      codigo,
+      descricao,
+      padrao_transportadora_pedido,
+      ativo
+    FROM motivos_escolha_transportadora
+    ORDER BY ativo DESC, descricao ASC`
+  );
+}
+
+export async function salvarMotivoEscolhaTransportadora(dados: {
+  id?: number | null;
+  codigo?: string | null;
+  descricao: string;
+  padrao_transportadora_pedido?: boolean;
+  ativo?: boolean;
+}) {
+  await garantirEstruturaMotivosEscolhaTransportadora();
+
+  const codigo = String(dados.codigo ?? dados.descricao)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
+
+  return consultarUm(
+    `INSERT INTO motivos_escolha_transportadora (
+      id,
+      codigo,
+      descricao,
+      padrao_transportadora_pedido,
+      ativo
+    )
+    VALUES (COALESCE($1, NEXTVAL(PG_GET_SERIAL_SEQUENCE('motivos_escolha_transportadora', 'id'))), $2, $3, COALESCE($4, FALSE), COALESCE($5, TRUE))
+    ON CONFLICT (codigo) DO UPDATE SET
+      descricao = EXCLUDED.descricao,
+      padrao_transportadora_pedido = EXCLUDED.padrao_transportadora_pedido,
+      ativo = EXCLUDED.ativo,
+      alterado_em = NOW()
+    RETURNING *`,
+    [
+      dados.id ?? null,
+      codigo,
+      dados.descricao,
+      dados.padrao_transportadora_pedido ?? false,
+      dados.ativo ?? true
+    ]
+  );
+}
+
 export async function registrarAuditoria(dados: {
   empresaId?: number | null;
   usuarioId?: number | null;

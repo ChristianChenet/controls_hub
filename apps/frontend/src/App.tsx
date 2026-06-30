@@ -48,6 +48,7 @@ import {
   excluirEmpresa,
   excluirEtapa,
   excluirPerfil,
+  excluirTransportadoraCotacao,
   excluirTransportadora,
   excluirUsuario,
   escolherTransportadora,
@@ -60,6 +61,8 @@ import {
   listarEmpresas,
   listarEtapas,
   listarKanbanCotacoes,
+  listarMotivosEscolhaTransportadora,
+  listarOrigensComerciaisCotacao,
   listarPedidosEnvioMassa,
   listarParametrosSistema,
   listarPermissoesPerfil,
@@ -78,6 +81,7 @@ import {
   salvarPerfil,
   salvarPermissoesPerfil,
   salvarPreferenciasInterface,
+  salvarMotivoEscolhaTransportadora,
   salvarParametrosSistema,
   salvarTransportadora,
   salvarUsuario,
@@ -111,6 +115,7 @@ type DetalheCotacaoNormalizado = {
   timeline?: RegistroGenerico[];
   notasFiscais?: RegistroGenerico[];
   ctes?: RegistroGenerico[];
+  outrasCotacoes?: RegistroGenerico[];
 };
 
 const menus: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = [
@@ -145,6 +150,14 @@ const rotasPorTela: Record<TelaAtual, string> = {
   emailConfiguracoes: '/Configuracoes_Email',
   configuracoes: '/Configuracoes'
 };
+
+const MODELO_EMAIL_TRANSPORTADORA_PADRAO = `<div style="font-family:Arial,sans-serif;color:#172033">
+  <p>Olá, TRANSPORTADORA.</p>
+  <p>Solicitamos a cotação de frete dos documentos abaixo:</p>
+  <p>DOCUMENTOS</p>
+  <br></br>
+  <p>Atenciosamente.</p>
+</div>`;
 
 const etapasFluxoAtivas = new Set([
   'COTACAO_PENDENTE',
@@ -240,17 +253,235 @@ function PainelContextual({
   );
 }
 
+function ModalConfirmacaoEscolha({
+  aberto,
+  transportadora,
+  titulo = 'Confirmar escolha da transportadora',
+  mensagem,
+  erro,
+  aoConfirmar,
+  aoCancelar
+}: {
+  aberto: boolean;
+  transportadora?: RegistroGenerico | null;
+  titulo?: string;
+  mensagem?: string;
+  erro?: string;
+  aoConfirmar: () => void;
+  aoCancelar: () => void;
+}) {
+  if (!aberto || !transportadora) {
+    return null;
+  }
+
+  return (
+    <div className="painelContextualOverlay confirmacaoOverlay" role="dialog" aria-modal="true" aria-label={titulo}>
+      <button className="painelContextualFundo" type="button" aria-label="Cancelar confirmação" onClick={aoCancelar} />
+      <aside className="modalConfirmacao">
+        <header>
+          <span>Confirmação operacional</span>
+          <h2>{titulo}</h2>
+          <p>{mensagem ?? 'Confirme para gravar a transportadora escolhida e avançar o fluxo.'}</p>
+        </header>
+        <section className="modalConfirmacaoResumo">
+          <small>Transportadora</small>
+          <strong>{String(transportadora.nome_fantasia ?? transportadora.razao_social ?? '-')}</strong>
+          <small>Valor</small>
+          <strong>{formatarMoeda(transportadora.valor_frete)}</strong>
+          <small>Prazo</small>
+          <strong>{String(transportadora.prazo_dias ?? 0)} dia(s)</strong>
+        </section>
+        {erro && <div className="alerta alertaModal">{erro}</div>}
+        <footer>
+          <button className="ghost" type="button" onClick={aoCancelar}>Cancelar</button>
+          <button className="primary" type="button" disabled={Boolean(erro)} onClick={aoConfirmar}>Confirmar escolha</button>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
+function ModalSelecaoMotivoEscolha({
+  aberto,
+  transportadora,
+  motivos,
+  aoSelecionar,
+  aoCancelar
+}: {
+  aberto: boolean;
+  transportadora?: RegistroGenerico | null;
+  motivos: RegistroGenerico[];
+  aoSelecionar: (motivo: RegistroGenerico) => void;
+  aoCancelar: () => void;
+}) {
+  if (!aberto || !transportadora) {
+    return null;
+  }
+
+  return (
+    <div className="painelContextualOverlay confirmacaoOverlay" role="dialog" aria-modal="true" aria-label="Selecionar motivo da escolha">
+      <button className="painelContextualFundo" type="button" aria-label="Cancelar seleção de motivo" onClick={aoCancelar} />
+      <aside className="modalConfirmacao">
+        <header>
+          <span>Motivo obrigatório</span>
+          <h2>Selecionar motivo da escolha</h2>
+          <p>A transportadora selecionada não é a menor oferta. Escolha o motivo para continuar.</p>
+        </header>
+        <section className="modalConfirmacaoResumo">
+          <small>Transportadora</small>
+          <strong>{String(transportadora.nome_fantasia ?? transportadora.razao_social ?? '-')}</strong>
+          <small>Valor</small>
+          <strong>{formatarMoeda(transportadora.valor_frete)}</strong>
+        </section>
+        <strong className="instrucaoMotivoEscolha">Selecione um dos Motivos Abaixo:</strong>
+        <div className="listaMotivosEscolha">
+          {motivos.filter((item) => item.ativo !== false).map((motivo) => (
+            <button key={String(motivo.id)} type="button" className="ghost" onClick={() => aoSelecionar(motivo)}>
+              {String(motivo.descricao)}
+            </button>
+          ))}
+          {motivos.filter((item) => item.ativo !== false).length === 0 && (
+            <p>Nenhum motivo cadastrado. Cadastre um motivo em Configurações antes de continuar.</p>
+          )}
+        </div>
+        <footer>
+          <button className="ghost" type="button" onClick={aoCancelar}>Cancelar</button>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
+function SeletorTransportadoraModal({
+  aberto,
+  titulo,
+  transportadoras,
+  idsBloqueados,
+  sugestaoId,
+  erro,
+  aoSelecionar,
+  aoFechar
+}: {
+  aberto: boolean;
+  titulo: string;
+  transportadoras: RegistroGenerico[];
+  idsBloqueados?: Array<string | number>;
+  sugestaoId?: string | number | null;
+  erro?: string;
+  aoSelecionar: (transportadora: RegistroGenerico) => void | Promise<void>;
+  aoFechar: () => void;
+}) {
+  const [busca, setBusca] = useState('');
+  const bloqueados = new Set((idsBloqueados ?? []).map((item) => String(item)));
+  const termo = busca.trim().toUpperCase();
+  const lista = transportadoras
+    .filter((item) => item.aceita_cotacao_externa !== false)
+    .filter((item) => {
+      const idReal = obterTransportadoraId(item);
+      return !bloqueados.has(String(item.id)) && !bloqueados.has(String(item.transportadora_id)) && !bloqueados.has(String(idReal));
+    })
+    .filter((item) => {
+      if (!termo) {
+        return true;
+      }
+      return [
+        item.codigo_interno,
+        item.nome_fantasia,
+        item.razao_social,
+        item.documento,
+        item.cnpj_cpf
+      ].some((valor) => String(valor ?? '').toUpperCase().includes(termo));
+    });
+  const sugerida = lista.find((item) => String(item.id) === String(sugestaoId) || String(obterTransportadoraId(item)) === String(sugestaoId));
+
+  return (
+    <PainelContextual
+      aberto={aberto}
+      largura="medio"
+      titulo={titulo}
+      subtitulo="Consulte transportadoras cadastradas e liberadas para cotação externa."
+      aoFechar={aoFechar}
+    >
+      <section className="seletorTransportadora">
+        <input
+          autoFocus
+          placeholder="Código ou nome da transportadora"
+          value={busca}
+          onChange={(evento) => setBusca(evento.target.value)}
+        />
+        {erro && <div className="alerta alertaModal">{erro}</div>}
+        {sugerida && (
+          <button className="transportadoraOpcao sugerida" onClick={() => aoSelecionar(sugerida)}>
+            <span>Sugestão</span>
+            <strong>{String(sugerida.nome_fantasia ?? sugerida.razao_social)}</strong>
+            <small>Código {String(sugerida.codigo_interno ?? sugerida.id)}</small>
+          </button>
+        )}
+        <div className="listaTransportadorasConsulta">
+          {lista.map((transportadora) => (
+            <button
+              key={String(transportadora.id)}
+              className="transportadoraOpcao"
+              onClick={() => aoSelecionar(transportadora)}
+            >
+              <span>{String(transportadora.codigo_interno ?? transportadora.id)}</span>
+              <strong>{String(transportadora.nome_fantasia ?? transportadora.razao_social)}</strong>
+              <small>{String(transportadora.documento ?? transportadora.cnpj_cpf ?? '')}</small>
+            </button>
+          ))}
+          {!lista.length && <p>Nenhuma transportadora liberada para cotação externa encontrada.</p>}
+        </div>
+      </section>
+    </PainelContextual>
+  );
+}
+
 
 
 
 function obterDataIso(data: Date) {
-  return data.toISOString().slice(0, 10);
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, '0');
+  const dia = String(data.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
 }
 
 function obterDataDiasAtras(dias: number) {
   const data = new Date();
   data.setDate(data.getDate() - dias);
   return obterDataIso(data);
+}
+
+async function copiarTexto(texto: unknown) {
+  const conteudo = String(texto ?? '').trim();
+  if (!conteudo) {
+    throw new Error('Nenhum link disponível para copiar.');
+  }
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(conteudo);
+      return;
+    } catch {
+      // Alguns navegadores bloqueiam clipboard em HTTP; usa fallback abaixo.
+    }
+  }
+
+  const area = document.createElement('textarea');
+  area.value = conteudo;
+  area.setAttribute('readonly', 'true');
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  area.style.top = '0';
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  const copiou = document.execCommand('copy');
+  document.body.removeChild(area);
+
+  if (!copiou) {
+    throw new Error('Não foi possível copiar o link neste navegador.');
+  }
 }
 
 const moduloCotacao = {
@@ -393,6 +624,7 @@ function Dashboard() {
   const [somenteDivergenciaValor, setSomenteDivergenciaValor] = useState(false);
   const [somenteDivergenciaPrazo, setSomenteDivergenciaPrazo] = useState(false);
   const [limiteAlertaPercentual, setLimiteAlertaPercentual] = useState('5');
+  const [paginaAnalisePedido, setPaginaAnalisePedido] = useState(1);
 
   async function carregarDashboard() {
     setCarregando(true);
@@ -426,10 +658,17 @@ function Dashboard() {
   }, []);
 
   const pedidos = useMemo(() => Array.isArray(indicadores.itens) ? indicadores.itens : [], [indicadores]);
+  const totalPaginasAnalisePedido = Math.max(1, Math.ceil(pedidos.length / 40));
+  const paginaAnaliseCorrigida = Math.min(paginaAnalisePedido, totalPaginasAnalisePedido);
+  const pedidosAnalisePagina = pedidos.slice((paginaAnaliseCorrigida - 1) * 40, paginaAnaliseCorrigida * 40);
   const statusDisponiveis = useMemo(
     () => [...new Set(pedidos.map((item: RegistroGenerico) => String(item.status ?? '')).filter(Boolean))].sort(),
     [pedidos]
   );
+
+  useEffect(() => {
+    setPaginaAnalisePedido(1);
+  }, [pedidos.length]);
 
   const dashboard = useMemo(() => {
     const totalPedidos = pedidos.length;
@@ -621,7 +860,7 @@ function Dashboard() {
         </div>
         <div className="acoesDashboard">
           <button className="ghost" onClick={() => setDocumentacaoAberta(true)}>Documentação</button>
-          <button className="ghost" onClick={exportarCsvDashboard}>Exportar CSV</button>
+          <button className="ghost" onClick={exportarCsvDashboard}>Exportar Excel</button>
           <BotaoAtualizar carregando={carregando} aoAtualizar={carregarDashboard} />
         </div>
       </div>
@@ -751,7 +990,10 @@ function Dashboard() {
         </div>
       </div>
       <div className="rankingPainel dashboardPainel dashboardPainelLargo">
-        <span>Análise por pedido</span>
+        <div className="cabecalhoTabelaDashboard">
+          <span>Análise por pedido</span>
+          <small>{pedidos.length} registro(s) · página {paginaAnaliseCorrigida}/{totalPaginasAnalisePedido}</small>
+        </div>
         <div className="tabelaWrap">
           <table>
             <thead>
@@ -777,7 +1019,7 @@ function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {pedidos.map((item: RegistroGenerico) => (
+              {pedidosAnalisePagina.map((item: RegistroGenerico) => (
                 <tr key={String(item.cotacao_id)}>
                   <td>{String(item.numero_pedido ?? '-')}</td>
                   <td>{String(item.cliente ?? '-')}</td>
@@ -788,10 +1030,10 @@ function Dashboard() {
                   <td>{formatarMoeda(item.valor_cotacao_transportadora)}</td>
                   <td>{formatarMoeda(item.valor_transportadora_escolhida)}</td>
                   <td>{formatarMoeda(item.valor_cte)}</td>
-                  <td>{formatarMoeda(item.diferenca_automatica_cte)}</td>
-                  <td>{formatarPercentual(item.diferenca_automatica_cte_percentual)}</td>
-                  <td>{formatarMoeda(item.diferenca_escolhida_cte)}</td>
-                  <td>{formatarPercentual(item.diferenca_escolhida_cte_percentual)}</td>
+                  <td className={Number(item.diferenca_automatica_cte ?? 0) > 0 ? 'economiaNegativa' : Number(item.diferenca_automatica_cte ?? 0) < 0 ? 'economiaPositiva' : ''}>{formatarMoeda(item.diferenca_automatica_cte)}</td>
+                  <td className={Number(item.diferenca_automatica_cte_percentual ?? 0) > 0 ? 'economiaNegativa' : Number(item.diferenca_automatica_cte_percentual ?? 0) < 0 ? 'economiaPositiva' : ''}>{formatarPercentual(item.diferenca_automatica_cte_percentual)}</td>
+                  <td className={Number(item.diferenca_escolhida_cte ?? 0) > 0 ? 'economiaNegativa' : Number(item.diferenca_escolhida_cte ?? 0) < 0 ? 'economiaPositiva' : ''}>{formatarMoeda(item.diferenca_escolhida_cte)}</td>
+                  <td className={Number(item.diferenca_escolhida_cte_percentual ?? 0) > 0 ? 'economiaNegativa' : Number(item.diferenca_escolhida_cte_percentual ?? 0) < 0 ? 'economiaPositiva' : ''}>{formatarPercentual(item.diferenca_escolhida_cte_percentual)}</td>
                   <td>{formatarNumero(item.prazo_cotado)} dias</td>
                   <td>{formatarNumero(item.prazo_final)} dias</td>
                   <td>{String(item.transportadora_escolhida ?? '-')}</td>
@@ -804,6 +1046,10 @@ function Dashboard() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="paginacaoLinha">
+          <button className="ghost" disabled={paginaAnaliseCorrigida <= 1} onClick={() => setPaginaAnalisePedido((atual) => Math.max(1, atual - 1))}>Anterior</button>
+          <button className="ghost" disabled={paginaAnaliseCorrigida >= totalPaginasAnalisePedido} onClick={() => setPaginaAnalisePedido((atual) => Math.min(totalPaginasAnalisePedido, atual + 1))}>Próxima</button>
         </div>
       </div>
       <PainelContextual
@@ -880,6 +1126,8 @@ function KanbanCotacoes({
   const [dataFinal, setDataFinal] = useState('');
   const [chaveFiltro, setChaveFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
+  const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
+  const [somenteFluxoLogistico, setSomenteFluxoLogistico] = useState(true);
   const [somentePendentes, setSomentePendentes] = useState(true);
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     const salvas = localStorage.getItem('controlSHubKanbanEtapas');
@@ -892,7 +1140,7 @@ function KanbanCotacoes({
   });
 
   async function carregarKanban() {
-    await listarKanbanCotacoes({ data_inicial: dataInicial, data_final: dataFinal, faturado: faturadoFiltro || undefined })
+    await listarKanbanCotacoes({ data_inicial: dataInicial, data_final: dataFinal, faturado: faturadoFiltro || undefined, multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined, fluxo_logistico: somenteFluxoLogistico ? 'true' : undefined })
       .then(setLinhas)
       .catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.'));
   }
@@ -1028,6 +1276,14 @@ function KanbanCotacoes({
           <input type="checkbox" checked={somentePendentes} onChange={(evento) => setSomentePendentes(evento.target.checked)} />
           Pendentes
         </label>
+        <label className="toggleLinha compacto" title="Mostra pedidos que possuem mais de uma chave de cotação.">
+          <input type="checkbox" checked={multiplasCotacoesFiltro} onChange={(evento) => setMultiplasCotacoesFiltro(evento.target.checked)} />
+          Mais de uma cotação
+        </label>
+        <label className="toggleLinha compacto" title="Mostra somente cotações com lote de fluxo logístico informado.">
+          <input type="checkbox" checked={somenteFluxoLogistico} onChange={(evento) => setSomenteFluxoLogistico(evento.target.checked)} />
+          Fluxo logístico
+        </label>
         <select value={faturadoFiltro} onChange={(evento) => setFaturadoFiltro(evento.target.value)}>
           <option value="">Faturamento: todos</option>
           <option value="SOMENTE">Somente faturados</option>
@@ -1095,6 +1351,8 @@ function KanbanCotacoes({
               onDragStart={() => setArrastandoId(String(card.cotacao_id))}
             >
               <small>{String(card.tipo_documento)} {String(card.numero_documento)}</small>
+              <small className="chaveKanban">Chave {String(card.codigo_chave ?? '-')}</small>
+              {card.lote_fluxo_logistico && <small className="chaveKanban">Fluxo {String(card.lote_fluxo_logistico)}</small>}
               <small>{String(card.origem_comercial ?? 'Banco')} · {String(card.situacao_pedido ?? 'ATIVO')}</small>
               <strong>{String(card.nome_destinatario ?? 'Destinatario')}</strong>
               <p>{String(card.cidade_destino ?? '')}/{String(card.uf_destino ?? '')}</p>
@@ -1106,6 +1364,7 @@ function KanbanCotacoes({
               {Number(card.total_transportadoras ?? 0) > Number(card.total_respostas ?? 0) && <em>Pendência externa</em>}
               {String(card.etapa_codigo) === 'EM_ANALISE' && <em>Ação interna: definir vencedor</em>}
               {(card.numeros_nfe || card.numero_nfe_faturada || Number(card.total_nfes ?? 0) > 0 || card.faturado_em) && <em className="tagFaturadoKanban">Faturado</em>}
+              {Number(card.total_outras_cotacoes ?? 0) > 0 && <em className="tagOutrasCotacoesKanban">Outras cotações</em>}
               {card.numeros_nfe && <small>NF-e {String(card.numeros_nfe)}</small>}
               {card.numeros_cte && <small>CTe {String(card.numeros_cte)}</small>}
               {card.bloqueado_para_alteracao && <em>Bloqueada Banco</em>}
@@ -1305,7 +1564,7 @@ function CotacoesOperacional({
 }) {
   const [cotacoes, setCotacoes] = useState<RegistroGenerico[]>([]);
   const [carregando, setCarregando] = useState(false);
-  const [detalhe, setDetalhe] = useState<{ cotacao: RegistroGenerico; itens: RegistroGenerico[]; transportadoras: RegistroGenerico[]; historicos: RegistroGenerico[]; timeline?: RegistroGenerico[]; notasFiscais?: RegistroGenerico[]; ctes?: RegistroGenerico[] } | null>(null);
+  const [detalhe, setDetalhe] = useState<DetalheCotacaoNormalizado | null>(null);
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
   const [busca, setBusca] = useState('');
@@ -1313,6 +1572,8 @@ function CotacoesOperacional({
   const [transportadoraFiltro, setTransportadoraFiltro] = useState('');
   const [bloqueadoFiltro, setBloqueadoFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
+  const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
+  const [somenteFluxoLogistico, setSomenteFluxoLogistico] = useState(true);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [dataInicial, setDataInicial] = useState(() => obterDataDiasAtras(30));
   const [dataFinal, setDataFinal] = useState(() => obterDataIso(new Date()));
@@ -1323,6 +1584,12 @@ function CotacoesOperacional({
   const [timelineImagem, setTimelineImagem] = useState('');
   const [timelineTranscricao, setTimelineTranscricao] = useState('');
   const [transportadorasCadastro, setTransportadorasCadastro] = useState<RegistroGenerico[]>([]);
+  const [parametrosEscolha, setParametrosEscolha] = useState<Record<string, string>>({});
+  const [motivosEscolha, setMotivosEscolha] = useState<RegistroGenerico[]>([]);
+  const [transportadoraConfirmacao, setTransportadoraConfirmacao] = useState<RegistroGenerico | null>(null);
+  const [transportadoraMotivo, setTransportadoraMotivo] = useState<RegistroGenerico | null>(null);
+  const [motivoEscolhaManual, setMotivoEscolhaManual] = useState<RegistroGenerico | null>(null);
+  const [erroEscolhaModal, setErroEscolhaModal] = useState('');
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [ultimoLinkGerado, setUltimoLinkGerado] = useState('');
   const [paginaCotacao, setPaginaCotacao] = useState(1);
@@ -1353,6 +1620,8 @@ function CotacoesOperacional({
         transportadora: transportadoraFiltro || undefined,
         bloqueado: bloqueadoFiltro || undefined,
         faturado: faturadoFiltro || undefined,
+        multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
+        fluxo_logistico: somenteFluxoLogistico ? 'true' : undefined,
         pagina: String(paginaCotacao),
         limite: String(limiteCotacao)
       });
@@ -1379,10 +1648,79 @@ function CotacoesOperacional({
 
   useEffect(() => {
     listarTransportadoras().then(setTransportadorasCadastro).catch(() => setTransportadorasCadastro([]));
+    listarParametrosSistema().then((dados: any) => {
+      const mapa: Record<string, string> = {};
+      dados.forEach((item: any) => {
+        mapa[String(item.chave)] = String(item.valor ?? '');
+      });
+      setParametrosEscolha(mapa);
+    }).catch(() => setParametrosEscolha({}));
+    listarMotivosEscolhaTransportadora().then(setMotivosEscolha).catch(() => setMotivosEscolha([]));
     listarEtapas()
       .then((dados) => setEtapasCadastro(dados.filter((item: any) => Boolean(item.ativa) && etapasFluxoAtivas.has(String(item.codigo ?? '')))))
       .catch(() => setEtapasCadastro([]));
   }, []);
+
+  function obterBloqueioEscolha(transportadora: RegistroGenerico) {
+    if (!detalhe?.cotacao || !cotacaoObrigaTransportadoraPedido(detalhe.cotacao, parametrosEscolha)) {
+      return null;
+    }
+
+    if (obterTransportadoraId(transportadora) !== Number(detalhe.cotacao.transportadora_pedido_id ?? 0)) {
+      return 'Origem obriga a transportadora do pedido.';
+    }
+
+    return null;
+  }
+
+  function montarMotivoEscolha(transportadora: RegistroGenerico, motivoSelecionado?: RegistroGenerico | null): { motivo_id?: number | null; motivo_descricao?: string | null } {
+    if (!detalhe?.cotacao) {
+      return {};
+    }
+
+    if (cotacaoObrigaTransportadoraPedido(detalhe.cotacao, parametrosEscolha)) {
+      return {
+        motivo_id: obterMotivoPadraoTransportadoraPedido(parametrosEscolha),
+        motivo_descricao: 'Transportadora definida no pedido/origem comercial.'
+      };
+    }
+
+    if (motivoEscolhaTransportadoraNaoVencedora(transportadora, detalhe.transportadoras)) {
+      if (motivoSelecionado?.id || motivoSelecionado?.descricao) {
+        return {
+          motivo_id: motivoSelecionado.id ? Number(motivoSelecionado.id) : null,
+          motivo_descricao: String(motivoSelecionado.descricao ?? '').trim()
+        };
+      }
+      throw new Error('Selecione o motivo para escolher uma transportadora que não venceu a cotação.');
+    }
+
+    return {};
+  }
+
+  async function executarEscolhaTransportadora(transportadora: RegistroGenerico) {
+    if (!detalhe?.cotacao.id) {
+      return;
+    }
+
+    let dadosMotivo: { motivo_id?: number | null; motivo_descricao?: string | null } = montarMotivoEscolha(transportadora, motivoEscolhaManual);
+
+    if (detalhe.cotacao.transportadora_escolhida_id || detalhe.cotacao.transportadora_escolhida) {
+      await registrarTimelineCotacao(String(detalhe.cotacao.id), {
+        transportadora_id: transportadora.transportadora_id ?? null,
+        tipo_evento: 'ALTERACAO_TRANSPORTADORA_ESCOLHIDA',
+        titulo: 'Alteração da transportadora escolhida',
+        descricao: dadosMotivo.motivo_descricao ?? 'Transportadora escolhida alterada pelo usuário.'
+      });
+    }
+
+    await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id), dadosMotivo);
+    setMensagem('Transportadora escolhida com sucesso.');
+    setTransportadoraConfirmacao(null);
+    setMotivoEscolhaManual(null);
+    setErroEscolhaModal('');
+    setDetalhe(normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id))));
+  }
 
   useEffect(() => {
     if (cotacaoInicialId) {
@@ -1420,22 +1758,20 @@ function CotacoesOperacional({
           }
         }
 
-        if (detalhe.cotacao.transportadora_escolhida_id || detalhe.cotacao.transportadora_escolhida) {
-          const motivo = window.prompt('Já existe transportadora escolhida. Informe o motivo da alteração para continuar:') ?? '';
-          if (!motivo.trim()) {
-            setErro('Informe o motivo para alterar a transportadora escolhida.');
-            return;
-          }
-          await registrarTimelineCotacao(String(detalhe.cotacao.id), {
-            transportadora_id: transportadora.transportadora_id ?? null,
-            tipo_evento: 'ALTERACAO_TRANSPORTADORA_ESCOLHIDA',
-            titulo: 'Alteração da transportadora escolhida',
-            descricao: motivo
-          });
+        const bloqueioEscolha = obterBloqueioEscolha(transportadora);
+        if (bloqueioEscolha) {
+          setErroEscolhaModal(bloqueioEscolha);
+          setTransportadoraConfirmacao(transportadora);
+          return;
         }
 
-        await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id));
-        setMensagem('Transportadora escolhida com sucesso.');
+        if (!cotacaoObrigaTransportadoraPedido(detalhe.cotacao, parametrosEscolha) && motivoEscolhaTransportadoraNaoVencedora(transportadora, detalhe.transportadoras)) {
+          setTransportadoraMotivo(transportadora);
+          return;
+        }
+
+        setTransportadoraConfirmacao(transportadora);
+        return;
       }
       if (tipo === 'link') {
         const transportadoraId = Number(transportadora?.transportadora_id ?? String(transportadora?.id ?? '').split('|')[4] ?? 0);
@@ -1501,7 +1837,7 @@ function CotacoesOperacional({
     if (!link) {
       return;
     }
-    await navigator.clipboard.writeText(String(link));
+    await copiarTexto(link);
     setMensagem('Link copiado para a área de transferência.');
   }
 
@@ -1621,6 +1957,14 @@ function CotacoesOperacional({
           <option value="SOMENTE">Somente faturados</option>
           <option value="EXCETO">Exceto faturados</option>
         </select>
+        <label className="toggleLinha compacto" title="Mostra pedidos que possuem mais de uma chave de cotação.">
+          <input type="checkbox" checked={multiplasCotacoesFiltro} onChange={(evento) => { setMultiplasCotacoesFiltro(evento.target.checked); setPaginaCotacao(1); }} />
+          Mais de uma cotação
+        </label>
+        <label className="toggleLinha compacto" title="Mostra somente cotações com lote de fluxo logístico informado.">
+          <input type="checkbox" checked={somenteFluxoLogistico} onChange={(evento) => { setSomenteFluxoLogistico(evento.target.checked); setPaginaCotacao(1); }} />
+          Fluxo logístico
+        </label>
       </div>
       {filtrosAbertos && (
         <div className="filtrosLinha">
@@ -1634,11 +1978,11 @@ function CotacoesOperacional({
         </div>
       )}
       <TabelaOperacional
-        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${faturadoFiltro}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
+        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${faturadoFiltro}-${multiplasCotacoesFiltro}-${somenteFluxoLogistico}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
         titulo="Cotações de Frete"
         subtitulo="Clique em uma cotação para abrir o detalhe operacional, comparar transportadoras e acompanhar o fluxo completo."
         carregar={carregar}
-        colunas={['tipo_documento', 'numero_documento', 'status', 'etapa_nome', 'nome_destinatario', 'cidade_destino', 'valor_mercadoria', 'bloqueado_para_alteracao']}
+        colunas={['tipo_documento', 'numero_documento', 'codigo_chave', 'lote_fluxo_logistico', 'status', 'etapa_nome', 'nome_destinatario', 'cidade_destino', 'valor_mercadoria', 'bloqueado_para_alteracao']}
         aoSelecionar={abrir}
       />
       <div className="paginacaoLinha">
@@ -1669,110 +2013,32 @@ function CotacoesOperacional({
         subtitulo={detalhe ? `Chave ${String(detalhe.cotacao.codigo_chave ?? '-')} · ${String(detalhe.cotacao.nome_destinatario ?? '-')}` : undefined}
         aoFechar={() => setDetalhe(null)}
       >
-        {detalhe && (
-        <section className="detalheCotacao detalheCotacaoContextual">
-          <header>
-            <div>
-              <span>Detalhe operacional</span>
-              <h2>{String(detalhe.cotacao.tipo_documento)} {String(detalhe.cotacao.numero_documento)}</h2>
-              <p>{String(detalhe.cotacao.nome_destinatario ?? '')} - {String(detalhe.cotacao.cidade_destino ?? '')}/{String(detalhe.cotacao.uf_destino ?? '')}</p>
-            </div>
-            <div className="statusRapidoDetalhe">
-              {String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status ?? '').trim() && (
-                <i className="tagStatusDetalhe etapaKanban">{String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status)}</i>
-              )}
-              {(detalhe.cotacao.numeros_nfe || detalhe.cotacao.numero_nfe_faturada || Number(detalhe.cotacao.total_nfes ?? 0) > 0 || detalhe.cotacao.faturado_em) && (
-                <i className="tagStatusDetalhe faturado">Faturado</i>
-              )}
-            </div>
-            <div className="acoesDetalhe">
-              {pode('ADICIONAR_TRANSPORTADORA_COTACAO') && <button className="ghost" onClick={adicionarTransportadora}>Adicionar transportadora</button>}
-              {pode('REGISTRAR_TIMELINE_COTACAO') && <button className="ghost" onClick={() => registrarObservacaoTimeline()}>Registrar observação</button>}
-            </div>
-          </header>
-          <ComparativoFases cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras} />
-          <ResumoInicialCotacao cotacao={detalhe.cotacao} />
-          <nav className="abasCotacao">
-            {[
-              { id: 'VENDAS', nome: 'Vendas' },
-              { id: 'AUTOMATICA', nome: 'Cotação Aut.' },
-              { id: 'TRANSPORTADORA', nome: 'Cotação Trasp.' },
-              { id: 'APROVADA', nome: 'Transp. Escolhida' },
-              { id: 'CTE', nome: 'CT-e' }
-            ].map((aba) => (
-              <button key={aba.id} className={abaCotacao === aba.id ? 'active' : ''} onClick={() => setAbaCotacao(aba.id)}>{aba.nome}</button>
-            ))}
-          </nav>
-          {abaCotacao === 'VENDAS' && <AbaCampos titulo="Vendas" cotacao={detalhe.cotacao} campos={['origem_comercial', 'vendedor_nome', 'data_documento', 'transportadora_pedido_nome', 'valor_frete_pedido', 'prazo_pedido_dias', 'valor_mercadoria', 'nome_destinatario', 'cidade_destino', 'uf_destino']} />}
-          {abaCotacao === 'AUTOMATICA' && (
-            <AbaTransportadoras
-              titulo="Cotação Automática"
-              cotacao={detalhe.cotacao}
-              transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoAutomatica(item))}
-              pode={pode}
-              copiarLink={copiarLink}
-              acao={acao}
-              editarValorManual={editarValorManual}
-              registrarObservacaoTimeline={registrarObservacaoTimeline}
-            />
-          )}
-          {abaCotacao === 'TRANSPORTADORA' && (
-            <AbaTransportadoras
-              titulo="Cotação Transportadora"
-              cotacao={detalhe.cotacao}
-              transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoTransportadora(item))}
-              pode={pode}
-              copiarLink={copiarLink}
-              acao={acao}
-              editarValorManual={editarValorManual}
-              registrarObservacaoTimeline={registrarObservacaoTimeline}
-            />
-          )}
-          {abaCotacao === 'APROVADA' && <AbaCampos titulo="Transportadora Escolhida" cotacao={detalhe.cotacao} campos={['transportadora_escolhida', 'valor_frete_final', 'prazo_final_dias', 'aprovado_em', 'observacao_analista']} />}
-          {abaCotacao === 'CTE' && <AbaCampos titulo="CT-e" cotacao={detalhe.cotacao} campos={['transportadora_cte_nome', 'numeros_cte', 'total_ctes', 'valor_frete_cte_total', 'ultimo_cte_em']} />}
-          <DetalhamentoCompletoCotacao cotacao={detalhe.cotacao} itens={detalhe.itens} notasFiscais={detalhe.notasFiscais ?? []} ctes={detalhe.ctes ?? []} />
-          {(detalhe.timeline ?? []).length > 0 && (
-            <div className="historicoPainel">
-              <h3>Timeline operacional</h3>
-              <div className="timelineComposer">
-                <textarea value={timelineTexto} onChange={(evento) => setTimelineTexto(evento.target.value)} placeholder="Digite uma observação operacional..." />
-                <input type="file" accept="image/*" onChange={(evento) => carregarImagemTimeline(evento.target.files?.[0])} />
-                <button className="ghost" onClick={iniciarDitadoTimeline}>Transcrever áudio</button>
-                <button className="primary" onClick={enviarTimelineRica}>Enviar timeline</button>
-                {timelineImagem && <img src={timelineImagem} alt="Imagem anexada" />}
-              </div>
-              {(detalhe.timeline ?? []).map((evento, indice) => (
-                <p key={indice}>
-                  <strong>{String(evento.tipo_evento)}</strong>
-                  {String(evento.criado_em)} · {String(evento.usuario_nome ?? 'Sistema')}
-                  {evento.transportadora_nome ? ` · ${String(evento.transportadora_nome)}` : ''}
-                  {evento.etapa_origem_nome || evento.etapa_destino_nome ? ` · ${String(evento.etapa_origem_nome ?? '-')} -> ${String(evento.etapa_destino_nome ?? '-')}` : ''}
-                  {evento.descricao ? ` · ${String(evento.descricao)}` : ''}
-                  {evento.transcricao_audio ? ` - Transcricao: ${String(evento.transcricao_audio)}` : ''}
-                  {evento.midia_base64 ? <img className="timelineImagem" src={String(evento.midia_base64)} alt="Anexo da timeline" /> : null}
-                </p>
-              ))}
-            </div>
-          )}
-          <div className="historicoPainel">
-            <button className="ghost" onClick={() => setHistoricoAberto(!historicoAberto)}>
-              {historicoAberto ? 'Recolher histórico' : 'Visualizar histórico'}
-            </button>
-            {historicoAberto && (
-              <>
-                {detalhe.historicos.length === 0 && <p>Nenhum evento operacional registrado para esta cotação.</p>}
-                {detalhe.historicos.map((historico, indice) => (
-                  <p key={indice}>
-                    <strong>{String(historico.tipo_evento)}</strong>
-                    {String(historico.criado_em)} · {String(historico.usuario_nome ?? 'Sistema')} · {String(historico.descricao)}
-                  </p>
-                ))}
-              </>
-            )}
-          </div>
-        </section>
-        )}
+        {detalhe && <DetalheCotacaoConteudo detalhe={detalhe} usuario={usuario} aoAtualizar={async () => setDetalhe(normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id))))} />}
+        {false && null}
       </PainelContextual>
+      <ModalConfirmacaoEscolha
+        aberto={Boolean(transportadoraConfirmacao)}
+        transportadora={transportadoraConfirmacao}
+        erro={erroEscolhaModal}
+        aoCancelar={() => {
+          setTransportadoraConfirmacao(null);
+          setErroEscolhaModal('');
+        }}
+        aoConfirmar={() => transportadoraConfirmacao ? executarEscolhaTransportadora(transportadoraConfirmacao).catch((error) => setErroEscolhaModal(error instanceof Error ? error.message : 'Falha ao escolher transportadora.')) : undefined}
+      />
+      <ModalSelecaoMotivoEscolha
+        aberto={Boolean(transportadoraMotivo)}
+        transportadora={transportadoraMotivo}
+        motivos={motivosEscolha}
+        aoCancelar={() => setTransportadoraMotivo(null)}
+        aoSelecionar={(motivo) => {
+          const transportadora = transportadoraMotivo;
+          setMotivoEscolhaManual(motivo);
+          setErroEscolhaModal('');
+          setTransportadoraMotivo(null);
+          setTransportadoraConfirmacao(transportadora);
+        }}
+      />
     </>
   );
 }
@@ -1802,7 +2068,7 @@ function formatarDataBrasileira(valor: unknown) {
   if (Number.isNaN(data.getTime())) {
     return String(valor);
   }
-  return data.toLocaleDateString('pt-BR');
+  return data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 function formatarDataHoraBrasileira(valor: unknown) {
@@ -1813,11 +2079,14 @@ function formatarDataHoraBrasileira(valor: unknown) {
   if (Number.isNaN(data.getTime())) {
     return String(valor);
   }
-  return data.toLocaleString('pt-BR');
+  return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 const rotulosCampos: Record<string, string> = {
   origem_comercial: 'Origem comercial',
+  lote_fluxo_logistico: 'Lote Fluxo Logístico',
+  total_outras_cotacoes: 'Outras cotações',
+  criado_em: 'Cotação criada em',
   vendedor_nome: 'Vendedor',
   data_documento: 'Data do documento',
   valor_frete_venda: 'Frete pedido',
@@ -1832,7 +2101,9 @@ const rotulosCampos: Record<string, string> = {
   transportadora_escolhida: 'Transportadora escolhida',
   valor_frete_final: 'Frete escolhido',
   prazo_final_dias: 'Prazo escolhido',
+  motivo_escolha_transportadora_descricao: 'Motivo da escolha',
   aprovado_em: 'Escolhido em',
+  escolhido_em: 'Escolhido em',
   observacao_analista: 'Observação',
   transportadora_cte_nome: 'Transportadora CT-e',
   numeros_cte: 'Números CT-e',
@@ -1840,7 +2111,7 @@ const rotulosCampos: Record<string, string> = {
   valor_frete_cte_total: 'Frete CT-e',
   ultimo_cte_em: 'Último CT-e em',
   tipo_documento: 'Tipo documento',
-  numero_documento: 'Número documento',
+  numero_documento: 'Documento',
   numero_pedido: 'Número pedido',
   status: 'Status',
   loja_origem: 'Loja faturamento',
@@ -1854,7 +2125,7 @@ const rotulosCampos: Record<string, string> = {
   documento_destinatario: 'Documento destinatário',
   destino_zona_rural: 'Destino zona rural',
   destinatario_pessoa_fisica: 'Destinatário pessoa física',
-  bloqueado_para_alteracao: 'Bloqueado para alteração',
+  bloqueado_para_alteracao: 'Bloqueado',
   etapa_nome: 'Etapa',
   ativa: 'Ativa',
   administrador: 'Administrador',
@@ -1904,7 +2175,7 @@ const camposPercentuais = new Set([
 ]);
 
 const camposData = new Set(['data_documento', 'data_pedido', 'data_nfe', 'data_cte']);
-const camposDataHora = new Set(['criado_em', 'alterado_em', 'aprovado_em', 'ultimo_cte_em', 'respondida_em', 'enviado_em']);
+const camposDataHora = new Set(['criado_em', 'alterado_em', 'aprovado_em', 'escolhido_em', 'ultimo_cte_em', 'respondida_em', 'enviado_em']);
 const camposDecimais = new Set(['peso_real', 'cubagem_total', 'cubagem_item', 'largura', 'altura', 'comprimento', 'volumes_total']);
 const camposDias = new Set(['prazo_informado_venda_dias', 'prazo_pedido_dias', 'prazo_final_dias', 'prazo_dias', 'prazo_cte', 'prazo_cotado', 'prazo_final']);
 
@@ -2006,6 +2277,88 @@ function obterTransportadoraEscolhidaReal(cotacao: RegistroGenerico, transportad
   return null;
 }
 
+function obterTransportadoraId(item?: RegistroGenerico | null) {
+  const candidatos = [
+    item?.transportadora_id,
+    item?.id && String(item.id).includes('|') ? String(item.id).split('|')[4] : null,
+    item?.id
+  ];
+
+  for (const candidato of candidatos) {
+    const numero = Number(candidato);
+    if (Number.isFinite(numero) && numero > 0) {
+      return numero;
+    }
+  }
+
+  return 0;
+}
+
+function podeRemoverTransportadoraCotacao(item?: RegistroGenerico | null) {
+  if (!item) {
+    return false;
+  }
+
+  const valor = Number(item.valor_frete ?? 0);
+  const status = String(item.status ?? '').toUpperCase();
+  const origem = String(item.origem_cotacao ?? '').toUpperCase();
+
+  return valor === 0
+    && !item.respondida_em
+    && !item.validada
+    && !item.selecionada
+    && !item.escolhida_plataforma
+    && ['MANUAL', 'EXTERNA'].includes(origem)
+    && !['RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTACAO_TRANSPORTADORA_RECEBIDA'].includes(status);
+}
+
+function obterAutomaticaReferenciaEscolhida(cotacao: RegistroGenerico, transportadoras: RegistroGenerico[]) {
+  const automaticas = transportadoras
+    .filter((item) => ehCotacaoAutomatica(item) && Number(item.valor_frete ?? 0) > 0)
+    .sort((a, b) => Number(a.valor_frete ?? 0) - Number(b.valor_frete ?? 0));
+
+  return automaticas[0] ?? null;
+}
+
+function listarOrigensObrigatorias(parametros: Record<string, string>) {
+  return String(parametros.ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO ?? '')
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function cotacaoObrigaTransportadoraPedido(cotacao: RegistroGenerico, parametros: Record<string, string>) {
+  const origem = String(cotacao.origem_comercial ?? '').trim().toUpperCase();
+  return Boolean(cotacao.transportadora_pedido_id) && listarOrigensObrigatorias(parametros).includes(origem);
+}
+
+function obterMotivoPadraoTransportadoraPedido(parametros: Record<string, string>) {
+  const motivoId = Number(parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? 0);
+  return motivoId > 0 ? motivoId : null;
+}
+
+function obterMenorValorCotacao(transportadoras: RegistroGenerico[]) {
+  const valores = transportadoras
+    .map((item) => Number(item.valor_frete ?? 0))
+    .filter((valor) => valor > 0);
+  return valores.length ? Math.min(...valores) : 0;
+}
+
+function motivoEscolhaTransportadoraNaoVencedora(transportadora: RegistroGenerico, transportadoras: RegistroGenerico[]) {
+  const menorValor = obterMenorValorCotacao(transportadoras);
+  const valorAtual = Number(transportadora.valor_frete ?? 0);
+  return menorValor > 0 && valorAtual > menorValor;
+}
+
+function classeComparacaoFrete(valor: unknown, base: unknown) {
+  const valorNumero = Number(valor ?? 0);
+  const baseNumero = Number(base ?? 0);
+  if (valorNumero === 0 && baseNumero === 0) {
+    return 'comparacaoNeutra';
+  }
+  return valorNumero > baseNumero ? 'economiaNegativa' : 'economiaPositiva';
+}
+
 function montarIdCotacaoLocal(cotacao?: RegistroGenerico | null) {
   if (!cotacao) {
     return '';
@@ -2036,6 +2389,7 @@ function normalizarDetalheCotacao(detalhe: {
   timeline?: RegistroGenerico[];
   notasFiscais?: RegistroGenerico[];
   ctes?: RegistroGenerico[];
+  outrasCotacoes?: RegistroGenerico[];
 } | null) {
   if (!detalhe?.cotacao) {
     return null;
@@ -2067,6 +2421,7 @@ function normalizarDetalheCotacao(detalhe: {
         ? Number(detalhe.cotacao.prazo_final_dias ?? escolhidaReal.prazo_dias ?? 0)
         : 0,
       transportadora_cte_nome: ctePrincipal?.transportadora_cte_nome ?? detalhe.cotacao.transportadora_cte_nome ?? null,
+      total_outras_cotacoes: Number(detalhe.cotacao.total_outras_cotacoes ?? detalhe.outrasCotacoes?.length ?? 0),
       prazo_cte_dias: Number(detalhe.cotacao.prazo_cte_dias ?? 0) || 0
     }
   };
@@ -2075,7 +2430,7 @@ function normalizarDetalheCotacao(detalhe: {
 function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGenerico; transportadoras: RegistroGenerico[] }) {
   const valorPedido = Number(cotacao.valor_frete_pedido ?? cotacao.valor_frete_venda ?? cotacao.valor_solicitado ?? 0);
   const prazoPedido = Number(cotacao.prazo_pedido_dias ?? cotacao.prazo_informado_venda_dias ?? cotacao.prazo_vendedor_dias ?? 0);
-  const automatica = transportadoras.find((item: any) => ehCotacaoAutomatica(item) && Number(item.valor_frete ?? 0) > 0);
+  const automatica = obterAutomaticaReferenciaEscolhida(cotacao, transportadoras);
   const resposta = transportadoras.find((item: any) => ehCotacaoTransportadora(item) && Number(item.valor_frete ?? 0) > 0);
   const valorCte = Number(cotacao.valor_frete_cte_total ?? 0);
   const economiaPedidoCte = valorPedido - valorCte;
@@ -2118,12 +2473,24 @@ function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGener
       {fases.map((fase) => {
         const prazo = Number(fase.prazo ?? 0);
         const diferencaPrazo = prazo && prazoPedido ? prazo - prazoPedido : null;
+        const valorFase = Number(fase.valor ?? 0);
+        const economiaEscolhidaAut = Number(automatica?.valor_frete ?? 0) - valorFase;
         return (
           <article key={fase.titulo}>
             <span>{fase.titulo}</span>
             <strong>{formatarMoeda(fase.valor)}</strong>
             <small>{fase.detalhe}</small>
-            <em>{percentualContraBase(fase.valor, valorPedido)} vs Pedido</em>
+            <em className={fase.titulo === 'Pedido' ? undefined : classeComparacaoFrete(fase.valor, valorPedido)}>
+              {percentualContraBase(fase.valor, valorPedido)} vs Pedido
+            </em>
+            {fase.titulo !== 'Pedido' && valorPedido === 0 && valorFase > 0 && (
+              <em className="economiaNegativa">Prejuízo Pedido: {formatarMoeda(valorFase)}</em>
+            )}
+            {fase.titulo !== 'Pedido' && valorPedido > 0 && valorFase !== valorPedido && (
+              <em className={valorFase > valorPedido ? 'economiaNegativa' : 'economiaPositiva'}>
+                {valorFase > valorPedido ? 'Prejuízo Pedido' : 'Ganho Pedido'}: {formatarMoeda(Math.abs(valorPedido - valorFase))}
+              </em>
+            )}
             <b>{fase.prazo ? `${String(fase.prazo)} dias` : '0 dia(s)'}{diferencaPrazo !== null ? ` · ${diferencaPrazo > 0 ? '+' : ''}${diferencaPrazo} dia(s) vs Pedido` : ''}</b>
             {fase.titulo === 'CT-e' && (
               <>
@@ -2131,6 +2498,11 @@ function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGener
                 <em>vs Cotação Aut.</em>
                 <em className={economiaAutomaticaCte >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>Economia Cotação Aut: {formatarMoeda(economiaAutomaticaCte)}</em>
               </>
+            )}
+            {fase.titulo === 'Transportadora escolhida' && Number(automatica?.valor_frete ?? 0) > 0 && (
+              <em className={economiaEscolhidaAut >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>
+                vs Cotação Aut.: {formatarMoeda(economiaEscolhidaAut)}
+              </em>
             )}
           </article>
         );
@@ -2174,7 +2546,10 @@ function AbaTransportadoras({
   copiarLink,
   acao,
   editarValorManual,
-  registrarObservacaoTimeline
+  registrarObservacaoTimeline,
+  removerTransportadora,
+  bloqueioEscolha,
+  escolhaBloqueada
 }: {
   titulo: string;
   cotacao: RegistroGenerico;
@@ -2184,6 +2559,9 @@ function AbaTransportadoras({
   acao: (tipo: 'escolher' | 'link', transportadora: RegistroGenerico) => Promise<void>;
   editarValorManual: (transportadora: RegistroGenerico) => Promise<void>;
   registrarObservacaoTimeline: (transportadoraId?: number) => Promise<void>;
+  removerTransportadora?: (transportadora: RegistroGenerico) => Promise<void>;
+  bloqueioEscolha?: (transportadora: RegistroGenerico) => string | null;
+  escolhaBloqueada?: boolean;
 }) {
   const [verTodas, setVerTodas] = useState(false);
   const ordenadas = [...transportadoras].sort((a, b) => Number(a.valor_frete ?? 0) - Number(b.valor_frete ?? 0));
@@ -2201,36 +2579,46 @@ function AbaTransportadoras({
       </header>
       <PodioCotacao transportadoras={ordenadas} />
       <div className="comparativo compacto listaRankingAba">
-        {exibidas.map((transportadora, indice) => (
-          <article className={indice === 0 ? 'primeiro' : indice === 1 ? 'segundo' : indice === 2 ? 'terceiro' : ''} key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}-${indice}`}>
-            <small>{indice + 1}º lugar · {String(transportadora.origem_cotacao ?? '-')}</small>
-            <strong>{String(transportadora.nome_fantasia ?? '-')}</strong>
-            <span>{formatarMoeda(transportadora.valor_frete)}</span>
-            <small>{percentualContraBase(transportadora.valor_frete, valorPedidoBase)} vs Pedido</small>
-            <small>Prazo {String(transportadora.prazo_dias ?? 0)} dias</small>
-            <small>Status: {String(transportadora.status ?? transportadora.status_envio ?? '-')}</small>
-            {indice === 0 && <small className="pillDivergencia ok">Melhor oferta</small>}
-            {transportadora.url_publica && <small className="linkQuebra">Link enviado: {String(transportadora.url_publica)}</small>}
-            <div>
-              {transportadora.url_publica && pode('COPIAR_LINK_COTACAO') && <button className="ghost" onClick={() => copiarLink(transportadora.url_publica)}>Copiar link</button>}
-              {transportadora.url_publica && <button className="ghost" onClick={() => window.open(String(transportadora.url_publica), '_blank')}>Visualizar link</button>}
-              {pode('GERAR_TOKEN_COTACAO_FRETE') && <button className="ghost" onClick={() => acao('link', transportadora)}>Gerar novo link</button>}
-              {pode('ALTERAR_COTACAO_MANUAL') && ehCotacaoTransportadora(transportadora) && (
-                <button className="ghost" onClick={() => editarValorManual(transportadora)}>Alterar valor</button>
-              )}
-              {pode('REGISTRAR_TIMELINE_COTACAO') && <button className="ghost" onClick={() => registrarObservacaoTimeline(Number(transportadora.transportadora_id))}>Observação</button>}
-              {pode('ESCOLHER_TRANSPORTADORA') && <button className="primary" onClick={() => acao('escolher', transportadora)}>Escolher</button>}
-            </div>
-          </article>
-        ))}
+        {exibidas.map((transportadora, indice) => {
+          const motivoBloqueio = escolhaBloqueada
+            ? 'CT-e emitido. A escolha da transportadora está bloqueada.'
+            : bloqueioEscolha?.(transportadora) ?? null;
+          return (
+            <article className={`${indice === 0 ? 'primeiro' : indice === 1 ? 'segundo' : indice === 2 ? 'terceiro' : ''} ${motivoBloqueio ? 'cotacaoCardBloqueada' : ''}`} key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}-${indice}`}>
+              <small>{indice + 1}º lugar · {String(transportadora.origem_cotacao ?? '-')}</small>
+              <strong>{String(transportadora.nome_fantasia ?? '-')}</strong>
+              <span>{formatarMoeda(transportadora.valor_frete)}</span>
+              <small>{percentualContraBase(transportadora.valor_frete, valorPedidoBase)} vs Pedido</small>
+              <small>Prazo {String(transportadora.prazo_dias ?? 0)} dias</small>
+              {transportadora.numero_cotacao_transportadora && <small>Nº cotação: {String(transportadora.numero_cotacao_transportadora)}</small>}
+              <small>Status: {String(transportadora.status ?? transportadora.status_envio ?? '-')}</small>
+              {indice === 0 && <small className="pillDivergencia ok">Melhor oferta</small>}
+              {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
+              {transportadora.url_publica && <small className="linkQuebra">Link enviado: {String(transportadora.url_publica)}</small>}
+              <div>
+                {transportadora.url_publica && pode('COPIAR_LINK_COTACAO') && <button className="ghost" onClick={() => copiarLink(transportadora.url_publica)}>Copiar link</button>}
+                {transportadora.url_publica && <button className="ghost" onClick={() => window.open(String(transportadora.url_publica), '_blank')}>Visualizar link</button>}
+                {pode('GERAR_TOKEN_COTACAO_FRETE') && <button className="ghost" onClick={() => acao('link', transportadora)}>Gerar novo link</button>}
+                {pode('ALTERAR_COTACAO_MANUAL') && ehCotacaoTransportadora(transportadora) && (
+                  <button className="ghost" onClick={() => editarValorManual(transportadora)}>Alterar valor</button>
+                )}
+                {removerTransportadora && podeRemoverTransportadoraCotacao(transportadora) && (
+                  <button className="ghost danger" onClick={() => removerTransportadora(transportadora)}>Remover</button>
+                )}
+                {pode('REGISTRAR_TIMELINE_COTACAO') && <button className="ghost" onClick={() => registrarObservacaoTimeline(Number(transportadora.transportadora_id))}>Observação</button>}
+                {pode('ESCOLHER_TRANSPORTADORA') && <button className="primary" disabled={Boolean(motivoBloqueio)} onClick={() => acao('escolher', transportadora)}>Escolher</button>}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes }: { cotacao: RegistroGenerico; itens: RegistroGenerico[]; notasFiscais?: RegistroGenerico[]; ctes?: RegistroGenerico[] }) {
+function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes, outrasCotacoes }: { cotacao: RegistroGenerico; itens: RegistroGenerico[]; notasFiscais?: RegistroGenerico[]; ctes?: RegistroGenerico[]; outrasCotacoes?: RegistroGenerico[] }) {
   const campos = [
-    'origem_comercial', 'vendedor_nome', 'tipo_documento', 'numero_documento',
+    'origem_comercial', 'lote_fluxo_logistico', 'vendedor_nome', 'tipo_documento', 'numero_documento',
     'numero_pedido', 'data_documento', 'status', 'valor_mercadoria',
     'loja_origem', 'loja_destino', 'peso_real', 'volumes_total', 'cubagem_total',
     'nome_destinatario', 'documento_destinatario', 'endereco_destinatario',
@@ -2284,6 +2672,7 @@ function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes }: { c
       </div>
       <TabelaDocumentosFiscais titulo="Notas fiscais vinculadas" dados={notasFiscais ?? []} colunas={['numero_nfe', 'chave_nfe', 'data_nfe', 'finalidade_nfe', 'valorfrete_nfe', 'alterado_em']} />
       <TabelaDocumentosFiscais titulo="CT-es vinculados" dados={ctes ?? []} colunas={['numero_cte', 'chave_cte', 'transportadora_cte_nome', 'data_cte', 'finalidade_cte', 'valorfrete_cte', 'alterado_em']} />
+      <TabelaDocumentosFiscais titulo="Outras cotações do Pedido" dados={outrasCotacoes ?? []} colunas={['tipo_documento', 'numero_documento', 'codigo_chave', 'lote_fluxo_logistico', 'criado_em', 'status', 'etapa_nome', 'valor_mercadoria']} />
     </details>
   );
 }
@@ -2349,12 +2738,35 @@ function criarEmailsPadraoPorTransportadora(preparacao: RegistroGenerico[]) {
     acc[grupo.chave] = `
       <div style="font-family:Arial,sans-serif;color:#172033">
         <p>Olá, ${grupo.nome}.</p>
-        <p>Solicitamos a cotação de frete dos documentos abaixo. O sistema vai gerar um novo link individual para cada documento no momento do envio.</p>
-        <p>Obrigado.</p>
+        <p>Solicitamos a cotação de frete dos documentos abaixo:</p>
+        <p>DOCUMENTOS</p>
+        <br></br>
+        <p>Atenciosamente.</p>
       </div>
     `.trim();
     return acc;
   }, {});
+}
+
+function montarTabelaDocumentosPreview(itens: RegistroGenerico[]) {
+  return `
+    <table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;color:#172033" border="1" cellpadding="6">
+      <thead>
+        <tr>
+          <th align="left">Documento</th>
+          <th align="left">Chave</th>
+          <th align="right">Valor referência</th>
+          <th align="left">Validade do Link</th>
+          <th align="left">Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itens.map((item) => (
+          `<tr><td>${String(item.numero_documento)}</td><td>${String(item.codigo_chave)}</td><td align="right">${formatarMoeda(item.valor_frete ?? 0)}</td><td>será definida no envio</td><td>O link será gerado no envio.</td></tr>`
+        )).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
 function DetalheCotacaoConteudo({
@@ -2369,35 +2781,112 @@ function DetalheCotacaoConteudo({
   const [aba, setAba] = useState('VENDAS');
   const [mensagemLink, setMensagemLink] = useState('');
   const [erroLink, setErroLink] = useState('');
+  const [transportadorasCadastro, setTransportadorasCadastro] = useState<RegistroGenerico[]>([]);
+  const [seletorTransportadoraAberto, setSeletorTransportadoraAberto] = useState(false);
+  const [erroSeletorTransportadora, setErroSeletorTransportadora] = useState('');
+  const [parametrosEscolha, setParametrosEscolha] = useState<Record<string, string>>({});
+  const [motivosEscolha, setMotivosEscolha] = useState<RegistroGenerico[]>([]);
+  const [transportadoraConfirmacao, setTransportadoraConfirmacao] = useState<RegistroGenerico | null>(null);
+  const [transportadoraMotivo, setTransportadoraMotivo] = useState<RegistroGenerico | null>(null);
+  const [motivoEscolhaManual, setMotivoEscolhaManual] = useState<RegistroGenerico | null>(null);
+  const [erroEscolhaModal, setErroEscolhaModal] = useState('');
   const pode = (codigo: string) => Boolean(!usuario || usuario.superadmin || usuario.administrador || usuario.permissoes?.includes(codigo));
+
+  useEffect(() => {
+    listarTransportadoras().then(setTransportadorasCadastro).catch(() => setTransportadorasCadastro([]));
+    listarParametrosSistema().then((dados: any) => {
+      const mapa: Record<string, string> = {};
+      dados.forEach((item: any) => {
+        mapa[String(item.chave)] = String(item.valor ?? '');
+      });
+      setParametrosEscolha(mapa);
+    }).catch(() => setParametrosEscolha({}));
+    listarMotivosEscolhaTransportadora().then(setMotivosEscolha).catch(() => setMotivosEscolha([]));
+  }, []);
+
+  function obterBloqueioEscolha(transportadora: RegistroGenerico) {
+    if (!cotacaoObrigaTransportadoraPedido(detalhe.cotacao, parametrosEscolha)) {
+      return null;
+    }
+
+    if (obterTransportadoraId(transportadora) !== Number(detalhe.cotacao.transportadora_pedido_id ?? 0)) {
+      return 'Origem obriga a transportadora do pedido.';
+    }
+
+    return null;
+  }
+
+  function montarMotivoEscolha(transportadora: RegistroGenerico, motivoSelecionado?: RegistroGenerico | null): { motivo_id?: number | null; motivo_descricao?: string | null } {
+    if (cotacaoObrigaTransportadoraPedido(detalhe.cotacao, parametrosEscolha)) {
+      return {
+        motivo_id: obterMotivoPadraoTransportadoraPedido(parametrosEscolha),
+        motivo_descricao: 'Transportadora definida no pedido/origem comercial.'
+      };
+    }
+
+    if (motivoEscolhaTransportadoraNaoVencedora(transportadora, detalhe.transportadoras)) {
+      if (motivoSelecionado?.id || motivoSelecionado?.descricao) {
+        return {
+          motivo_id: motivoSelecionado.id ? Number(motivoSelecionado.id) : null,
+          motivo_descricao: String(motivoSelecionado.descricao ?? '').trim()
+        };
+      }
+      throw new Error('Selecione o motivo para escolher uma transportadora que não venceu a cotação.');
+    }
+
+    return {};
+  }
 
   async function copiarLink(link?: unknown) {
     if (!link) {
       return;
     }
-    await navigator.clipboard.writeText(String(link));
+    await copiarTexto(link);
   }
 
   async function escolher(transportadora: RegistroGenerico) {
     if (String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO') {
-      window.alert('Cotação com CT-e emitido não permite alteração da transportadora escolhida.');
+      setErroEscolhaModal('Cotação com CT-e emitido não permite alteração da transportadora escolhida.');
+      setTransportadoraConfirmacao(transportadora);
       return;
     }
 
+    const bloqueioEscolha = obterBloqueioEscolha(transportadora);
+    if (bloqueioEscolha) {
+      setErroEscolhaModal(bloqueioEscolha);
+      setTransportadoraConfirmacao(transportadora);
+      return;
+    }
+
+    if (!cotacaoObrigaTransportadoraPedido(detalhe.cotacao, parametrosEscolha) && motivoEscolhaTransportadoraNaoVencedora(transportadora, detalhe.transportadoras)) {
+      setTransportadoraMotivo(transportadora);
+      return;
+    }
+
+    setTransportadoraConfirmacao(transportadora);
+  }
+
+  async function confirmarEscolhaTransportadora(transportadora: RegistroGenerico) {
+    if (String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO') {
+      setErroEscolhaModal('Cotação com CT-e emitido não permite alteração da transportadora escolhida.');
+      return;
+    }
+
+    let dadosMotivo: { motivo_id?: number | null; motivo_descricao?: string | null } = montarMotivoEscolha(transportadora, motivoEscolhaManual);
+
     if (detalhe.cotacao.transportadora_escolhida_id || detalhe.cotacao.transportadora_escolhida) {
-      const motivo = window.prompt('Já existe transportadora escolhida. Informe o motivo da alteração para continuar:') ?? '';
-      if (!motivo.trim()) {
-        return;
-      }
       await registrarTimelineCotacao(String(detalhe.cotacao.id), {
         transportadora_id: transportadora.transportadora_id ?? null,
         tipo_evento: 'ALTERACAO_TRANSPORTADORA_ESCOLHIDA',
         titulo: 'Alteração da transportadora escolhida',
-        descricao: motivo
+        descricao: dadosMotivo.motivo_descricao ?? 'Transportadora escolhida alterada pelo usuário.'
       });
     }
 
-    await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id));
+    await escolherTransportadora(String(detalhe.cotacao.id), String(transportadora.id), dadosMotivo);
+    setTransportadoraConfirmacao(null);
+    setMotivoEscolhaManual(null);
+    setErroEscolhaModal('');
     await aoAtualizar();
   }
 
@@ -2425,6 +2914,80 @@ function DetalheCotacaoConteudo({
     }
   }
 
+  async function vincularTransportadoraDetalhe(transportadora: RegistroGenerico) {
+    const transportadoraId = obterTransportadoraId(transportadora);
+    if (!transportadoraId) {
+      setErroSeletorTransportadora('Transportadora sem identificador válido para vincular.');
+      return;
+    }
+
+    const jaVinculada = detalhe.transportadoras.some((item: RegistroGenerico) => String(item.transportadora_id ?? item.id) === String(transportadoraId));
+    if (jaVinculada) {
+      setErroSeletorTransportadora('Essa transportadora já está vinculada na cotação.');
+      return;
+    }
+
+    try {
+      await adicionarTransportadoraCotacao(String(detalhe.cotacao.id), transportadoraId, 'Transportadora adicionada pela aba Cotação Transportadora.');
+      setSeletorTransportadoraAberto(false);
+      setErroSeletorTransportadora('');
+      setMensagemLink('Transportadora vinculada para cotação.');
+      await aoAtualizar();
+    } catch (error) {
+      setErroSeletorTransportadora(error instanceof Error ? error.message : 'Falha ao vincular transportadora.');
+    }
+  }
+
+  async function editarValorManualDetalhe(transportadora: RegistroGenerico) {
+    const valor = window.prompt('Informe o novo valor do frete:', String(transportadora.valor_frete ?? ''));
+    if (!valor) {
+      return;
+    }
+    const prazo = window.prompt('Informe o prazo em dias, se houver:', String(transportadora.prazo_dias ?? '')) ?? '';
+    const observacao = window.prompt('Observação da alteração manual:', 'Ajuste manual pelo usuário') ?? '';
+
+    await alterarValorFreteManual(String(transportadora.id), Number(valor.replace(',', '.')), observacao, prazo ? Number(prazo) : null);
+    setMensagemLink('Valor/prazo alterado manualmente com rastreabilidade.');
+    await aoAtualizar();
+  }
+
+  async function removerTransportadoraDetalhe(transportadora: RegistroGenerico) {
+    if (!podeRemoverTransportadoraCotacao(transportadora)) {
+      setErroSeletorTransportadora('Somente transportadoras adicionadas sem valor e sem resposta podem ser removidas.');
+      return;
+    }
+
+    const confirmar = window.confirm('Remover esta transportadora adicionada sem valor da cotação?');
+    if (!confirmar) {
+      return;
+    }
+
+    try {
+      await excluirTransportadoraCotacao(String(detalhe.cotacao.id), String(transportadora.id));
+      setMensagemLink('Transportadora removida da cotação.');
+      setErroSeletorTransportadora('');
+      await aoAtualizar();
+    } catch (error) {
+      setErroSeletorTransportadora(error instanceof Error ? error.message : 'Falha ao remover transportadora.');
+    }
+  }
+
+  async function registrarObservacaoTimelineDetalhe(transportadoraId?: number) {
+    const descricao = window.prompt('Observação operacional da cotação:') ?? '';
+    if (!descricao.trim()) {
+      return;
+    }
+
+    await registrarTimelineCotacao(String(detalhe.cotacao.id), {
+      transportadora_id: transportadoraId ?? null,
+      tipo_evento: 'OBSERVACAO_OPERACIONAL',
+      titulo: 'Observação operacional',
+      descricao
+    });
+    setMensagemLink('Observação registrada na timeline.');
+    await aoAtualizar();
+  }
+
   return (
     <section className="detalheCotacao detalheCotacaoContextual">
       <header>
@@ -2432,10 +2995,13 @@ function DetalheCotacaoConteudo({
           <span>Detalhe operacional</span>
           <h2>{String(detalhe.cotacao.tipo_documento)} {String(detalhe.cotacao.numero_documento)}</h2>
           <p>{String(detalhe.cotacao.nome_destinatario ?? '')} - {String(detalhe.cotacao.cidade_destino ?? '')}/{String(detalhe.cotacao.uf_destino ?? '')}</p>
+          <p className="metaDetalheCotacao">Cotação criada em: {formatarDataHoraBrasileira(detalhe.cotacao.criado_em)}</p>
         </div>
         <div className="statusRapidoDetalhe">
           {String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status ?? '').trim() && <i className="tagStatusDetalhe etapaKanban">{String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status)}</i>}
           {(detalhe.cotacao.numeros_nfe || detalhe.cotacao.numero_nfe_faturada || Number(detalhe.cotacao.total_nfes ?? 0) > 0 || detalhe.cotacao.faturado_em) && <i className="tagStatusDetalhe faturado">Faturado</i>}
+          {detalhe.cotacao.lote_fluxo_logistico && <i className="tagStatusDetalhe fluxoLogistico">Fluxo {String(detalhe.cotacao.lote_fluxo_logistico)}</i>}
+          {Number(detalhe.cotacao.total_outras_cotacoes ?? detalhe.outrasCotacoes?.length ?? 0) > 0 && <i className="tagStatusDetalhe outrasCotacoes">Outras cotações do pedido</i>}
         </div>
       </header>
       <ComparativoFases cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras} />
@@ -2458,11 +3024,54 @@ function DetalheCotacaoConteudo({
         ].map((item) => <button key={item.id} className={aba === item.id ? 'active' : ''} onClick={() => setAba(item.id)}>{item.nome}</button>)}
       </nav>
       {aba === 'VENDAS' && <AbaCampos titulo="Vendas" cotacao={detalhe.cotacao} campos={['origem_comercial', 'vendedor_nome', 'data_documento', 'transportadora_pedido_nome', 'valor_frete_pedido', 'prazo_pedido_dias', 'valor_mercadoria', 'nome_destinatario', 'cidade_destino', 'uf_destino']} />}
-      {aba === 'AUTOMATICA' && <AbaTransportadoras titulo="Cotação Automática" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoAutomatica(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} />}
-      {aba === 'TRANSPORTADORA' && <AbaTransportadoras titulo="Cotação Transportadora" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoTransportadora(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} />}
-      {aba === 'APROVADA' && <AbaCampos titulo="Transportadora Escolhida" cotacao={detalhe.cotacao} campos={['transportadora_escolhida', 'valor_frete_final', 'prazo_final_dias', 'aprovado_em', 'observacao_analista']} />}
+      {aba === 'AUTOMATICA' && <AbaTransportadoras titulo="Cotação Automática" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoAutomatica(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} removerTransportadora={removerTransportadoraDetalhe} bloqueioEscolha={obterBloqueioEscolha} escolhaBloqueada={String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO'} />}
+      {aba === 'TRANSPORTADORA' && (
+        <>
+          <div className="abaAcaoInline">
+            <button className="ghost" onClick={() => setSeletorTransportadoraAberto(true)}>+ Vincular transportadora</button>
+          </div>
+          <AbaTransportadoras titulo="Cotação Transportadora" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoTransportadora(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={editarValorManualDetalhe} registrarObservacaoTimeline={registrarObservacaoTimelineDetalhe} removerTransportadora={removerTransportadoraDetalhe} bloqueioEscolha={obterBloqueioEscolha} escolhaBloqueada={String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO'} />
+        </>
+      )}
+      {aba === 'APROVADA' && <AbaCampos titulo="Transportadora Escolhida" cotacao={detalhe.cotacao} campos={['transportadora_escolhida', 'valor_frete_final', 'prazo_final_dias', 'motivo_escolha_transportadora_descricao', 'escolhido_em', 'observacao_analista']} />}
       {aba === 'CTE' && <AbaCampos titulo="CT-e" cotacao={detalhe.cotacao} campos={['transportadora_cte_nome', 'numeros_cte', 'valor_frete_cte_total', 'ultimo_cte_em']} />}
-      <DetalhamentoCompletoCotacao cotacao={detalhe.cotacao} itens={detalhe.itens} notasFiscais={detalhe.notasFiscais ?? []} ctes={detalhe.ctes ?? []} />
+      <DetalhamentoCompletoCotacao cotacao={detalhe.cotacao} itens={detalhe.itens} notasFiscais={detalhe.notasFiscais ?? []} ctes={detalhe.ctes ?? []} outrasCotacoes={detalhe.outrasCotacoes ?? []} />
+      <SeletorTransportadoraModal
+        aberto={seletorTransportadoraAberto}
+        titulo="Vincular transportadora"
+        transportadoras={transportadorasCadastro}
+        idsBloqueados={detalhe.transportadoras.map((item: RegistroGenerico) => item.transportadora_id ?? item.id)}
+        sugestaoId={transportadorasCadastro.find((item) => String(item.codigo_interno ?? '') === String(detalhe.cotacao.transportadora_pedido_codigo ?? ''))?.id}
+        erro={erroSeletorTransportadora}
+        aoSelecionar={vincularTransportadoraDetalhe}
+        aoFechar={() => {
+          setSeletorTransportadoraAberto(false);
+          setErroSeletorTransportadora('');
+        }}
+      />
+      <ModalConfirmacaoEscolha
+        aberto={Boolean(transportadoraConfirmacao)}
+        transportadora={transportadoraConfirmacao}
+        erro={erroEscolhaModal}
+        aoCancelar={() => {
+          setTransportadoraConfirmacao(null);
+          setErroEscolhaModal('');
+        }}
+        aoConfirmar={() => transportadoraConfirmacao ? confirmarEscolhaTransportadora(transportadoraConfirmacao).catch((error) => setErroEscolhaModal(error instanceof Error ? error.message : 'Falha ao escolher transportadora.')) : undefined}
+      />
+      <ModalSelecaoMotivoEscolha
+        aberto={Boolean(transportadoraMotivo)}
+        transportadora={transportadoraMotivo}
+        motivos={motivosEscolha}
+        aoCancelar={() => setTransportadoraMotivo(null)}
+        aoSelecionar={(motivo) => {
+          const transportadora = transportadoraMotivo;
+          setMotivoEscolhaManual(motivo);
+          setErroEscolhaModal('');
+          setTransportadoraMotivo(null);
+          setTransportadoraConfirmacao(transportadora);
+        }}
+      />
     </section>
   );
 }
@@ -2657,6 +3266,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
   const [dados, setDados] = useState<{ resumo: RegistroGenerico; itens: RegistroGenerico[] } | null>(null);
   const [valorFrete, setValorFrete] = useState('');
   const [prazoDias, setPrazoDias] = useState('');
+  const [numeroCotacaoTransportadora, setNumeroCotacaoTransportadora] = useState('');
   const [observacao, setObservacao] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
@@ -2680,7 +3290,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
     setMensagem('');
 
     try {
-      const resposta = await responderCotacaoPublica(token, Number(valorFrete), observacao, prazoDias ? Number(prazoDias) : null);
+      const resposta = await responderCotacaoPublica(token, Number(valorFrete), observacao, prazoDias ? Number(prazoDias) : null, numeroCotacaoTransportadora.trim() || null);
       setMensagem(String((resposta as any).mensagem ?? 'Operação concluída.'));
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao responder cotação.');
@@ -2712,9 +3322,11 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
     ['Total do Frete', formatarMoeda(valorFrete || resumo.valor_solicitado || 0)],
     ...(resumo.recebe_prazo_solicitado === false ? [] : [['Prazo informado na venda', `${String(resumo.prazo_informado_venda_dias ?? resumo.prazo_pedido_dias ?? 0)} dias`]]),
     ['Prazo tabela', `${String(resumo.prazo_tabela_transportadora ?? resumo.menor_prazo_atual ?? 0)} dias`],
-    ['% Tabela sobre o Total', formatarPercentual(percentualTabelaTotal)],
-    ...(resumo.apresenta_valor_tabela === false ? [] : [['Valor Tabela', formatarMoeda(resumo.valor_tabela_transportadora ?? 0)]]),
-    ...(resumo.apresenta_menor_cotacao === false ? [] : [['Menor valor automático atual', formatarMoeda(resumo.menor_frete_atual ?? 0)]])
+    ...(resumo.apresenta_valor_tabela === false || valorTabelaPublico <= 0 ? [] : [
+      ['% Tabela sobre o Total', formatarPercentual(percentualTabelaTotal)],
+      ['Valor Tabela', formatarMoeda(resumo.valor_tabela_transportadora ?? 0)]
+    ]),
+    ...(resumo.apresenta_menor_cotacao === false || Number(resumo.menor_frete_atual ?? 0) <= 0 ? [] : [['Menor valor automático atual', formatarMoeda(resumo.menor_frete_atual ?? 0)]])
   ];
 
   return (
@@ -2747,7 +3359,13 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
             <div className="resumoPublico">
               <strong>{String(resumo.transportadora_nome ?? '')}</strong>
               <p>{String(resumo.nome_destinatario ?? '')} - {String(resumo.cidade_destino ?? '')}/{String(resumo.uf_destino ?? '')}</p>
-              <p>Valor tabela: {formatarMoeda(resumo.valor_tabela_transportadora ?? 0)} · Menor automático: {formatarMoeda(resumo.menor_frete_atual ?? 0)}</p>
+              {(valorTabelaPublico > 0 || Number(resumo.menor_frete_atual ?? 0) > 0) && (
+                <p>
+                  {valorTabelaPublico > 0 ? `Valor tabela: ${formatarMoeda(resumo.valor_tabela_transportadora ?? 0)}` : ''}
+                  {valorTabelaPublico > 0 && Number(resumo.menor_frete_atual ?? 0) > 0 ? ' · ' : ''}
+                  {Number(resumo.menor_frete_atual ?? 0) > 0 ? `Menor automático: ${formatarMoeda(resumo.menor_frete_atual ?? 0)}` : ''}
+                </p>
+              )}
             </div>
             <div className="publicoCampos">
               {camposPublicos.map(([rotulo, valor]) => (
@@ -2786,6 +3404,12 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
                 <label>
                   Prazo em dias{resumo.prazo_resposta_obrigatorio ? ' *' : ''}
                   <input type="number" value={prazoDias} onChange={(evento) => setPrazoDias(evento.target.value)} placeholder="Ex.: 3" />
+                </label>
+              )}
+              {resumo.solicita_numero_cotacao && (
+                <label>
+                  Número da cotação da transportadora
+                  <input value={numeroCotacaoTransportadora} onChange={(evento) => setNumeroCotacaoTransportadora(evento.target.value)} placeholder="Ex.: COT-12345" />
                 </label>
               )}
               <div className={diferenca <= 0 && valorInformado > 0 ? 'indicadorDesconto' : 'indicadorAcrescimo'}>
@@ -2842,12 +3466,14 @@ function EnvioMassaCotacoes() {
   const [detalheEnvio, setDetalheEnvio] = useState<{ cotacao: RegistroGenerico; itens: RegistroGenerico[]; transportadoras: RegistroGenerico[] } | null>(null);
   const [detalheCotacaoCompleto, setDetalheCotacaoCompleto] = useState<DetalheCotacaoNormalizado | null>(null);
   const [envio, setEnvio] = useState('TODOS');
+  const [statusFiltro, setStatusFiltro] = useState('');
   const [somenteTop3, setSomenteTop3] = useState(false);
   const [busca, setBusca] = useState('');
   const [vendedorFiltro, setVendedorFiltro] = useState('');
   const [transportadoraFiltro, setTransportadoraFiltro] = useState('');
   const [sugestaoFiltro, setSugestaoFiltro] = useState('TODOS');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
+  const [somenteFluxoLogistico, setSomenteFluxoLogistico] = useState(true);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [colunasAbertas, setColunasAbertas] = useState(false);
   const [pagina, setPagina] = useState(1);
@@ -2868,6 +3494,10 @@ function EnvioMassaCotacoes() {
   });
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
+  const [transportadorasCadastro, setTransportadorasCadastro] = useState<RegistroGenerico[]>([]);
+  const [seletorEnvioAberto, setSeletorEnvioAberto] = useState(false);
+  const [erroSeletorEnvio, setErroSeletorEnvio] = useState('');
+  const [logSelecao, setLogSelecao] = useState('');
   const pedidosLista = Array.isArray(pedidos) ? pedidos : [];
   const preparacaoLista = Array.isArray(preparacao) ? preparacao : [];
   const colunasVisiveis = colunasEnvio.filter((coluna) => coluna.visivel);
@@ -2883,10 +3513,15 @@ function EnvioMassaCotacoes() {
   const totalPaginas = Math.max(1, Math.ceil(pedidosFiltrados.length / limite));
   const paginaCorrigida = Math.min(pagina, totalPaginas);
   const pedidosPagina = pedidosFiltrados.slice((paginaCorrigida - 1) * limite, paginaCorrigida * limite);
+  const pedidoSemOfertaBloqueante = (pedido: RegistroGenerico) => Boolean(pedido.sem_oferta_disponivel) && Number(pedido.fornecedores_vinculados ?? 0) <= 0;
 
   useEffect(() => {
     localStorage.setItem('controlSHubEnvioColunas', JSON.stringify(colunasEnvio));
   }, [colunasEnvio]);
+
+  useEffect(() => {
+    listarTransportadoras().then(setTransportadorasCadastro).catch(() => setTransportadorasCadastro([]));
+  }, []);
 
   function atualizarColuna(chave: string, dados: Partial<ColunaEnvioCotacao>) {
     setColunasEnvio((atuais) => atuais.map((coluna) => coluna.chave === chave ? { ...coluna, ...dados } : coluna));
@@ -2928,7 +3563,7 @@ function EnvioMassaCotacoes() {
   }
 
   async function carregar() {
-    const retorno = await listarPedidosEnvioMassa({ situacao: 'ATIVOS', envio, busca, vendedor: vendedorFiltro, transportadora: transportadoraFiltro, faturado: faturadoFiltro || undefined });
+    const retorno = await listarPedidosEnvioMassa({ situacao: 'ATIVOS', envio, status: statusFiltro || undefined, busca, vendedor: vendedorFiltro, transportadora: transportadoraFiltro, faturado: faturadoFiltro || undefined, fluxo_logistico: somenteFluxoLogistico ? 'true' : undefined });
     const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
     setPedidos(dados);
     setPagina(1);
@@ -2936,7 +3571,7 @@ function EnvioMassaCotacoes() {
 
   useEffect(() => {
     carregar().catch(() => setPedidos([]));
-  }, [envio, faturadoFiltro]);
+  }, [envio, faturadoFiltro, statusFiltro, somenteFluxoLogistico]);
 
   useEffect(() => {
     if (!mensagem) {
@@ -2993,6 +3628,65 @@ function EnvioMassaCotacoes() {
     }
   }
 
+  async function adicionarTransportadoraNoDetalheEnvio() {
+    if (!detalheEnvio) {
+      return;
+    }
+    setSeletorEnvioAberto(true);
+  }
+
+  async function selecionarTransportadoraNoDetalheEnvio(escolhida: RegistroGenerico) {
+    if (!detalheEnvio) {
+      return;
+    }
+    const transportadoraId = obterTransportadoraId(escolhida);
+    if (!transportadoraId) {
+      setErroSeletorEnvio('Transportadora sem identificador válido para vincular.');
+      return;
+    }
+
+    const transportadorasJaVinculadas = new Set(detalheEnvio.transportadoras.map((item: RegistroGenerico) => String(item.transportadora_id ?? item.id)));
+    if (transportadorasJaVinculadas.has(String(transportadoraId))) {
+      setErroSeletorEnvio('Essa transportadora já está vinculada na cotação.');
+      return;
+    }
+
+    try {
+      await adicionarTransportadoraCotacao(String(detalheEnvio.cotacao.id), transportadoraId, 'Transportadora adicionada pela tela de envio.');
+      await abrirDetalheEnvio(String(detalheEnvio.cotacao.id));
+      setSeletorEnvioAberto(false);
+      setErroSeletorEnvio('');
+      setMensagem('Transportadora adicionada para envio da cotação.');
+    } catch (error) {
+      setErroSeletorEnvio(error instanceof Error ? error.message : 'Falha ao vincular transportadora.');
+    }
+  }
+
+  async function removerTransportadoraNoDetalheEnvio(transportadora: RegistroGenerico) {
+    if (!detalheEnvio) {
+      return;
+    }
+
+    if (!podeRemoverTransportadoraCotacao(transportadora)) {
+      setErroSeletorEnvio('Somente transportadoras adicionadas sem valor e sem resposta podem ser removidas.');
+      return;
+    }
+
+    const confirmar = window.confirm('Remover esta transportadora adicionada sem valor da cotação?');
+    if (!confirmar) {
+      return;
+    }
+
+    try {
+      await excluirTransportadoraCotacao(String(detalheEnvio.cotacao.id), String(transportadora.id));
+      await abrirDetalheEnvio(String(detalheEnvio.cotacao.id));
+      setErroSeletorEnvio('');
+      setMensagem('Transportadora removida da cotação.');
+    } catch (error) {
+      setErroSeletorEnvio(error instanceof Error ? error.message : 'Falha ao remover transportadora.');
+    }
+  }
+
   async function enviar(reenviar: boolean, itensEnvio?: RegistroGenerico[], grupoEnvio?: { chave: string; transportadoraId: number; nome: string }) {
     setErro('');
     setMensagem('');
@@ -3014,7 +3708,11 @@ function EnvioMassaCotacoes() {
         transportadoras_ids: transportadorasIds,
         reenviar
       });
-      setMensagem(`Envio processado. Resultado: ${JSON.stringify(resposta.resultados ?? [])}`);
+      const resultados = Array.isArray((resposta as any).resultados) ? (resposta as any).resultados : [];
+      const erros = resultados.filter((item: any) => String(item.status ?? '').toUpperCase() === 'ERRO');
+      setMensagem(erros.length
+        ? `Envio concluído com ${erros.length} alerta(s). Verifique os itens não enviados.`
+        : `Cotação enviada para ${grupoEnvio?.nome ?? 'as transportadoras'} com sucesso.`);
       if (itensEnvio?.length) {
         const enviados = new Set(itensEnvio.map((item: any) => `${String(item.cotacao_id)}|${String(item.transportadora_id)}`));
         setPreparacao((atuais) => atuais.filter((item: any) => !enviados.has(`${String(item.cotacao_id)}|${String(item.transportadora_id)}`)));
@@ -3043,6 +3741,7 @@ function EnvioMassaCotacoes() {
       setMensagem('Transportadora escolhida com sucesso.');
       setDetalheEnvio(null);
       await carregar();
+      setLogSelecao(`Transportadora escolhida com sucesso para ${String(pedidoBase?.numero_documento ?? cotacaoId)}.`);
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao escolher a transportadora.');
     }
@@ -3099,7 +3798,9 @@ function EnvioMassaCotacoes() {
 
     await carregar();
     setSelecionados([]);
-    setMensagem(falhas.length ? `Escolha concluída com alertas: ${falhas.join('; ')}` : 'Transportadora de menor valor escolhida para os pedidos selecionados.');
+    const textoLog = falhas.length ? `Escolha concluída com alertas:\n${falhas.join('\n')}` : 'Transportadora de menor valor escolhida para os pedidos selecionados.';
+    setMensagem(falhas.length ? 'Escolha concluída com alertas. Veja o log da seleção.' : 'Transportadora de menor valor escolhida para os pedidos selecionados.');
+    setLogSelecao(textoLog);
   }
 
   const temReenvio = preparacaoLista.some((item: any) => item.ja_enviado);
@@ -3125,6 +3826,13 @@ function EnvioMassaCotacoes() {
       {mensagem && <div className="sucesso">{mensagem}</div>}
       <div className="filtrosLinha envioFiltros">
         <input placeholder="Pedido, chave, destinatário" value={busca} onChange={(evento) => setBusca(evento.target.value)} />
+        <select value={statusFiltro} onChange={(evento) => { setStatusFiltro(evento.target.value); setPagina(1); }}>
+          <option value="">Todos status</option>
+          <option value="COTACAO_PENDENTE">Cotação Pendente</option>
+          <option value="COTACAO_AUTOMATICA">Cotação Automática</option>
+          <option value="COTACAO_TRANSPORTADORA">Cotação Transportadora</option>
+          <option value="EM_ANALISE">Em Análise</option>
+        </select>
         <select value={envio} onChange={(evento) => setEnvio(evento.target.value)}>
           <option value="TODOS">Todos envios</option>
           <option value="NAO_ENVIADOS">Não enviados</option>
@@ -3144,10 +3852,26 @@ function EnvioMassaCotacoes() {
           <input type="checkbox" checked={somenteTop3} onChange={(evento) => setSomenteTop3(evento.target.checked)} />
           Enviar somente Top 3
         </label>
-        <button className="ghost" onClick={() => setSelecionados(pedidosPagina.filter((pedido: any) => String(pedido.situacao_pedido) === 'ATIVO').map((pedido: any) => String(pedido.id)))}>
+        <label className="toggleLinha compacto" title="Mostra somente cotações com lote de fluxo logístico informado.">
+          <input type="checkbox" checked={somenteFluxoLogistico} onChange={(evento) => { setSomenteFluxoLogistico(evento.target.checked); setPagina(1); }} />
+          Fluxo logístico
+        </label>
+        <button className="ghost" onClick={() => {
+          const bloqueados = pedidosPagina.filter((pedido: any) => pedidoSemOfertaBloqueante(pedido));
+          if (bloqueados.length) {
+            setMensagem('Cotações sem oferta disponível não foram marcadas.');
+          }
+          setSelecionados(pedidosPagina.filter((pedido: any) => String(pedido.situacao_pedido) === 'ATIVO' && !pedidoSemOfertaBloqueante(pedido)).map((pedido: any) => String(pedido.id)));
+        }}>
           Selecionar página
         </button>
-        <button className="ghost" onClick={() => setSelecionados(pedidosFiltrados.filter((pedido: any) => String(pedido.situacao_pedido) === 'ATIVO').map((pedido: any) => String(pedido.id)))}>
+        <button className="ghost" onClick={() => {
+          const bloqueados = pedidosFiltrados.filter((pedido: any) => pedidoSemOfertaBloqueante(pedido));
+          if (bloqueados.length) {
+            setMensagem('Cotações sem oferta disponível não foram marcadas.');
+          }
+          setSelecionados(pedidosFiltrados.filter((pedido: any) => String(pedido.situacao_pedido) === 'ATIVO' && !pedidoSemOfertaBloqueante(pedido)).map((pedido: any) => String(pedido.id)));
+        }}>
           Selecionar todos
         </button>
         <button className="ghost" onClick={() => setSelecionados([])}>
@@ -3194,16 +3918,23 @@ function EnvioMassaCotacoes() {
           <tbody>
             {pedidosPagina.map((pedido, indice) => (
               <tr
-                className={pedido.sugestao_cotacao ? 'linhaAlertaSugestao' : ''}
-                title={pedido.sugestao_cotacao ? montarTextoSugestaoCotacao(pedido, pedido) : ''}
+                className={pedidoSemOfertaBloqueante(pedido) ? 'linhaSemOferta' : pedido.sugestao_cotacao || pedido.sem_oferta_disponivel ? 'linhaAlertaSugestao' : ''}
+                title={pedidoSemOfertaBloqueante(pedido) ? 'Cotação sem Oferta disponível' : pedido.sugestao_cotacao || pedido.sem_oferta_disponivel ? montarTextoSugestaoCotacao(pedido, pedido) : ''}
                 key={`${String(pedido.id ?? pedido.numero_documento ?? 'pedido')}-${String(pedido.codigo_chave ?? indice)}`}
                 onDoubleClick={() => abrirDetalheEnvio(String(pedido.id))}
               >
                 <td>
                   <input
                     type="checkbox"
+                    aria-disabled={pedidoSemOfertaBloqueante(pedido)}
                     checked={selecionados.map(String).includes(String(pedido.id))}
-                    onChange={(evento) => setSelecionados(evento.target.checked ? [...selecionados, String(pedido.id)] : selecionados.filter((id) => String(id) !== String(pedido.id)))}
+                    onChange={(evento) => {
+                      if (pedidoSemOfertaBloqueante(pedido)) {
+                        abrirDetalheEnvio(String(pedido.id));
+                        return;
+                      }
+                      setSelecionados(evento.target.checked ? [...selecionados, String(pedido.id)] : selecionados.filter((id) => String(id) !== String(pedido.id)));
+                    }}
                   />
                 </td>
                 {colunasVisiveis.map((coluna) => (
@@ -3253,7 +3984,7 @@ function EnvioMassaCotacoes() {
           </header>
           <div className="motivoSugestaoCotacao">
             <strong>Motivo da sugestão</strong>
-            <p>{montarTextoSugestaoCotacao(detalheEnvio.cotacao, pedidosLista.find((pedido: RegistroGenerico) => String(pedido.id) === String(detalheEnvio.cotacao.id)))}</p>
+            <p>{pedidosLista.find((pedido: RegistroGenerico) => String(pedido.id) === String(detalheEnvio.cotacao.id))?.sem_oferta_disponivel ? 'Cotação sem Oferta disponível.' : montarTextoSugestaoCotacao(detalheEnvio.cotacao, pedidosLista.find((pedido: RegistroGenerico) => String(pedido.id) === String(detalheEnvio.cotacao.id)))}</p>
             <button className="ghost" onClick={() => abrirDetalheCotacaoCompleto(String(detalheEnvio.cotacao.id))}>Abrir detalhe da cotação</button>
           </div>
           <div className="detalheEnvioResumo">
@@ -3264,7 +3995,7 @@ function EnvioMassaCotacoes() {
           </div>
           <div className="detalheEnvioGrid">
             <div>
-              <h4>Transportadoras vinculadas</h4>
+              <h4>Transportadoras vinculadas <button className="miniBotao" onClick={adicionarTransportadoraNoDetalheEnvio}>+ Adicionar</button></h4>
               {detalheEnvio.transportadoras.map((transportadora, indice) => (
                 <article className="linhaFornecedorEnvio" key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}`}>
                   <div>
@@ -3273,7 +4004,10 @@ function EnvioMassaCotacoes() {
                   </div>
                   <div className="acoesTabela">
                     <span>R$ {String(transportadora.valor_frete ?? '0')}</span>
-                    <button className="miniBotao" onClick={() => escolherTransportadoraEnvio(String(detalheEnvio.cotacao.id), transportadora)}>Escolher</button>
+                    {podeRemoverTransportadoraCotacao(transportadora) && (
+                      <button className="miniBotao perigo" onClick={() => removerTransportadoraNoDetalheEnvio(transportadora)}>Remover</button>
+                    )}
+                    <button className="miniBotao" onClick={() => { abrirDetalheCotacaoCompleto(String(detalheEnvio.cotacao.id)); setDetalheEnvio(null); }}>Escolher</button>
                   </div>
                 </article>
               ))}
@@ -3302,6 +4036,13 @@ function EnvioMassaCotacoes() {
       >
         {detalheCotacaoCompleto && <DetalheCotacaoConteudo detalhe={detalheCotacaoCompleto} usuario={null} aoAtualizar={async () => setDetalheCotacaoCompleto(normalizarDetalheCotacao(await obterCotacao(String(detalheCotacaoCompleto.cotacao.id))))} />}
       </PainelContextual>
+      <PainelContextual
+        aberto={preparacao.length > 0}
+        largura="amplo"
+        titulo="Conferência e envio por transportadora"
+        subtitulo="Revise o e-mail, confira documentos e envie por transportadora."
+        aoFechar={() => setPreparacao([])}
+      >
       {preparacao.length > 0 && (
         <section className="preEnvio">
           <h3>Conferência e envio por transportadora</h3>
@@ -3310,6 +4051,7 @@ function EnvioMassaCotacoes() {
             {gruposPreparacao.map((grupo) => {
               const chave = grupo.chave;
               const emailHtml = emailsPorTransportadora[chave] ?? '';
+              const emailPreviewHtml = emailHtml.split('DOCUMENTOS').join(montarTabelaDocumentosPreview(grupo.itens));
               return (
                 <article key={chave} className="grupoEmailTransportadora">
                   <header>
@@ -3318,13 +4060,39 @@ function EnvioMassaCotacoes() {
                       <h4>{grupo.nome}</h4>
                       <p>{grupo.email || 'Transportadora sem e-mail cadastrado'} · {grupo.itens.length} documento(s)</p>
                     </div>
-                    <button className="primary" onClick={() => enviar(false, grupo.itens, grupo)} disabled={!grupo.email}>Enviar para esta transportadora</button>
+                    <button
+                      className="primary"
+                      onClick={() => {
+                        const possuiReenvio = grupo.itens.some((item: any) => item.ja_enviado);
+                        if (possuiReenvio && !window.confirm('Existem documentos já enviados para esta transportadora. Deseja reenviar gerando novo link?')) {
+                          return;
+                        }
+                        enviar(possuiReenvio, grupo.itens, grupo);
+                      }}
+                      disabled={!grupo.email}
+                    >
+                      Enviar para esta transportadora
+                    </button>
                   </header>
                   <div className="chipsEnvio">
                     {grupo.itens.map((item, indice) => (
                       <span className={item.ja_enviado ? 'reenvio' : 'inedito'} key={`${chave}-${indice}`}>
                         {String(item.numero_documento)} · chave {String(item.codigo_chave)} · #{String(item.ranking_frete ?? item.posicao_cotacao ?? '-')} · R$ {String(item.valor_frete ?? '0')} · {item.ja_enviado ? 'já enviado' : 'inédito'}
-                        {item.ultimo_link_enviado && <button className="miniBotao" onClick={() => navigator.clipboard.writeText(String(item.ultimo_link_enviado))}>Copiar link</button>}
+                        {item.ultimo_link_enviado && (
+                          <button
+                            className="miniBotao"
+                            onClick={async () => {
+                              try {
+                                await copiarTexto(item.ultimo_link_enviado);
+                                setMensagem('Link copiado para a área de transferência.');
+                              } catch (error) {
+                                setErro(error instanceof Error ? error.message : 'Não foi possível copiar o link.');
+                              }
+                            }}
+                          >
+                            Copiar link
+                          </button>
+                        )}
                       </span>
                     ))}
                   </div>
@@ -3335,13 +4103,36 @@ function EnvioMassaCotacoes() {
                       onChange={(evento) => setEmailsPorTransportadora((atuais) => ({ ...atuais, [chave]: evento.target.value }))}
                     />
                   </label>
-                  <div className="previewEmailEnvio" dangerouslySetInnerHTML={{ __html: emailHtml }} />
+                  <div className="previewEmailEnvio" dangerouslySetInnerHTML={{ __html: emailPreviewHtml }} />
                 </article>
               );
             })}
           </div>
         </section>
       )}
+      </PainelContextual>
+      <SeletorTransportadoraModal
+        aberto={seletorEnvioAberto}
+        titulo="Adicionar transportadora para cotação"
+        transportadoras={transportadorasCadastro}
+        idsBloqueados={detalheEnvio?.transportadoras.map((item: RegistroGenerico) => item.transportadora_id ?? item.id) ?? []}
+        sugestaoId={transportadorasCadastro.find((item) => String(item.codigo_interno ?? '') === String(detalheEnvio?.cotacao.transportadora_pedido_codigo ?? ''))?.id}
+        erro={erroSeletorEnvio}
+        aoSelecionar={selecionarTransportadoraNoDetalheEnvio}
+        aoFechar={() => {
+          setSeletorEnvioAberto(false);
+          setErroSeletorEnvio('');
+        }}
+      />
+      <PainelContextual
+        aberto={Boolean(logSelecao)}
+        largura="medio"
+        titulo="Log da seleção"
+        subtitulo="Resultado da ação executada para a escolha de transportadora."
+        aoFechar={() => setLogSelecao('')}
+      >
+        <pre className="logSelecaoTransportadora">{logSelecao}</pre>
+      </PainelContextual>
     </section>
   );
 }
@@ -3408,6 +4199,14 @@ function ConfiguracaoEmailUsuario() {
         </label>
         <label>Reply-to<input value={String(formulario.email_resposta ?? '')} onChange={(evento) => setFormulario({ ...formulario, email_resposta: evento.target.value })} /></label>
         <label>Assinatura HTML<input value={String(formulario.assinatura_html ?? '')} onChange={(evento) => setFormulario({ ...formulario, assinatura_html: evento.target.value })} /></label>
+        <label className="campoLargo">
+          Modelo do e-mail para transportadora
+          <small>Tags disponíveis: TRANSPORTADORA e DOCUMENTOS. A tag DOCUMENTOS monta a tabela com Documento, Chave, Valor referência, Validade do Link e Link.</small>
+          <textarea
+            value={String(formulario.modelo_email_transportadora ?? MODELO_EMAIL_TRANSPORTADORA_PADRAO)}
+            onChange={(evento) => setFormulario({ ...formulario, modelo_email_transportadora: evento.target.value })}
+          />
+        </label>
         <label>Configuração padrão<input type="checkbox" checked={Boolean(formulario.padrao ?? false)} onChange={(evento) => setFormulario({ ...formulario, padrao: evento.target.checked })} /></label>
         <label>Permite envio de cotacao<input type="checkbox" checked={Boolean(formulario.permite_envio_cotacao ?? true)} onChange={(evento) => setFormulario({ ...formulario, permite_envio_cotacao: evento.target.checked })} /></label>
         <button className="primary">Salvar e-mail</button>
@@ -3463,6 +4262,7 @@ function TransportadorasOperacional() {
           { nome: 'recebe_prazo_solicitado', rotulo: 'Mostrar prazo da venda', tipo: 'checkbox' },
           { nome: 'exige_prazo_resposta', rotulo: 'Solicitar prazo no link', tipo: 'checkbox' },
           { nome: 'prazo_resposta_obrigatorio', rotulo: 'Prazo obrigatório', tipo: 'checkbox' },
+          { nome: 'solicita_numero_cotacao', rotulo: 'Solicitar número da cotação', tipo: 'checkbox' },
           { nome: 'apresenta_lista_produtos', rotulo: 'Mostrar produtos no link', tipo: 'checkbox' },
           { nome: 'ativa', rotulo: 'Ativa', tipo: 'checkbox' }
         ]}
@@ -3565,6 +4365,14 @@ function ConfiguracoesEmailAdmin({
           </label>
           <label>Reply-to<input value={String(formulario.email_resposta ?? '')} onChange={(evento) => setFormulario({ ...formulario, email_resposta: evento.target.value })} /></label>
           <label>Assinatura HTML<input value={String(formulario.assinatura_html ?? '')} onChange={(evento) => setFormulario({ ...formulario, assinatura_html: evento.target.value })} /></label>
+          <label className="campoLargo">
+            Modelo do e-mail para transportadora
+            <small>Tags disponíveis: TRANSPORTADORA e DOCUMENTOS. A tag DOCUMENTOS monta a tabela com Documento, Chave, Valor referência, Validade do Link e Link.</small>
+            <textarea
+              value={String(formulario.modelo_email_transportadora ?? MODELO_EMAIL_TRANSPORTADORA_PADRAO)}
+              onChange={(evento) => setFormulario({ ...formulario, modelo_email_transportadora: evento.target.value })}
+            />
+          </label>
           <label>Permite envio de cotação<input type="checkbox" checked={Boolean(formulario.permite_envio_cotacao ?? true)} onChange={(evento) => setFormulario({ ...formulario, permite_envio_cotacao: evento.target.checked })} /></label>
           <label>Padrão<input type="checkbox" checked={Boolean(formulario.padrao ?? false)} onChange={(evento) => setFormulario({ ...formulario, padrao: evento.target.checked })} /></label>
           <label>Ativa<input type="checkbox" checked={Boolean(formulario.ativo ?? true)} onChange={(evento) => setFormulario({ ...formulario, ativo: evento.target.checked })} /></label>
@@ -3608,6 +4416,9 @@ function ConfiguracoesEmailAdmin({
 function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario | null }) {
   const [empresa, setEmpresa] = useState<RegistroGenerico>({});
   const [parametros, setParametros] = useState<Record<string, string>>({});
+  const [origensCotacao, setOrigensCotacao] = useState<RegistroGenerico[]>([]);
+  const [motivosEscolha, setMotivosEscolha] = useState<RegistroGenerico[]>([]);
+  const [novoMotivo, setNovoMotivo] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
 
@@ -3634,7 +4445,31 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         setParametros(mapa);
       })
       .catch(() => setParametros({}));
+    listarOrigensComerciaisCotacao().then(setOrigensCotacao).catch(() => setOrigensCotacao([]));
+    listarMotivosEscolhaTransportadora().then(setMotivosEscolha).catch(() => setMotivosEscolha([]));
   }, []);
+
+  function alternarOrigemObrigatoria(origem: string) {
+    const origemNormalizada = origem.trim().toUpperCase();
+    const atuais = listarOrigensObrigatorias(parametros);
+    const novas = atuais.includes(origemNormalizada)
+      ? atuais.filter((item) => item !== origemNormalizada)
+      : [...atuais, origemNormalizada];
+    setParametros({ ...parametros, ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO: novas.join(',') });
+  }
+
+  async function cadastrarMotivoEscolha() {
+    if (!novoMotivo.trim()) {
+      return;
+    }
+    await salvarMotivoEscolhaTransportadora({
+      descricao: novoMotivo.trim(),
+      ativo: true
+    });
+    setNovoMotivo('');
+    setMotivosEscolha(await listarMotivosEscolhaTransportadora());
+    setMensagem('Motivo cadastrado com sucesso.');
+  }
 
   function carregarImagem(campo: 'caminho_logo' | 'caminho_imagem_fundo', arquivo?: File) {
     if (!arquivo) {
@@ -3660,7 +4495,9 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         { chave: 'VALOR_FRETE_COTADO_AUT_MAIOR_QUE', valor: parametros.VALOR_FRETE_COTADO_AUT_MAIOR_QUE ?? '' },
         { chave: 'DIFERENCA_FRETE_COTADO', valor: parametros.DIFERENCA_FRETE_COTADO ?? '' },
         { chave: 'PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT', valor: parametros.PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT ?? '' },
-        { chave: 'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO', valor: parametros.DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO ?? '' }
+        { chave: 'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO', valor: parametros.DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO ?? '' },
+        { chave: 'ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO', valor: parametros.ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO ?? '' },
+        { chave: 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID', valor: parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? '' }
       ]);
       setMensagem('Configurações salvas com sucesso.');
     } catch (error) {
@@ -3701,8 +4538,48 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         <label>Diferença frete cotado<input value={parametros.DIFERENCA_FRETE_COTADO ?? ''} onChange={(evento) => setParametros({ ...parametros, DIFERENCA_FRETE_COTADO: evento.target.value })} /></label>
         <label>% diferença frete cotado aut.<input value={parametros.PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT ?? ''} onChange={(evento) => setParametros({ ...parametros, PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT: evento.target.value })} /></label>
         <label>Dias aceitáveis prazo pedido x cotação<input value={parametros.DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO ?? ''} onChange={(evento) => setParametros({ ...parametros, DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO: evento.target.value })} /></label>
+        <fieldset className="campoLargo grupoConfiguracao">
+          <legend>Obriga transportadora do Pedido para</legend>
+          <small>Selecione as origens comerciais em que a transportadora definida no pedido deve ser obrigatória.</small>
+          <div className="chipsSelecao">
+            {origensCotacao.map((item) => {
+              const origem = String(item.origem_comercial ?? '');
+              const selecionada = listarOrigensObrigatorias(parametros).includes(origem.trim().toUpperCase());
+              return (
+                <label key={origem} className={selecionada ? 'chipOpcao ativo' : 'chipOpcao'}>
+                  <input type="checkbox" checked={selecionada} onChange={() => alternarOrigemObrigatoria(origem)} />
+                  {origem}
+                </label>
+              );
+            })}
+            {origensCotacao.length === 0 && <small>Nenhuma origem encontrada em cotações ativas.</small>}
+          </div>
+        </fieldset>
+        <label>Motivo padrão para transportadora do Pedido
+          <select value={parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? ''} onChange={(evento) => setParametros({ ...parametros, MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID: evento.target.value })}>
+            <option value="">Selecionar motivo</option>
+            {motivosEscolha.filter((item) => item.ativo !== false).map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.descricao)}</option>)}
+          </select>
+        </label>
         <button className="primary">Salvar configuracoes</button>
       </form>
+      <section className="painelSecundarioCadastro">
+        <header>
+          <div>
+            <span>Cadastro auxiliar</span>
+            <h3>Motivos de escolha da transportadora</h3>
+            <p>Use para justificar escolhas que não foram a melhor oferta.</p>
+          </div>
+        </header>
+        <div className="linhaCadastroRapido">
+          <input placeholder="Novo motivo" value={novoMotivo} onChange={(evento) => setNovoMotivo(evento.target.value)} />
+          <button type="button" className="ghost" onClick={cadastrarMotivoEscolha}>Cadastrar motivo</button>
+        </div>
+        <div className="chipsSelecao">
+          {motivosEscolha.map((item) => <span className={item.ativo === false ? 'chipLeitura inativo' : 'chipLeitura'} key={String(item.id)}>{String(item.descricao)}</span>)}
+          {motivosEscolha.length === 0 && <span className="chipLeitura inativo">Nenhum motivo cadastrado</span>}
+        </div>
+      </section>
     </section>
   );
 }
@@ -4062,3 +4939,7 @@ export function App() {
     </div>
   );
 }
+
+
+
+

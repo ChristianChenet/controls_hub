@@ -4,7 +4,8 @@ import { ambiente } from '../configuracao/ambiente.js';
 
 // Pool unico da aplicacao. As consultas devem manter SQL em maiusculo.
 export const banco = new pg.Pool({
-  connectionString: ambiente.bancoUrl
+  connectionString: ambiente.bancoUrl,
+  options: '-c timezone=America/Sao_Paulo'
 });
 
 export async function consultar<T extends QueryResultRow>(sql: string, parametros: unknown[] = []) {

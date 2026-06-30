@@ -47,12 +47,15 @@ if errorlevel 1 goto :falha_popd
 popd
 
 call :log ""
-set /p APLICAR_SQL="Aplicar migrations aditivas 012/013/014/015/016/017 no banco? (S/N): "
+set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 026 no banco? (S/N): "
 if /I "%APLICAR_SQL%"=="S" (
   call :validar_comando psql
   if errorlevel 1 goto :falha_popd
   if "%DATABASE_URL%"=="" (
-    call :log "ERRO: defina DATABASE_URL antes de aplicar migrations."
+    call :carregar_database_url_env
+  )
+  if "%DATABASE_URL%"=="" (
+    call :log "ERRO: defina DATABASE_URL antes de aplicar migrations ou preencha DATABASE_URL no .env da raiz."
     goto :falha_popd
   )
   call :log "Aplicando migration 012_parametros_sugestao_envio_massa.sql..."
@@ -75,6 +78,30 @@ if /I "%APLICAR_SQL%"=="S" (
   if errorlevel 1 goto :falha_popd
   call :log "Aplicando migration 018_recalculo_status_fluxo_cotacao.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\018_recalculo_status_fluxo_cotacao.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 018_status_operacional_sem_trava_legada.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\018_status_operacional_sem_trava_legada.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 020_parametros_publicacao_cotacoes_monvizo.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\020_parametros_publicacao_cotacoes_monvizo.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 021_views_cotacoes_ativas.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\021_views_cotacoes_ativas.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 022_numero_cotacao_transportadora.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\022_numero_cotacao_transportadora.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 023_modelo_email_transportadora.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\023_modelo_email_transportadora.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 024_origens_obrigatorias_motivos_escolha.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\024_origens_obrigatorias_motivos_escolha.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 025_lote_fluxo_logistico_cotacao.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\025_lote_fluxo_logistico_cotacao.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 026_transportadora_escolhida_plataforma_sequencia.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\026_transportadora_escolhida_plataforma_sequencia.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."
@@ -101,6 +128,14 @@ popd
 call :log ""
 call :log "FALHA NA ATUALIZACAO. Consulte o log: %LOG%"
 exit /b 1
+
+:carregar_database_url_env
+if not exist "%RAIZ%.env" exit /b 0
+for /f "usebackq tokens=1,* delims==" %%A in ("%RAIZ%.env") do (
+  if /I "%%A"=="DATABASE_URL" set "DATABASE_URL=%%B"
+)
+if not "%DATABASE_URL%"=="" call :log "DATABASE_URL carregado do .env."
+exit /b 0
 
 :log
 set "linha=%~1"

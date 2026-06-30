@@ -205,13 +205,15 @@ export async function listarCotacoes(filtros?: {
   transportadora?: string;
   bloqueado?: string;
   faturado?: string;
+  multiplas_cotacoes?: string;
+  fluxo_logistico?: string;
   pagina?: string;
   limite?: string;
 }) {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/cotacoes${montarQuery(filtros)}`);
 }
 
-export async function listarPedidosEnvioMassa(filtros: { situacao?: string; busca?: string; envio?: string; vendedor?: string; transportadora?: string; faturado?: string }) {
+export async function listarPedidosEnvioMassa(filtros: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string }) {
   const parametros = new URLSearchParams();
   Object.entries(filtros).forEach(([chave, valor]) => {
     if (valor !== undefined && valor !== null && valor !== '') {
@@ -246,7 +248,7 @@ export async function enviarCotacoesMassa(dados: {
   });
 }
 
-export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string }) {
+export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string }) {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/kanban${montarQuery(filtros)}`);
 }
 
@@ -258,13 +260,21 @@ export async function alterarEtapaCotacao(cotacaoId: string | number, etapa_kanb
 }
 
 export async function obterCotacao(id: string | number) {
-  return requisitar<{ cotacao: RegistroGenerico; itens: RegistroGenerico[]; transportadoras: RegistroGenerico[]; historicos: RegistroGenerico[] }>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(id)}`);
+  return requisitar<{ cotacao: RegistroGenerico; itens: RegistroGenerico[]; transportadoras: RegistroGenerico[]; historicos: RegistroGenerico[]; timeline?: RegistroGenerico[]; notasFiscais?: RegistroGenerico[]; ctes?: RegistroGenerico[]; outrasCotacoes?: RegistroGenerico[] }>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(id)}`);
 }
 
-export async function escolherTransportadora(cotacaoId: string | number, cotacao_transportadora_id: string | number) {
+export async function escolherTransportadora(
+  cotacaoId: string | number,
+  cotacao_transportadora_id: string | number,
+  dados?: { motivo_id?: number | null; motivo_descricao?: string | null }
+) {
   return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/escolher-transportadora`, {
     method: 'POST',
-    body: JSON.stringify({ cotacao_transportadora_id })
+    body: JSON.stringify({
+      cotacao_transportadora_id,
+      motivo_id: dados?.motivo_id ?? null,
+      motivo_descricao: dados?.motivo_descricao ?? null
+    })
   });
 }
 
@@ -293,6 +303,12 @@ export async function adicionarTransportadoraCotacao(cotacaoId: string | number,
   return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/transportadoras`, {
     method: 'POST',
     body: JSON.stringify({ transportadora_id, observacao })
+  });
+}
+
+export async function excluirTransportadoraCotacao(cotacaoId: string | number, cotacaoTransportadoraId: string | number) {
+  return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/transportadoras/${codificarChaveCotacao(cotacaoTransportadoraId)}`, {
+    method: 'DELETE'
   });
 }
 
@@ -351,6 +367,21 @@ export async function salvarParametrosSistema(parametros: { chave: string; valor
   });
 }
 
+export async function listarOrigensComerciaisCotacao() {
+  return requisitar<RegistroGenerico[]>('/api/admin/origens-comerciais-cotacao');
+}
+
+export async function listarMotivosEscolhaTransportadora() {
+  return requisitar<RegistroGenerico[]>('/api/admin/motivos-escolha-transportadora');
+}
+
+export async function salvarMotivoEscolhaTransportadora(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/admin/motivos-escolha-transportadora', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
 export async function obterMinhaConfiguracaoEmail() {
   return requisitar<RegistroGenerico>('/api/usuarios/minha-configuracao-email');
 }
@@ -391,9 +422,9 @@ export async function buscarCotacaoPublica(token: string) {
   return requisitar<{ resumo: RegistroGenerico; itens: RegistroGenerico[] }>(`/api/publico/cotacao/${token}`);
 }
 
-export async function responderCotacaoPublica(token: string, valor_frete: number, observacao: string, prazo_dias?: number | null) {
+export async function responderCotacaoPublica(token: string, valor_frete: number, observacao: string, prazo_dias?: number | null, numero_cotacao_transportadora?: string | null) {
   return requisitar<{ mensagem: string }>(`/api/publico/cotacao/${token}/responder`, {
     method: 'POST',
-    body: JSON.stringify({ valor_frete, prazo_dias, observacao })
+    body: JSON.stringify({ valor_frete, prazo_dias, numero_cotacao_transportadora, observacao })
   });
 }

@@ -17,6 +17,7 @@ export type TransportadoraCadastro = {
   recebe_prazo_solicitado?: boolean;
   exige_prazo_resposta?: boolean;
   prazo_resposta_obrigatorio?: boolean;
+  solicita_numero_cotacao?: boolean;
   apresenta_lista_produtos?: boolean;
   observacoes?: string | null;
   ativa?: boolean;
@@ -57,6 +58,7 @@ export async function listarTransportadoras() {
       t.recebe_prazo_solicitado,
       t.exige_prazo_resposta,
       t.prazo_resposta_obrigatorio,
+      t.solicita_numero_cotacao,
       t.apresenta_lista_produtos,
       t.ativa,
       COUNT(te.empresa_id) AS empresas_vinculadas
@@ -88,12 +90,13 @@ export async function salvarTransportadora(dados: TransportadoraCadastro, usuari
       recebe_prazo_solicitado,
       exige_prazo_resposta,
       prazo_resposta_obrigatorio,
+      solicita_numero_cotacao,
       apresenta_lista_produtos,
       observacoes,
       ativa,
       criado_por_usuario_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, TRUE), COALESCE($9, TRUE), COALESCE($10, TRUE), COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, 24), COALESCE($14, TRUE), COALESCE($15, FALSE), COALESCE($16, FALSE), COALESCE($17, TRUE), $18, COALESCE($19, TRUE), $20)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, TRUE), COALESCE($9, TRUE), COALESCE($10, TRUE), COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, 24), COALESCE($14, TRUE), COALESCE($15, FALSE), COALESCE($16, FALSE), COALESCE($17, FALSE), COALESCE($18, TRUE), $19, COALESCE($20, TRUE), $21)
     ON CONFLICT (codigo_interno) DO UPDATE SET
       razao_social = EXCLUDED.razao_social,
       nome_fantasia = EXCLUDED.nome_fantasia,
@@ -110,11 +113,12 @@ export async function salvarTransportadora(dados: TransportadoraCadastro, usuari
       recebe_prazo_solicitado = EXCLUDED.recebe_prazo_solicitado,
       exige_prazo_resposta = EXCLUDED.exige_prazo_resposta,
       prazo_resposta_obrigatorio = EXCLUDED.prazo_resposta_obrigatorio,
+      solicita_numero_cotacao = EXCLUDED.solicita_numero_cotacao,
       apresenta_lista_produtos = EXCLUDED.apresenta_lista_produtos,
       observacoes = EXCLUDED.observacoes,
       ativa = EXCLUDED.ativa,
       alterado_em = NOW(),
-      alterado_por_usuario_id = $20
+      alterado_por_usuario_id = $21
     RETURNING id`,
     [
       dados.codigo_interno,
@@ -133,6 +137,7 @@ export async function salvarTransportadora(dados: TransportadoraCadastro, usuari
       dados.recebe_prazo_solicitado ?? true,
       dados.exige_prazo_resposta ?? false,
       dados.prazo_resposta_obrigatorio ?? false,
+      dados.solicita_numero_cotacao ?? false,
       dados.apresenta_lista_produtos ?? true,
       dados.observacoes ?? null,
       dados.ativa ?? true,

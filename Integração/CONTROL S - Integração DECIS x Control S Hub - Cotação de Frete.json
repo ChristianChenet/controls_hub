@@ -1,0 +1,427 @@
+{
+  "name": "CONTROL S - Integração DECIS x Control S Hub - Cotação de Frete",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  P.PESSOA AS ID,\n   TRIM(P.NOME) AS RAZAO_SOCIAL,\n   CASE \n    WHEN J.FANTASIA LIKE '  %' THEN TRIM(P.NOME) \n    ELSE TRIM(COALESCE(J.FANTASIA, P.NOME)) \n  END AS NOME_FANTASIA,\n  COALESCE(J.CNPJ, F.CPF) AS DOCUMENTO,\n  TRIM(EM.E_MAIL) AS EMAIL,\n  TRIM(CT.TELEFONE) AS TELEFONE,\n  P.DATA_ALTERACAO AS ALTERADO_EM\nFROM CGPESSOA P WITH (NOLOCK)\nINNER JOIN CGPESSOATIPO PT WITH (NOLOCK)\n  ON PT.PESSOA = P.PESSOA\nLEFT JOIN CGJURIDICA J WITH (NOLOCK)\n  ON J.PESSOA = P.PESSOA\nLEFT JOIN CGFISICA F WITH (NOLOCK)\n  ON F.PESSOA = P.PESSOA\nOUTER APPLY (\n  SELECT TOP (1)\n    E.E_MAIL\n  FROM CGENDERECO E WITH (NOLOCK)\n  WHERE E.PESSOA = P.PESSOA\n    AND E.E_MAIL IS NOT NULL\n  ORDER BY\n    E.E_MAIL\n) EM\nOUTER APPLY (\n  SELECT\n    MIN(TEL.TELEFONE) AS TELEFONE\n  FROM CGCONTATO TEL WITH (NOLOCK)\n  WHERE TEL.PESSOA = P.PESSOA\n    AND TEL.TELEFONE IS NOT NULL\n) CT\nWHERE PT.TIPO_PESSOA = 5\n    AND P.NOME IS NOT NULL\n    /*AND P.DATA_ALTERACAO BETWEEN '{{ $(\"Configura os Parametros\").item.json.dataInicialSql }}'\n                          AND '{{ $(\"Configura os Parametros\").item.json.dataFinalSql }}'*/\nORDER BY\n  P.NOME;",
+        "options": {}
+      },
+      "id": "76ba9a2b-d2f0-40c4-8038-df9535459a19",
+      "name": "DECIS - Buscar Transportadoras",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -384
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "1QFOYPjgbCONKzC7",
+          "name": "Conexão Decis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.transportadoras ( id, codigo_interno, razao_social, nome_fantasia, documento, --email, \n  telefone, alterado_em ) VALUES \n( \n{{ $json.ID }}, \n{{ $json.ID }}, \n{{ \n  $json.RAZAO_SOCIAL\n    ? \"'\" + $json.RAZAO_SOCIAL\n        .normalize('NFKD')\n        .replace(/[\\u0000-\\u001F\\u007F-\\u009F]/g, '')\n        .replace(/'/g, \"''\")\n        .trim()\n      + \"'\"\n    : 'NULL'\n}},\n\n{{ \n  $json.NOME_FANTASIA\n    ? \"'\" + $json.NOME_FANTASIA\n        .normalize('NFKD')\n        .replace(/[\\u0000-\\u001F\\u007F-\\u009F]/g, '')\n        .replace(/'/g, \"''\")\n        .trim()\n      + \"'\"\n    : 'NULL'\n}},\n\n{{ $json.DOCUMENTO ? \"'\" + $json.DOCUMENTO.trim() + \"'\" : 'NULL' }}, \n--{{ $json.EMAIL ? \"'\" + $json.EMAIL.trim().replaceAll(\"'\", \"''\") + \"'\" : 'NULL' }}, \n{{ $json.TELEFONE ? \"'\" + $json.TELEFONE.trim().replaceAll(\"'\", \"''\") + \"'\" : 'NULL' }}, \n\n{{ \n  $json.ALTERADO_EM \n    ? \"'\" + new Date($json.ALTERADO_EM).toISOString() + \"'::TIMESTAMPTZ\"\n    : 'NULL'\n}}\n  \n  \n  ) ON CONFLICT (id) DO UPDATE SET razao_social = EXCLUDED.razao_social, nome_fantasia = EXCLUDED.nome_fantasia, documento = EXCLUDED.documento, \n  --email = EXCLUDED.email, \ntelefone = EXCLUDED.telefone, alterado_em = EXCLUDED.alterado_em WHERE public.transportadoras.alterado_em IS NULL OR EXCLUDED.alterado_em > public.transportadoras.alterado_em;",
+        "options": {}
+      },
+      "id": "30e5a986-c219-4e5e-bb46-d79d4c280b0b",
+      "name": "Control S Hub - Upsert Transportadoras",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -384
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Da8O7pSkgsWNeykd",
+          "name": "Control S Hub"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const hoje = new Date();\n\nfunction formatarDataSql(data) {\n  const ano = data.getFullYear();\n  const mes = String(data.getMonth() + 1).padStart(2, '0');\n  const dia = String(data.getDate()).padStart(2, '0');\n  const hora = String(data.getHours()).padStart(2, '0');\n  const minuto = String(data.getMinutes()).padStart(2, '0');\n  const segundo = String(data.getSeconds()).padStart(2, '0');\n\n  return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}`;\n}\n\nconst dataInicial = new Date(\n  hoje.getFullYear(),\n  hoje.getMonth(),\n  hoje.getDate() - 1,\n  0,\n  0,\n  0\n);\n\nreturn [\n  {\n    json: {\n      dataInicialSql: formatarDataSql(new Date(dataInicial)),  //formatarDataSql(dataInicial),\n      dataFinalSql: formatarDataSql(hoje),\n\n      origemIntegracaoSql: 'DECIS_SQL_SERVER',\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        208
+      ],
+      "id": "33962447-2e62-456f-befb-b08cf76c4fcd",
+      "name": "Configura os Parametros"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.cotacoes_frete ( empresa_id, tipo_documento, numero_documento, codigo_chave, etapa_kanban_id, numero_pedido, data_documento, status, loja_origem, loja_destino, valor_mercadoria, peso_real, volumes_total, cubagem_total, percentual_sobre_nf, valor_solicitado, cep_destino, uf_destino, cidade_destino, endereco_destinatario, nome_destinatario, documento_destinatario, destino_zona_rural, destinatario_pessoa_fisica, bloqueado_para_alteracao, transportadora_escolhida_id, escolhido_por_usuario_id, escolhido_em, origem_comercial, situacao_pedido, motivo_cancelamento_exclusao, cancelado_excluido_em, cancelado_excluido_por_usuario_id, transportadora_pedido_id, transportadora_pedido_codigo, transportadora_pedido_nome, valor_frete_pedido, prazo_pedido_dias, prazo_vendedor_dias, prazo_informado_venda_dias, prazo_final_dias, transportadora_final_id, valor_frete_final, prazo_final_origem, vendedor_codigo, vendedor_nome, retorno_banco_status, retorno_banco_em, idempotencia_origem, criado_em, criado_por_usuario_id, alterado_em, alterado_por_usuario_id, excluido, excluido_em, excluido_por_usuario_id ) VALUES ( {{ $json.EMPRESA_ID }}, {{ \"'\" + $json.TIPO_DOCUMENTO + \"'\" }}, {{ $json.NUMERO_DOCUMENTO }}, {{ \"'\" + $json.CODIGO_CHAVE + \"'\" }}, {{ $json.ETAPA_KANBAN_ID ?? 'null' }}, {{ $json.NUMERO_PEDIDO }}, {{ $json.DATA_DOCUMENTO ? \"'\" + new Date($json.DATA_DOCUMENTO).toISOString() + \"'::TIMESTAMPTZ\" : 'NULL' }}, {{ $json.STATUS ? \"'\" + $json.STATUS + \"'\" : 'null' }}, \n\n{{ $json.LOJA_ORIGEM ? \"'\" + $json.LOJA_ORIGEM + \"'\" : 'null' }}, \n  {{ $json.LOJA_DESTINO ? \"'\" + $json.LOJA_DESTINO + \"'\" : 'null' }}, \n{{ $json.VALOR_MERCADORIA ?? 'null' }}, {{ $json.PESO_REAL ?? 'null' }}, {{ $json.VOLUMES_TOTAL ?? 'null' }}, {{ $json.CUBAGEM_TOTAL ?? 'null' }}, {{ $json.PERCENTUAL_SOBRE_NF ?? 'null' }}, {{ $json.VALOR_SOLICITADO ?? 'null' }}, \n\n{{ $json.CEP_DESTINO ? \"'\" + $json.CEP_DESTINO + \"'\" : 'null' }}, \n\n{{ $json.UF_DESTINO ? \"'\" + $json.UF_DESTINO + \"'\" : 'null' }}, {{ $json.CIDADE_DESTINO ? \"'\" + $json.CIDADE_DESTINO + \"'\" : 'null' }}, {{ $json.ENDERECO_DESTINATARIO ? \"'\" + $json.ENDERECO_DESTINATARIO + \"'\" : 'null' }}, {{ $json.NOME_DESTINATARIO ? \"'\" + $json.NOME_DESTINATARIO.replaceAll(\"'\", \"''\") + \"'\" : 'null' }}, {{ $json.DOCUMENTO_DESTINATARIO ? \"'\" + $json.DOCUMENTO_DESTINATARIO + \"'\" : 'null' }}, {{ $json.DESTINO_ZONA_RURAL ? \"'\" + $json.DESTINO_ZONA_RURAL + \"'\" : 'null' }}, {{ $json.DESTINATARIO_PESSOA_FISICA ? \"'\" + $json.DESTINATARIO_PESSOA_FISICA + \"'\" : 'null' }}, {{ $json.BLOQUEADO_PARA_ALTERACAO ? \"'\" + $json.BLOQUEADO_PARA_ALTERACAO + \"'\" : 'null' }}, {{ $json.TRANSPORTADORA_ESCOLHIDA_ID ?? 'null' }}, {{ $json.ESCOLHIDO_POR_USUARIO_ID ?? 'null' }}, \n\n{{ $json.ESCOLHIDO_EM ? \"'\" + new Date($json.ESCOLHIDO_EM).toISOString() + \"'::TIMESTAMPTZ\" : 'NULL' }}, \n\n{{ $json.ORIGEM_COMERCIAL ? \"'\" + $json.ORIGEM_COMERCIAL + \"'\" : 'null' }}, {{ $json.SITUACAO_PEDIDO ? \"'\" + $json.SITUACAO_PEDIDO + \"'\" : 'null' }}, {{ $json.MOTIVO_CANCELAMENTO_EXCLUSAO ? \"'\" + $json.MOTIVO_CANCELAMENTO_EXCLUSAO + \"'\" : 'null' }}, {{ $json.CANCELADO_EXCLUIDO_EM ? \"'\" + $json.CANCELADO_EXCLUIDO_EM + \"'\" : 'null' }}, {{ $json.CANCELADO_EXCLUIDO_POR_USUARIO_ID ?? 'null' }}, {{ $json.TRANSPORTADORA_PEDIDO_ID ?? 'null' }}, {{ $json.TRANSPORTADORA_PEDIDO_CODIGO ?? 'null' }}, {{ $json.TRANSPORTADORA_PEDIDO_NOME ? \"'\" + $json.TRANSPORTADORA_PEDIDO_NOME.replaceAll(\"'\", \"''\") + \"'\" : 'null' }}, {{ $json.VALOR_FRETE_PEDIDO ?? 'null' }}, {{ $json.PRAZO_PEDIDO_DIAS ?? 'null' }}, {{ $json.PRAZO_VENDEDOR_DIAS ?? 'null' }}, {{ $json.PRAZO_INFORMADO_VENDA_DIAS ?? 'null' }}, {{ $json.PRAZO_FINAL_DIAS ?? 'null' }}, {{ $json.TRANSPORTADORA_FINAL_ID ?? 'null' }}, {{ $json.VALOR_FRETE_FINAL ?? 'null' }}, {{ $json.PRAZO_FINAL_ORIGEM ? \"'\" + $json.PRAZO_FINAL_ORIGEM + \"'\" : 'null' }}, {{ $json.VENDEDOR_CODIGO ?? 'null' }}, {{ $json.VENDEDOR_NOME ? \"'\" + $json.VENDEDOR_NOME.replaceAll(\"'\", \"''\") + \"'\" : 'null' }}, {{ $json.RETORNO_BANCO_STATUS ? \"'\" + $json.RETORNO_BANCO_STATUS + \"'\" : 'null' }}, {{ $json.RETORNO_BANCO_EM ? \"'\" + $json.RETORNO_BANCO_EM + \"'\" : 'null' }}, {{ $json.IDEMPOTENCIA_ORIGEM ? \"'\" + $json.IDEMPOTENCIA_ORIGEM + \"'\" : 'null' }}, {{ $json.CRIADO_EM ? \"'\" + new Date($json.CRIADO_EM).toISOString() + \"'::TIMESTAMPTZ\" : 'NULL' }}, {{ $json.CRIADO_POR_USUARIO_ID ?? 'null' }}, \n\n{{ $json.ALTERADO_EM ? \"'\" + new Date($json.ALTERADO_EM).toISOString() + \"'::TIMESTAMPTZ\" : 'NULL' }}, \n\n{{ $json.ALTERADO_POR_USUARIO_ID ?? 'null' }}, {{ $json.EXCLUIDO == 1 ? 'true' : 'false' }}, {{ $json.EXCLUIDO_EM ? \"'\" + $json.EXCLUIDO_EM + \"'\" : 'null' }}, {{ $json.EXCLUIDO_POR_USUARIO_ID ?? 'null' }} ) ON CONFLICT ( empresa_id, tipo_documento, numero_documento, codigo_chave) DO UPDATE SET tipo_documento = EXCLUDED.tipo_documento, numero_documento = EXCLUDED.numero_documento, etapa_kanban_id = EXCLUDED.etapa_kanban_id, numero_pedido = EXCLUDED.numero_pedido, data_documento = EXCLUDED.data_documento, status = EXCLUDED.status, loja_origem = EXCLUDED.loja_origem, loja_destino = EXCLUDED.loja_destino, valor_mercadoria = EXCLUDED.valor_mercadoria, peso_real = EXCLUDED.peso_real, volumes_total = EXCLUDED.volumes_total, cubagem_total = EXCLUDED.cubagem_total, percentual_sobre_nf = EXCLUDED.percentual_sobre_nf, valor_solicitado = EXCLUDED.valor_solicitado, cep_destino = EXCLUDED.cep_destino, uf_destino = EXCLUDED.uf_destino, cidade_destino = EXCLUDED.cidade_destino, endereco_destinatario = EXCLUDED.endereco_destinatario, nome_destinatario = EXCLUDED.nome_destinatario, documento_destinatario = EXCLUDED.documento_destinatario, destino_zona_rural = EXCLUDED.destino_zona_rural, destinatario_pessoa_fisica = EXCLUDED.destinatario_pessoa_fisica, bloqueado_para_alteracao = EXCLUDED.bloqueado_para_alteracao, transportadora_escolhida_id = EXCLUDED.transportadora_escolhida_id, escolhido_por_usuario_id = EXCLUDED.escolhido_por_usuario_id, escolhido_em = EXCLUDED.escolhido_em, origem_comercial = EXCLUDED.origem_comercial, situacao_pedido = EXCLUDED.situacao_pedido, motivo_cancelamento_exclusao = EXCLUDED.motivo_cancelamento_exclusao, cancelado_excluido_em = EXCLUDED.cancelado_excluido_em, cancelado_excluido_por_usuario_id = EXCLUDED.cancelado_excluido_por_usuario_id, transportadora_pedido_id = EXCLUDED.transportadora_pedido_id, transportadora_pedido_codigo = EXCLUDED.transportadora_pedido_codigo, transportadora_pedido_nome = EXCLUDED.transportadora_pedido_nome, valor_frete_pedido = EXCLUDED.valor_frete_pedido, prazo_pedido_dias = EXCLUDED.prazo_pedido_dias, prazo_vendedor_dias = EXCLUDED.prazo_vendedor_dias, prazo_informado_venda_dias = EXCLUDED.prazo_informado_venda_dias, prazo_final_dias = EXCLUDED.prazo_final_dias, transportadora_final_id = EXCLUDED.transportadora_final_id, valor_frete_final = EXCLUDED.valor_frete_final, prazo_final_origem = EXCLUDED.prazo_final_origem, vendedor_codigo = EXCLUDED.vendedor_codigo, vendedor_nome = EXCLUDED.vendedor_nome, retorno_banco_status = EXCLUDED.retorno_banco_status, retorno_banco_em = EXCLUDED.retorno_banco_em, alterado_em = EXCLUDED.alterado_em, alterado_por_usuario_id = EXCLUDED.alterado_por_usuario_id, excluido = EXCLUDED.excluido, excluido_em = EXCLUDED.excluido_em, excluido_por_usuario_id = EXCLUDED.excluido_por_usuario_id;",
+        "options": {}
+      },
+      "id": "62ffb2de-df34-4010-afac-d4bf0744134f",
+      "name": "Control S Hub - Upsert cotacoes_frete",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Da8O7pSkgsWNeykd",
+          "name": "Control S Hub"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ITENS_COTACAO AS (\n  SELECT\n    GCI.EMPRESA,\n    GCI.FILIAL,\n    GCI.COTACAO,\n    SUM(GCI.QUANTIDADE) AS QUANTIDADE,\n    SUM(GCI.QUANTIDADE * GCI.VALORITEM) AS VALOR_ITEM,\n    SUM(COALESCE(GCI.PESOKG,0)) AS PESO,\n    SUM(COALESCE(GCI.CUBAGEMM3,0)) AS CUBAGEM,\n    MAX(GCI.DATAHORAINCLUSAO) AS DATAHORAINCLUSAO_ITEM,\n    MAX(GCI.DATAHORAALTERACAO) AS DATAHORAALTERACAO_ITEM\n  FROM GFCOTACAOITEM GCI WITH (NOLOCK)\n  GROUP BY\n    GCI.EMPRESA,\n    GCI.FILIAL,\n    GCI.COTACAO\n),\n\nOFERTAS_COTACAO AS (\n  SELECT\n    OFE.COTACAO,\n    MAX(OFE.DATAHORAINCLUSAO) AS DATAHORAINCLUSAO_OFERTA,\n    MAX(OFE.DATAHORAALTERACAO) AS DATAHORAALTERACAO_OFERTA\n  FROM GFCOTACAOOFERTA OFE WITH (NOLOCK)\n  GROUP BY\n    OFE.COTACAO\n),\n\nSELECIONADA_COTACAO AS (\n  SELECT\n    OFE.COTACAO,\n  OFE.Transportadora,\n    OFE.ValorFrete,\n  ofe.ValorAdicionais ,\n  ofe.ValorTotal,\n  OFE.PrazoEntregaHoras,\n  COALESCE(APRO.DataHoraAprovacao,0) AS APROVADO_EM,\n  apro.UsuarioAprovacao  AS USUARIO_APROVADO,\n  PES_TRANS2.NOME AS NOME_TRANSPORTADORA\n  FROM GFCOTACAOOFERTA OFE WITH (NOLOCK)\n    LEFT JOIN CGPESSOA PES_TRANS2 WITH (NOLOCK)\n    ON OFE.TRANSPORTADORA = PES_TRANS2.PESSOA\n\tLEFT JOIN GFCotacaoAprovacao APRO\n\tON OFE.Cotacao = APRO.Cotacao\n  WHERE OFE.FlagSelecionada <> 0\n),\n\nCOTACOES_NOTAS AS (\n  SELECT\n    COT.EMPRESA,\n    COT.FILIAL,\n    COT.COTACAO,\n    COT.DATAABERTURA,\n    COT.EMPRESAPEDIDO,\n    COT.FILIALPEDIDO,\n    COT.COLECAOPEDIDO,\n    COT.PESSOAPEDIDO,\n    COT.PEDIDO,\n    LEAD(COT.DATAABERTURA) OVER (\n      PARTITION BY\n        COT.EMPRESA,\n        COT.PEDIDO\n      ORDER BY\n        COT.DATAABERTURA,\n        COT.COTACAO\n    ) AS DATA_PROXIMA_COTACAO\n  FROM GFCOTACAO COT WITH (NOLOCK)\n  WHERE COT.PEDIDO IS NOT NULL\n),\n\nNOTAS_CANDIDATAS AS (\n  SELECT\n    COT.EMPRESA,\n    COT.FILIAL,\n    COT.COTACAO,\n    COT.PEDIDO,\n    NFC.FILIAL AS FILIAL_NF,\n    NFC.ENTRADA_SAIDA,\n    NFC.PESSOA,\n    NFC.NOTA_FISCAL,\n    NFC.SERIE,\n    NFC.DATA_EMISSAO,\n    NFC.DATA_INCLUSAO,\n    NFC.DATA_ALTERACAO\n  FROM COTACOES_NOTAS COT\n  INNER JOIN VDPVENDAC PVC WITH (NOLOCK)\n    ON COT.EMPRESAPEDIDO = PVC.EMPRESA\n   AND COT.FILIALPEDIDO = PVC.FILIAL\n   AND COT.COLECAOPEDIDO = PVC.COLECAO\n   AND COT.PESSOAPEDIDO = PVC.PESSOA\n   AND COT.PEDIDO = PVC.PEDIDO\n  INNER JOIN VDNOTAC NFC WITH (NOLOCK)\n    ON NFC.EMPRESA = COT.EMPRESA\n   AND NFC.PEDIDO = PVC.PEDIDOSEQUENCIAL\n   AND NFC.DATA_EMISSAO >= COT.DATAABERTURA\n   AND (\n        COT.DATA_PROXIMA_COTACAO IS NULL\n        OR NFC.DATA_EMISSAO < COT.DATA_PROXIMA_COTACAO\n   )\n  WHERE ISNULL(NFC.MOVIMENTACAO_FISCAL, 0) NOT IN (1353, 2353)\n),\n\nNOTAS_COTACAO AS (\n  SELECT\n    NC.EMPRESA,\n    NC.FILIAL,\n    NC.COTACAO,\n    MAX(NC.DATA_INCLUSAO) AS DATA_INCLUSAO_NOTA,\n    MAX(NC.DATA_ALTERACAO) AS DATA_ALTERACAO_NOTA,\n    MAX(NC.DATA_EMISSAO) AS DATA_EMISSAO_NOTA,\n    MAX(NFE.DATAHORAINCLUSAO) AS DATAHORAINCLUSAO_NFE,\n    MAX(NFE.DATAHORAALTERACAO) AS DATAHORAALTERACAO_NFE\n  FROM NOTAS_CANDIDATAS NC\n  INNER JOIN VDNOTAELETRONICA NFE WITH (NOLOCK)\n    ON NC.EMPRESA = NFE.EMPRESA\n   AND NC.FILIAL_NF = NFE.FILIAL\n   AND NC.ENTRADA_SAIDA = NFE.ENTRADA_SAIDA\n   AND NC.PESSOA = NFE.PESSOA\n   AND NC.NOTA_FISCAL = NFE.NOTA_FISCAL\n   AND NC.SERIE = NFE.SERIE\n   AND NFE.SEQUENCIA = 1\n  INNER JOIN VDNOTAI NFI WITH (NOLOCK)\n    ON NFI.EMPRESA = NC.EMPRESA\n   AND NFI.FILIAL = NC.FILIAL_NF\n   AND NFI.ENTRADA_SAIDA = NC.ENTRADA_SAIDA\n   AND NFI.PESSOA = NC.PESSOA\n   AND NFI.NOTA_FISCAL = NC.NOTA_FISCAL\n   AND NFI.SERIE = NC.SERIE\n  INNER JOIN GFCOTACAOITEM GCI WITH (NOLOCK)\n    ON GCI.EMPRESA = NC.EMPRESA\n   AND GCI.FILIAL = NC.FILIAL\n   AND GCI.COTACAO = NC.COTACAO\n   AND GCI.ITEM = NFI.ITEM\n  WHERE NFE.CHAVEACESSO IS NOT NULL\n    AND LTRIM(RTRIM(NFE.CHAVEACESSO)) <> ''\n  GROUP BY\n    NC.EMPRESA,\n    NC.FILIAL,\n    NC.COTACAO\n),\n\nCTES_COTACAO AS (\n  SELECT\n    COT.EMPRESA,\n    COT.FILIAL,\n    COT.COTACAO,\n    MAX(NFC.DATA_INCLUSAO) AS DATA_INCLUSAO_CTE,\n    MAX(NFC.DATA_ALTERACAO) AS DATA_ALTERACAO_CTE,\n    MAX(NFC.DATA_EMISSAO) AS DATA_EMISSAO_CTE,\n    MAX(NFE.DATAHORAINCLUSAO) AS DATAHORAINCLUSAO_CTE,\n    MAX(NFE.DATAHORAALTERACAO) AS DATAHORAALTERACAO_CTE\n  FROM COTACOES_NOTAS COT\n  INNER JOIN VDPVENDAC PVC WITH (NOLOCK)\n    ON COT.EMPRESAPEDIDO = PVC.EMPRESA\n   AND COT.FILIALPEDIDO = PVC.FILIAL\n   AND COT.COLECAOPEDIDO = PVC.COLECAO\n   AND COT.PESSOAPEDIDO = PVC.PESSOA\n   AND COT.PEDIDO = PVC.PEDIDO\n  INNER JOIN VDNOTAC NFC WITH (NOLOCK)\n    ON NFC.EMPRESA = COT.EMPRESA\n   AND NFC.PEDIDO = PVC.PEDIDOSEQUENCIAL\n   AND NFC.DATA_EMISSAO >= COT.DATAABERTURA\n   AND (\n        COT.DATA_PROXIMA_COTACAO IS NULL\n        OR NFC.DATA_EMISSAO < COT.DATA_PROXIMA_COTACAO\n   )\n  INNER JOIN VDNOTAELETRONICA NFE WITH (NOLOCK)\n    ON NFC.EMPRESA = NFE.EMPRESA\n   AND NFC.FILIAL = NFE.FILIAL\n   AND NFC.ENTRADA_SAIDA = NFE.ENTRADA_SAIDA\n   AND NFC.PESSOA = NFE.PESSOA\n   AND NFC.NOTA_FISCAL = NFE.NOTA_FISCAL\n   AND NFC.SERIE = NFE.SERIE\n   AND NFE.SEQUENCIA = 1\n  WHERE NFC.ENTRADA_SAIDA = 'E'\n    AND NFC.MOVIMENTACAO_FISCAL IN (1353, 2353)\n    AND NFE.CHAVEACESSO IS NOT NULL\n    AND LTRIM(RTRIM(NFE.CHAVEACESSO)) <> ''\n  GROUP BY\n    COT.EMPRESA,\n    COT.FILIAL,\n    COT.COTACAO\n),\n\nOFERTAS AS (\n  SELECT\n    COT.EMPRESA,\n    COT.FILIAL,\n    COT.COTACAO,\n    COT.DATAHORAABERTURA AS DATA_COTACAO,\n    COT.DATAHORAINCLUSAO AS DATAHORAINCLUSAO_COTACAO,\n    COT.DATAHORAALTERACAO AS DATAHORAALTERACAO_COTACAO,\n    COT.PEDIDO,\n    COT.CEPDESTINO,\n    COT.DESTINOUF,\n    VEN.DATA_EMISSAO,\n    VEN.DATA_CADASTRO,\n    VEN.VALOR_FRETE AS VALOR_FRETE_VENDA,\n    VEN.CIDADEOBRA AS DESTINOMUNICIPIO,\n    VEN.VENDEDOR,\n     cot.ValorMercadoria AS VALOR_MERCADORIA,\n    VEN.LOGRADOUROOBRA AS ENDERECO_DESTINATARIO,\n    DATEDIFF(DAY, VEN.DATA_EMISSAO, VEN.DATA_CADASTRO) AS PRAZO_ENTREGA_DIAS2,\n    PES_VEND.NOME AS NOME_VENDEDOR,\n    PES_TRANS.NOME AS NOME_TRANSPORTADORA,\n    CLI.NOME AS CLIENTE,\n    COALESCE(ITC.QUANTIDADE,0) QUANTIDADE,\n    COALESCE(ITC.PESO,0) PESO,\n    COALESCE(ITC.CUBAGEM,0) CUBAGEM,\n    ITC.VALOR_ITEM,\n    ITC.DATAHORAINCLUSAO_ITEM,\n    ITC.DATAHORAALTERACAO_ITEM,\n    OFC.DATAHORAINCLUSAO_OFERTA,\n    OFC.DATAHORAALTERACAO_OFERTA,\n  UPPER(CASE ven.Filial\n    WHEN 1 THEN 'Maringá'\n    WHEN 4 THEN 'Londrina'\n    WHEN 5 THEN 'Curitiba'\n    WHEN 8 THEN 'Cascavel'\n    WHEN 11 THEN 'Bataguassu'\n    WHEN 16 THEN 'Foz do Iguaçu'\n    ELSE 'Não Identificada' -- Previne que o resultado fique em branco (NULL) caso venha um número diferente\n  END)  as LOJA_ORIGEM,\n  UPPER(CASE\n    WHEN ven.UFObra IN ('MS', 'MT', 'AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO') OR PES_TRANS.NOME like '%Carvalima%'\n        THEN 'Bataguassu'\n    ELSE 'Maringá'\n  END) AS LOJA_DESTINO,\n    NTC.DATA_INCLUSAO_NOTA,\n    NTC.DATA_ALTERACAO_NOTA,\n    NTC.DATA_EMISSAO_NOTA,\n    NTC.DATAHORAINCLUSAO_NFE,\n    NTC.DATAHORAALTERACAO_NFE,\n    CTC.DATA_INCLUSAO_CTE,\n    CTC.DATA_ALTERACAO_CTE,\n    CTC.DATA_EMISSAO_CTE,\n    CTC.DATAHORAINCLUSAO_CTE,\n    CTC.DATAHORAALTERACAO_CTE,\n    ISNULL(FIS.CPF, JUR.CNPJ) AS CPF_CNPJ,\n    VEN.TRANSPORTADORA,\n    ROW_NUMBER() OVER (\n      PARTITION BY\n        COT.EMPRESA,\n        COT.FILIAL,\n        COT.COTACAO\n      ORDER BY\n        COT.COTACAO\n    ) AS RN,\n  APR.Cotacao AS CORACAO_APROVADA ,\n  APR.Transportadora AS ID_TRANSPORTADORA_APROVADA ,\n  APR.NOME_TRANSPORTADORA AS TRANSPORTADORA_APROVADA ,\n  APR.ValorTotal AS VALORFRETE_APROVADA ,\n  APR.APROVADO_EM as ESCOLHIDO_EM,\n  APR.USUARIO_APROVADO AS ESCOLHIDO_POR_USUARIO_ID,\n    CASE\n      WHEN FIS.CPF IS NOT NULL THEN 'TRUE'\n      ELSE 'FALSE'\n    END AS DESTINATARIO_PESSOA_FISICA,\n\n  DEP.DESCRICAO AS ORIGEM_COMERCIAL,\n\n    CASE\n      WHEN VEN.STATUS LIKE 'C%' THEN 'CANCELADO'\n      ELSE 'ATIVO'\n    END AS SITUACAO_PEDIDO,\n    CASE\n      WHEN VEN.STATUS LIKE 'B' THEN 'TRUE'\n      ELSE 'FALSE'\n    END AS BLOQUEADO\n  FROM GFCOTACAO COT WITH (NOLOCK)\n  LEFT JOIN ITENS_COTACAO ITC\n    ON COT.EMPRESA = ITC.EMPRESA\n   AND COT.FILIAL = ITC.FILIAL\n   AND COT.COTACAO = ITC.COTACAO\n  LEFT JOIN OFERTAS_COTACAO OFC\n    ON COT.COTACAO = OFC.COTACAO\n  LEFT JOIN GFCotacaoAprovacao ofa\n  on cot.Cotacao = ofa.Cotacao\n  LEFT JOIN NOTAS_COTACAO NTC\n    ON COT.EMPRESA = NTC.EMPRESA\n   AND COT.FILIAL = NTC.FILIAL\n   AND COT.COTACAO = NTC.COTACAO\n  LEFT JOIN CTES_COTACAO CTC\n    ON COT.EMPRESA = CTC.EMPRESA\n   AND COT.FILIAL = CTC.FILIAL\n   AND COT.COTACAO = CTC.COTACAO\n  INNER JOIN VDPVENDAC VEN WITH (NOLOCK)\n    ON COT.PEDIDO = VEN.PEDIDO\n  LEFT JOIN CGPESSOA PES_VEND WITH (NOLOCK)\n    ON VEN.VENDEDOR = PES_VEND.PESSOA\n  LEFT JOIN CGPESSOA PES_TRANS WITH (NOLOCK)\n    ON VEN.TRANSPORTADORA = PES_TRANS.PESSOA\n  LEFT JOIN CGPESSOA CLI WITH (NOLOCK)\n    ON COT.PESSOAPEDIDO = CLI.PESSOA\n  LEFT JOIN CGFISICA FIS WITH (NOLOCK)\n    ON CLI.PESSOA = FIS.PESSOA\n  LEFT JOIN CGJURIDICA JUR WITH (NOLOCK)\n    ON CLI.PESSOA = JUR.PESSOA\n   LEFT JOIN SELECIONADA_COTACAO  APR   WITH (NOLOCK)\n ON COT.Cotacao = APR.Cotacao\n  LEFT JOIN CGDEPTO DEP   WITH (NOLOCK)\n ON VEN.DEPARTAMENTOVENDEDOR = DEP.DEPARTAMENTO\n)\n\nSELECT\n  EMPRESA AS EMPRESA_ID,\n  'PEDIDO' AS TIPO_DOCUMENTO,\n  PEDIDO AS NUMERO_DOCUMENTO,\n  CONCAT(PEDIDO, '-', COTACAO) AS CODIGO_CHAVE,\n  1 AS ETAPA_KANBAN_ID,\n  PEDIDO AS NUMERO_PEDIDO,\n  DATA_COTACAO AS DATA_DOCUMENTO,\n  '0' AS STATUS,\n  'BATAGUASSU'AS LOJA_ORIGEM,\n  LOJA_DESTINO AS LOJA_DESTINO,\n  COALESCE(VALOR_MERCADORIA,0) AS VALOR_MERCADORIA,\n  PESO AS PESO_REAL,\n  QUANTIDADE AS VOLUMES_TOTAL,\n  CUBAGEM AS CUBAGEM_TOTAL,\n  NULL AS PERCENTUAL_SOBRE_NF,\n  NULL AS VALOR_SOLICITADO,\n  CEPDESTINO AS CEP_DESTINO,\n  DESTINOUF AS UF_DESTINO,\n  DESTINOMUNICIPIO AS CIDADE_DESTINO,\n  ENDERECO_DESTINATARIO AS ENDERECO_DESTINATARIO,\n  CLIENTE AS NOME_DESTINATARIO,\n  CPF_CNPJ AS DOCUMENTO_DESTINATARIO,\n  'FALSE' AS DESTINO_ZONA_RURAL,\n  DESTINATARIO_PESSOA_FISICA,\n  BLOQUEADO AS BLOQUEADO_PARA_ALTERACAO,\n  ID_TRANSPORTADORA_APROVADA AS TRANSPORTADORA_ESCOLHIDA_ID,\n  ESCOLHIDO_POR_USUARIO_ID AS ESCOLHIDO_POR_USUARIO_ID,\n  ESCOLHIDO_EM AS ESCOLHIDO_EM,\n  ORIGEM_COMERCIAL,\n  SITUACAO_PEDIDO,\n  NULL AS MOTIVO_CANCELAMENTO_EXCLUSAO,\n  NULL AS CANCELADO_EXCLUIDO_EM,\n  NULL AS CANCELADO_EXCLUIDO_POR_USUARIO_ID,\n  CASE\n    WHEN COALESCE(TRANSPORTADORA, 0) = 0 THEN NULL\n    ELSE TRANSPORTADORA\n  END AS TRANSPORTADORA_PEDIDO_ID,\n  CASE\n    WHEN COALESCE(TRANSPORTADORA, 0) = 0 THEN NULL\n    ELSE TRANSPORTADORA\n  END AS TRANSPORTADORA_PEDIDO_CODIGO,\n  NOME_TRANSPORTADORA AS TRANSPORTADORA_PEDIDO_NOME,\n  VALOR_FRETE_VENDA AS VALOR_FRETE_PEDIDO,\n  PRAZO_ENTREGA_DIAS2 AS PRAZO_PEDIDO_DIAS,\n  NULL AS PRAZO_VENDEDOR_DIAS,\n  PRAZO_ENTREGA_DIAS2 AS PRAZO_INFORMADO_VENDA_DIAS,\n  NULL AS PRAZO_FINAL_DIAS,\n  CASE\n    WHEN COALESCE(TRANSPORTADORA, 0) = 0 THEN NULL\n    ELSE TRANSPORTADORA\n  END AS TRANSPORTADORA_FINAL_ID,\n  NULL AS VALOR_FRETE_FINAL,\n  NULL AS PRAZO_FINAL_ORIGEM,\n  VENDEDOR AS VENDEDOR_CODIGO,\n  NOME_VENDEDOR AS VENDEDOR_NOME,\n  'A' AS RETORNO_BANCO_STATUS,\n  NULL AS RETORNO_BANCO_EM,\n  CONCAT('DECIS-', PEDIDO, '-', COTACAO) AS IDEMPOTENCIA_ORIGEM,\n  DATA_COTACAO AS CRIADO_EM,\n  NULL AS CRIADO_POR_USUARIO_ID,\n  LA.ALTERADO_EM,\n  NULL AS ALTERADO_POR_USUARIO_ID,\n  0 AS EXCLUIDO,\n  NULL AS EXCLUIDO_EM,\n  NULL AS EXCLUIDO_POR_USUARIO_ID\nFROM OFERTAS OFE\nCROSS APPLY (\n  SELECT MAX(V.DATA_REFERENCIA) AS ALTERADO_EM\n  FROM (\n    VALUES\n      (OFE.DATA_COTACAO),\n      (OFE.DATAHORAINCLUSAO_COTACAO),\n      (OFE.DATAHORAALTERACAO_COTACAO),\n      (OFE.DATAHORAINCLUSAO_ITEM),\n      (OFE.DATAHORAALTERACAO_ITEM),\n      (OFE.DATAHORAINCLUSAO_OFERTA),\n      (OFE.DATAHORAALTERACAO_OFERTA),\n      (OFE.DATA_INCLUSAO_NOTA),\n      (OFE.DATA_ALTERACAO_NOTA),\n      (OFE.DATA_EMISSAO_NOTA),\n      (OFE.DATAHORAINCLUSAO_NFE),\n      (OFE.DATAHORAALTERACAO_NFE),\n      (OFE.DATA_INCLUSAO_CTE),\n      (OFE.DATA_ALTERACAO_CTE),\n      (OFE.DATA_EMISSAO_CTE),\n      (OFE.DATAHORAINCLUSAO_CTE),\n      (OFE.DATAHORAALTERACAO_CTE),\n      (OFE.DATA_EMISSAO)\n  ) V(DATA_REFERENCIA)\n) LA\n\nWHERE OFE.RN = 1\n  --AND OFE.PEDIDO = 735244\n  AND LA.ALTERADO_EM BETWEEN '{{ $(\"Configura os Parametros\").item.json.dataInicialSql }}'\n                         AND '{{ $(\"Configura os Parametros\").item.json.dataFinalSql }}'\n\n\n\nORDER BY\n  LA.ALTERADO_EM,\n  OFE.PEDIDO,\n  OFE.COTACAO;",
+        "options": {}
+      },
+      "id": "cad1f64a-1e81-4246-9988-f25f8d4b6501",
+      "name": "DECIS - Buscar cotacoes_frete",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        0
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "1QFOYPjgbCONKzC7",
+          "name": "Conexão Decis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  GC.EMPRESA AS EMPRESA_ID,\n  'PEDIDO' AS TIPO_DOCUMENTO,\n  GC.PEDIDO AS NUMERO_DOCUMENTO,\n  CONCAT(GC.PEDIDO, '-', GC.COTACAO) AS CODIGO_CHAVE,\n  GCI.SEQUENCIA AS ITEM_SEQUENCIA,\n  GCI.ITEM AS CODIGO_ITEM,\n  ITE.DESCRICAO AS DESCRICAO_ITEM,\n  GCI.QUANTIDADE AS QUANTIDADE,\n  COALESCE(GCI.CUBAGEMM3,0) AS CUBAGEM_ITEM,\n  COALESCE(ITE.LARGURAEMBALADO,0) AS LARGURA,\n  COALESCE(ITE.ALTURAEMBALADO,0) AS ALTURA,\n  COALESCE(ITE.PROFUNDIDADEEMBALADO,0) AS COMPRIMENTO,\n  COALESCE(ITE.PESO,0) AS PESO_ITEM,\n  GC.DATAABERTURA AS CRIADO_EM,\n  LA.ALTERADO_EM\nFROM GFCOTACAO GC WITH (NOLOCK)\nINNER JOIN GFCOTACAOITEM GCI WITH (NOLOCK)\n  ON GC.EMPRESA = GCI.EMPRESA\n AND GC.FILIAL = GCI.FILIAL\n AND GC.COTACAO = GCI.COTACAO\nINNER JOIN VDPVENDAC VEN WITH (NOLOCK)\n  ON GC.PEDIDO = VEN.PEDIDO\nINNER JOIN CEITEM ITE WITH (NOLOCK)\n  ON GCI.ITEM = ITE.ITEM\nCROSS APPLY (\n  SELECT MAX(V.DATA_REFERENCIA) AS ALTERADO_EM\n  FROM (\n    VALUES\n      (GC.DATAABERTURA),\n      (GC.DATAHORAINCLUSAO),\n      (GC.DATAHORAALTERACAO),\n      (GCI.DATAHORAINCLUSAO),\n      (GCI.DATAHORAALTERACAO),\n      (VEN.DATA_EMISSAO)\n  ) V(DATA_REFERENCIA)\n) LA\nWHERE LA.ALTERADO_EM BETWEEN '{{ $(\"Configura os Parametros\").item.json.dataInicialSql }}'\n                         AND '{{ $(\"Configura os Parametros\").item.json.dataFinalSql }}'\nORDER BY\n  LA.ALTERADO_EM,\n  GC.PEDIDO,\n  GC.COTACAO,\n  GCI.SEQUENCIA;",
+        "options": {}
+      },
+      "id": "af5cb0ba-26b8-4008-924b-9ede996d3d17",
+      "name": "DECIS - Buscar cotacoes_frete_itens",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        192
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "1QFOYPjgbCONKzC7",
+          "name": "Conexão Decis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.cotacoes_frete_itens (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  item_sequencia,\n  codigo_item,\n  descricao_item,\n  quantidade,\n  cubagem_item,\n  largura,\n  altura,\n  comprimento,\n  peso_item,\n  criado_em,\n  alterado_em\n)\nVALUES (\n  {{ $json.EMPRESA_ID }},\n  {{ \"'\" + $json.TIPO_DOCUMENTO + \"'\" }},\n  {{ $json.NUMERO_DOCUMENTO }},\n  {{ \"'\" + $json.CODIGO_CHAVE + \"'\" }},\n  {{ $json.ITEM_SEQUENCIA }},\n  {{ $json.CODIGO_ITEM }},\n  {{ $json.DESCRICAO_ITEM ? \"'\" + $json.DESCRICAO_ITEM.replaceAll(\"'\", \"''\") + \"'\" : 'null' }},\n  {{ $json.QUANTIDADE ?? 'null' }},\n  {{ $json.CUBAGEM_ITEM ?? 'null' }},\n  {{ $json.LARGURA ?? 'null' }},\n  {{ $json.ALTURA ?? 'null' }},\n  {{ $json.COMPRIMENTO ?? 'null' }},\n  {{ $json.PESO_ITEM ?? 'null' }},\n\n  {{\n    $json.CRIADO_EM\n      ? \"'\" + new Date($json.CRIADO_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n\n  {{\n    $json.ALTERADO_EM\n      ? \"'\" + new Date($json.ALTERADO_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }}\n)\nON CONFLICT (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  item_sequencia\n)\nDO UPDATE SET\n  codigo_item = EXCLUDED.codigo_item,\n  descricao_item = EXCLUDED.descricao_item,\n  quantidade = EXCLUDED.quantidade,\n  cubagem_item = EXCLUDED.cubagem_item,\n  largura = EXCLUDED.largura,\n  altura = EXCLUDED.altura,\n  comprimento = EXCLUDED.comprimento,\n  peso_item = EXCLUDED.peso_item,\n  criado_em = EXCLUDED.criado_em,\n  alterado_em = EXCLUDED.alterado_em;",
+        "options": {}
+      },
+      "id": "1efebac8-2068-4324-80e2-b78ec4b38e97",
+      "name": "Control S Hub - Upsert cotacoes_frete_itens",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        192
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Da8O7pSkgsWNeykd",
+          "name": "Control S Hub"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ITENS_COTACAO AS (\n  SELECT\n    GCI.EMPRESA,\n    GCI.FILIAL,\n    GCI.COTACAO,\n    SUM(GCI.QUANTIDADE * GCI.VALORITEM) AS VALOR_ITEM,\n    MAX(GCI.DATAHORAINCLUSAO) AS DATAHORAINCLUSAO_ITEM,\n    MAX(GCI.DATAHORAALTERACAO) AS DATAHORAALTERACAO_ITEM\n  FROM GFCOTACAOITEM GCI WITH (NOLOCK)\n  GROUP BY\n    GCI.EMPRESA,\n    GCI.FILIAL,\n    GCI.COTACAO\n),\n\nOFERTAS AS (\n  SELECT\n    COT.EMPRESA,\n    COT.FILIAL,\n    COT.COTACAO,\n    COT.PEDIDO,\n    COT.DATAABERTURA AS DATA_COTACAO,\n    COT.DATAHORAINCLUSAO AS DATAHORAINCLUSAO_COTACAO,\n    COT.DATAHORAALTERACAO AS DATAHORAALTERACAO_COTACAO,\n    NULL AS OBSERVACAO,\n    COT.SITUACAO,\n    VEN.DATA_EMISSAO,\n    VEN.DATA_CADASTRO,\n    ITC.VALOR_ITEM,\n    ITC.DATAHORAINCLUSAO_ITEM,\n    ITC.DATAHORAALTERACAO_ITEM,\n    OFE.TRANSPORTADORA,\n    PES_TRANS.NOME AS NOME_TRANSPORTADORA,\n    OFE.ValorTotal,\n    OFE.PRAZOENTREGAHORAS,\n    OFE.FLAGORIGEMDAOFERTA,\n    OFE.FLAGSELECIONADA,\n    OFE.DATAHORAINCLUSAO AS DATAHORAINCLUSAO_OFERTA,\n    OFE.DATAHORAALTERACAO AS DATAHORAALTERACAO_OFERTA,\n    ROW_NUMBER() OVER (\n      PARTITION BY\n        COT.EMPRESA,\n        COT.FILIAL,\n        COT.COTACAO\n      ORDER BY\n        OFE.VALORFRETE ASC,\n        OFE.PRAZOENTREGAHORAS ASC\n    ) AS RANKING_FRETE\n  FROM GFCOTACAO COT WITH (NOLOCK)\n  INNER JOIN ITENS_COTACAO ITC\n    ON COT.EMPRESA = ITC.EMPRESA\n   AND COT.FILIAL = ITC.FILIAL\n   AND COT.COTACAO = ITC.COTACAO\n  INNER JOIN GFCOTACAOOFERTA OFE WITH (NOLOCK)\n    ON COT.COTACAO = OFE.COTACAO\n  INNER JOIN VDPVENDAC VEN WITH (NOLOCK)\n    ON COT.PEDIDO = VEN.PEDIDO\n  LEFT JOIN CGPESSOA PES_TRANS WITH (NOLOCK)\n    ON OFE.TRANSPORTADORA = PES_TRANS.PESSOA\n  WHERE OFE.TRANSPORTADORA IS NOT NULL\n)\n\nSELECT\n  OFE.EMPRESA AS EMPRESA_ID,\n  'PEDIDO' AS TIPO_DOCUMENTO,\n  OFE.PEDIDO AS NUMERO_DOCUMENTO,\n  CONCAT(OFE.PEDIDO, '-', OFE.COTACAO) AS CODIGO_CHAVE,\n  OFE.TRANSPORTADORA AS TRANSPORTADORA_ID,\n  OFE.TRANSPORTADORA AS CODIGO_TRANSPORTADORA,\n\n  CASE \n    WHEN ABS(COALESCE(OFE.ValorTotal, 0)) >= 1000000 THEN CAST(999999.9999 AS DECIMAL(10,4))\n    ELSE CAST(COALESCE(OFE.ValorTotal, 0) AS DECIMAL(10,4))\n  END AS VALOR_FRETE,\n\n  CASE\n    WHEN OFE.VALOR_ITEM IS NULL OR OFE.VALOR_ITEM = 0 THEN NULL\n    WHEN ABS(OFE.ValorTotal * 100.0 / OFE.VALOR_ITEM) >= 1000000 THEN CAST(999999.9999 AS DECIMAL(10,4))\n    ELSE CAST(OFE.ValorTotal * 100.0 / OFE.VALOR_ITEM AS DECIMAL(10,4))\n  END AS PERCENTUAL_FRETE,\n\n  CASE\n    WHEN OFE.PRAZOENTREGAHORAS IS NULL THEN 0\n    ELSE CAST(OFE.PRAZOENTREGAHORAS AS DECIMAL(10,4))\n  END AS PRAZO_DIAS,\n\n  'ERP' AS PRAZO_ORIGEM,\n  OFE.RANKING_FRETE,\n\n  CASE\n    WHEN OFE.FLAGORIGEMDAOFERTA = 3 THEN 'AUTOMATICA'\n    ELSE 'ERP'\n  END AS ORIGEM_COTACAO,\n\n  CASE\n    WHEN OFE.FLAGORIGEMDAOFERTA = 1 THEN 'DIGITACAO_ERP'\n    WHEN OFE.FLAGORIGEMDAOFERTA = 3 THEN 'COTACAO_AUTOMATICA'\n    ELSE 'OUTRA_ORIGEM'\n  END AS ORIGEM_DETALHADA,\n\n  OFE.OBSERVACAO AS OBSERVACAO,\n  'TRUE' AS VALIDADA,\n\n  CASE\n    WHEN OFE.FLAGSELECIONADA = 3 THEN 'TRUE'\n    ELSE 'FALSE'\n  END AS SELECIONADA,\n\n  CASE\n    WHEN OFE.FLAGSELECIONADA = 3 AND OFE.FLAGORIGEMDAOFERTA = 3 THEN 'COTACAO_AUTOMATICA_RECEBIDA'\n    WHEN OFE.FLAGSELECIONADA = 3 AND OFE.FLAGORIGEMDAOFERTA = 1 THEN 'COTACAO_TRANSPORTADORA_RECEBIDA'\n    ELSE 'COTADA'\n  END AS STATUS,\n\n  'FALSE' AS SOLICITADA_POR_LINK,\n  'FALSE' AS RESPOSTA_OBRIGATORIA_PRAZO,\n  NULL AS SLA_LIMITE_EM,\n  COALESCE(OFE.DATAHORAALTERACAO_OFERTA, OFE.DATAHORAINCLUSAO_OFERTA) AS RESPONDIDA_EM,\n  OFE.DATAHORAINCLUSAO_OFERTA AS COTADA_EM,\n  NULL AS VALIDADA_POR_USUARIO_ID,\n\n  CASE\n    WHEN OFE.FLAGSELECIONADA = 3 THEN OFE.DATAHORAALTERACAO_OFERTA\n    ELSE NULL\n  END AS VALIDADA_EM,\n\n  OFE.DATA_COTACAO AS CRIADA_EM,\n  LA.ALTERADO_EM\n\nFROM OFERTAS OFE\nCROSS APPLY (\n  SELECT MAX(V.DATA_REFERENCIA) AS ALTERADO_EM\n  FROM (\n    VALUES\n      (OFE.DATA_COTACAO),\n      (OFE.DATAHORAINCLUSAO_COTACAO),\n      (OFE.DATAHORAALTERACAO_COTACAO),\n      (OFE.DATAHORAINCLUSAO_ITEM),\n      (OFE.DATAHORAALTERACAO_ITEM),\n      (OFE.DATA_EMISSAO),\n      (OFE.DATAHORAINCLUSAO_OFERTA),\n      (OFE.DATAHORAALTERACAO_OFERTA)\n  ) V(DATA_REFERENCIA)\n) LA\n\nWHERE LA.ALTERADO_EM BETWEEN '{{ $(\"Configura os Parametros\").item.json.dataInicialSql }}'\n                         AND '{{ $(\"Configura os Parametros\").item.json.dataFinalSql }}'\n\nORDER BY\n  LA.ALTERADO_EM,\n  OFE.PEDIDO,\n  OFE.COTACAO,\n  OFE.RANKING_FRETE;",
+        "options": {}
+      },
+      "id": "8a81b6b2-8db6-4017-9697-5a9633553769",
+      "name": "DECIS - Buscar cotacoes_frete_transportadoras",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        384
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "1QFOYPjgbCONKzC7",
+          "name": "Conexão Decis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.cotacoes_frete_transportadoras (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  transportadora_id,\n  origem_cotacao,\n  codigo_transportadora,\n  valor_frete,\n  percentual_frete,\n  prazo_dias,\n  prazo_origem,\n  ranking_frete,\n  origem_detalhada,\n  observacao,\n  validada,\n  selecionada,\n  status,\n  solicitada_por_link,\n  resposta_obrigatoria_prazo,\n  sla_limite_em,\n  respondida_em,\n  cotada_em,\n  validada_por_usuario_id,\n  validada_em,\n  criada_em,\n  alterado_em\n)\nVALUES (\n  {{ $json.EMPRESA_ID }},\n  {{ \"'\" + $json.TIPO_DOCUMENTO.replaceAll(\"'\", \"''\") + \"'\" }},\n  {{ $json.NUMERO_DOCUMENTO }},\n  {{ \"'\" + $json.CODIGO_CHAVE.replaceAll(\"'\", \"''\") + \"'\" }},\n  {{ $json.TRANSPORTADORA_ID ?? 'null' }},\n  {{ $json.ORIGEM_COTACAO ? \"'\" + $json.ORIGEM_COTACAO.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.CODIGO_TRANSPORTADORA ?? 'null' }},\n  {{ $json.VALOR_FRETE ?? 'null' }},\n  {{ $json.PERCENTUAL_FRETE ?? 'null' }},\n  {{ $json.PRAZO_DIAS ?? 'null' }},\n  {{ $json.PRAZO_ORIGEM ? \"'\" + $json.PRAZO_ORIGEM.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.RANKING_FRETE ?? 'null' }},\n  {{ $json.ORIGEM_DETALHADA ? \"'\" + $json.ORIGEM_DETALHADA.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.OBSERVACAO ? \"'\" + $json.OBSERVACAO.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.VALIDADA == 'TRUE' ? 'true' : 'false' }},\n  {{ $json.SELECIONADA == 'TRUE' ? 'true' : 'false' }},\n  {{ $json.STATUS ? \"'\" + $json.STATUS.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.SOLICITADA_POR_LINK == 'TRUE' ? 'true' : 'false' }},\n  {{ $json.RESPOSTA_OBRIGATORIA_PRAZO == 'TRUE' ? 'true' : 'false' }},\n  {{\n    $json.SLA_LIMITE_EM\n      ? \"'\" + new Date($json.SLA_LIMITE_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{\n    $json.RESPONDIDA_EM\n      ? \"'\" + new Date($json.RESPONDIDA_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{\n    $json.COTADA_EM\n      ? \"'\" + new Date($json.COTADA_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{ $json.VALIDADA_POR_USUARIO_ID ?? 'null' }},\n  {{\n    $json.VALIDADA_EM\n      ? \"'\" + new Date($json.VALIDADA_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{\n    $json.CRIADA_EM\n      ? \"'\" + new Date($json.CRIADA_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{\n    $json.ALTERADO_EM\n      ? \"'\" + new Date($json.ALTERADO_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }}\n)\nON CONFLICT (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  transportadora_id,\n  origem_cotacao\n)\nDO UPDATE SET\n  codigo_transportadora = EXCLUDED.codigo_transportadora,\n  valor_frete = EXCLUDED.valor_frete,\n  percentual_frete = EXCLUDED.percentual_frete,\n  prazo_dias = EXCLUDED.prazo_dias,\n  prazo_origem = EXCLUDED.prazo_origem,\n  ranking_frete = EXCLUDED.ranking_frete,\n  origem_detalhada = EXCLUDED.origem_detalhada,\n  observacao = EXCLUDED.observacao,\n  validada = EXCLUDED.validada,\n  selecionada = EXCLUDED.selecionada,\n  status = EXCLUDED.status,\n  solicitada_por_link = EXCLUDED.solicitada_por_link,\n  resposta_obrigatoria_prazo = EXCLUDED.resposta_obrigatoria_prazo,\n  sla_limite_em = EXCLUDED.sla_limite_em,\n  respondida_em = EXCLUDED.respondida_em,\n  cotada_em = EXCLUDED.cotada_em,\n  validada_por_usuario_id = EXCLUDED.validada_por_usuario_id,\n  validada_em = EXCLUDED.validada_em,\n  criada_em = EXCLUDED.criada_em,\n  alterado_em = EXCLUDED.alterado_em;",
+        "options": {}
+      },
+      "id": "eef2c815-a810-4c7b-a7fb-b283ad2f6a8c",
+      "name": "Control S Hub - Upsert cotacoes_frete_transportadoras",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        384
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Da8O7pSkgsWNeykd",
+          "name": "Control S Hub"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "EXEC DBO.MON_GET_NOTAS_FISCAIS_COTACAO\n  @EMPRESA_ID = 1,\n  @DATA_INICIAL = '{{ $(\"Configura os Parametros\").item.json.dataInicialSql }}',\n  @DATA_FINAL = '{{ $(\"Configura os Parametros\").item.json.dataFinalSql }}';",
+        "options": {}
+      },
+      "id": "122ff64f-6150-4fa7-9924-61aff06fc152",
+      "name": "DECIS - Buscar cotacoes_frete_notas_fiscais",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        576
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "1QFOYPjgbCONKzC7",
+          "name": "Conexão Decis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.cotacoes_frete_notas_fiscais (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  numero_nfe,\n  chave_nfe,\n  data_nfe,\n  finalidade_nfe,\n  valorfrete_nfe,\n  alterado_em\n)\nVALUES (\n  {{ $json.EMPRESA_ID }},\n  {{ \"'\" + $json.TIPO_DOCUMENTO.replaceAll(\"'\", \"''\") + \"'\" }},\n  {{ $json.NUMERO_DOCUMENTO }},\n  {{ \"'\" + $json.CODIGO_CHAVE.replaceAll(\"'\", \"''\") + \"'\" }},\n  {{ $json.NUMERO_NFE ?? 'null' }},\n  {{ $json.CHAVE_NFE ? \"'\" + $json.CHAVE_NFE.replaceAll(\"'\", \"''\") + \"'\" : 'null' }},\n  {{\n    $json.DATA_NFE\n      ? \"'\" + new Date($json.DATA_NFE).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{ $json.FINALIDADE_NFE ? \"'\" + $json.FINALIDADE_NFE.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.VALORFRETE_NFE ?? 'null' }},\n  {{\n    $json.ALTERADO_EM\n      ? \"'\" + new Date($json.ALTERADO_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }}\n)\nON CONFLICT (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  numero_nfe,\n  chave_nfe\n)\nDO UPDATE SET\n  data_nfe = EXCLUDED.data_nfe,\n  finalidade_nfe = EXCLUDED.finalidade_nfe,\n  valorfrete_nfe = EXCLUDED.valorfrete_nfe,\n  alterado_em = EXCLUDED.alterado_em;",
+        "options": {}
+      },
+      "id": "bc36044a-1be1-4690-a97d-f1785297590a",
+      "name": "Control S Hub - Upsert cotacoes_frete_notas_fiscais",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        576
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Da8O7pSkgsWNeykd",
+          "name": "Control S Hub"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "EXEC DBO.MON_GET_CTES_COTACAO\n  @EMPRESA_ID = 1,\n  @DATA_INICIAL = '{{ $(\"Configura os Parametros\").item.json.dataInicialSql }}',\n  @DATA_FINAL = '{{ $(\"Configura os Parametros\").item.json.dataFinalSql }}';",
+        "options": {}
+      },
+      "id": "8b524826-09c0-4ab7-bdcf-fefae2d4cb47",
+      "name": "DECIS - Buscar cotacoes_frete_ctes",
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        784
+      ],
+      "credentials": {
+        "microsoftSql": {
+          "id": "1QFOYPjgbCONKzC7",
+          "name": "Conexão Decis"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.cotacoes_frete_ctes (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  numero_cte,\n  chave_cte,\n  data_cte,\n  finalidade_cte,\n  valorfrete_cte,\n  alterado_em,\n  transportadora_cte_codigo\n)\nVALUES (\n  {{ $json.EMPRESA_ID }},\n  {{ \"'\" + $json.TIPO_DOCUMENTO.replaceAll(\"'\", \"''\") + \"'\" }},\n  {{ $json.NUMERO_DOCUMENTO }},\n  {{ \"'\" + $json.CODIGO_CHAVE.replaceAll(\"'\", \"''\") + \"'\" }},\n  {{ $json.NUMERO_CTE ?? 'null' }},\n  {{ $json.CHAVE_CTE ? \"'\" + $json.CHAVE_CTE.replaceAll(\"'\", \"''\") + \"'\" : 'null' }},\n  {{\n    $json.DATA_CTE\n      ? \"'\" + new Date($json.DATA_CTE).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{ $json.FINALIDADE_CTE ? \"'\" + $json.FINALIDADE_CTE.replaceAll(\"'\", \"''\").replaceAll(\"\\r\", \" \").replaceAll(\"\\n\", \" \").replaceAll(\"\\t\", \" \") + \"'\" : 'null' }},\n  {{ $json.VALORFRETE_CTE ?? 'null' }},\n  {{\n    $json.ALTERADO_EM\n      ? \"'\" + new Date($json.ALTERADO_EM).toISOString() + \"'::TIMESTAMPTZ\"\n      : 'NULL'\n  }},\n  {{ $json.TRANSPORTADORA_CTE_CODIGO }}\n)\nON CONFLICT (\n  empresa_id,\n  tipo_documento,\n  numero_documento,\n  codigo_chave,\n  numero_cte,\n  chave_cte\n)\nDO UPDATE SET\n  data_cte = EXCLUDED.data_cte,\n  finalidade_cte = EXCLUDED.finalidade_cte,\n  valorfrete_cte = EXCLUDED.valorfrete_cte,\n  alterado_em = EXCLUDED.alterado_em,\n  transportadora_cte_codigo = EXCLUDED.transportadora_cte_codigo;",
+        "options": {}
+      },
+      "id": "4177b2a7-0148-4b3c-89c3-b0373061b01e",
+      "name": "Control S Hub - Upsert cotacoes_frete_ctes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        0,
+        784
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Da8O7pSkgsWNeykd",
+          "name": "Control S Hub"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -864,
+        208
+      ],
+      "id": "20c2d031-c16e-4602-9702-32e549758749",
+      "name": "Agendado para executar a cada 03 Minutos"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "DECIS - Buscar Transportadoras": {
+      "main": [
+        [
+          {
+            "node": "Control S Hub - Upsert Transportadoras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Control S Hub - Upsert Transportadoras": {
+      "main": [
+        []
+      ]
+    },
+    "Configura os Parametros": {
+      "main": [
+        [
+          {
+            "node": "DECIS - Buscar Transportadoras",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DECIS - Buscar cotacoes_frete",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DECIS - Buscar cotacoes_frete_itens",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DECIS - Buscar cotacoes_frete_transportadoras",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DECIS - Buscar cotacoes_frete_notas_fiscais",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DECIS - Buscar cotacoes_frete_ctes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DECIS - Buscar cotacoes_frete": {
+      "main": [
+        [
+          {
+            "node": "Control S Hub - Upsert cotacoes_frete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DECIS - Buscar cotacoes_frete_itens": {
+      "main": [
+        [
+          {
+            "node": "Control S Hub - Upsert cotacoes_frete_itens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DECIS - Buscar cotacoes_frete_transportadoras": {
+      "main": [
+        [
+          {
+            "node": "Control S Hub - Upsert cotacoes_frete_transportadoras",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DECIS - Buscar cotacoes_frete_notas_fiscais": {
+      "main": [
+        [
+          {
+            "node": "Control S Hub - Upsert cotacoes_frete_notas_fiscais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DECIS - Buscar cotacoes_frete_ctes": {
+      "main": [
+        [
+          {
+            "node": "Control S Hub - Upsert cotacoes_frete_ctes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agendado para executar a cada 03 Minutos": {
+      "main": [
+        [
+          {
+            "node": "Configura os Parametros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "America/Sao_Paulo",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "c100a516-4997-4786-81c8-f497a38850a8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0fcc1076d5c99ee510b60c70ff076ec5ad130e62d12439a999c1aea4f83d556e"
+  },
+  "id": "hilHENNMwShfG0fB",
+  "tags": []
+}

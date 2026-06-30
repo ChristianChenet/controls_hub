@@ -593,6 +593,8 @@ export type FiltrosCotacao = {
   transportadora?: string;
   bloqueado?: string;
   faturado?: string;
+  multiplasCotacoes?: boolean;
+  fluxoLogistico?: boolean;
   pagina?: number;
   limite?: number;
 };
@@ -612,6 +614,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       c.numero_documento,
       c.data_documento,
       c.codigo_chave,
+      c.lote_fluxo_logistico,
       c.origem_comercial,
       c.situacao_pedido,
       c.nome_destinatario,
@@ -636,7 +639,8 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       melhor.prazo_dias AS menor_prazo_dias,
       COALESCE(respostas.total_transportadoras, 0) AS total_transportadoras,
       COALESCE(respostas.total_respostas, 0) AS total_respostas,
-      COALESCE(respostas.total_sla_vencido, 0) AS total_sla_vencido
+      COALESCE(respostas.total_sla_vencido, 0) AS total_sla_vencido,
+      COALESCE(outras.total_outras_cotacoes, 0) AS total_outras_cotacoes
     FROM etapas_kanban e
     LEFT JOIN cotacoes_frete c ON c.etapa_kanban_id = e.id
       AND c.empresa_id = $1
@@ -662,6 +666,21 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
             AND nf.numero_documento = c.numero_documento
             AND nf.codigo_chave = c.codigo_chave
         ))
+      )
+      AND (
+        $6::BOOLEAN IS DISTINCT FROM TRUE
+        OR EXISTS (
+          SELECT 1
+          FROM cotacoes_frete cx
+          WHERE cx.empresa_id = c.empresa_id
+            AND COALESCE(cx.excluido, FALSE) = FALSE
+            AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+            AND cx.codigo_chave <> c.codigo_chave
+        )
+      )
+      AND (
+        $7::BOOLEAN IS DISTINCT FROM TRUE
+        OR COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> ''
       )
     LEFT JOIN transportadoras t_escolhida ON t_escolhida.id = c.transportadora_escolhida_id
     LEFT JOIN LATERAL (
@@ -699,11 +718,23 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
         AND cft.numero_documento = c.numero_documento
         AND cft.codigo_chave = c.codigo_chave
     ) respostas ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total_outras_cotacoes
+      FROM cotacoes_frete cx
+      WHERE cx.empresa_id = c.empresa_id
+        AND COALESCE(cx.excluido, FALSE) = FALSE
+        AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+        AND NOT (
+          cx.tipo_documento = c.tipo_documento
+          AND cx.numero_documento = c.numero_documento
+          AND cx.codigo_chave = c.codigo_chave
+        )
+    ) outras ON TRUE
     WHERE e.empresa_id = $1
       AND e.ativa = TRUE
       AND ($4::VARCHAR IS NULL OR e.codigo = $4)
     ORDER BY e.ordem ASC, c.criado_em DESC`,
-    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null]
+    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtros.fluxoLogistico === true]
   );
 }
 
@@ -725,7 +756,9 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     filtros.cliente ? `%${filtros.cliente}%` : null,
     filtros.cidade ? `%${filtros.cidade}%` : null,
     filtros.codigoChave ? `%${filtros.codigoChave}%` : null,
-    filtros.faturado || null
+    filtros.faturado || null,
+    filtros.multiplasCotacoes === true,
+    filtros.fluxoLogistico === true
   ];
   const where = `
     c.empresa_id = $1
@@ -764,6 +797,21 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
       OR ($14 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR nfes.total_nfes > 0))
       OR ($14 = 'EXCETO' AND c.faturado_em IS NULL AND COALESCE(c.numero_nfe_faturada, '') = '' AND COALESCE(nfes.total_nfes, 0) = 0)
     )
+    AND (
+      $15::BOOLEAN IS DISTINCT FROM TRUE
+      OR EXISTS (
+        SELECT 1
+        FROM cotacoes_frete cx
+        WHERE cx.empresa_id = c.empresa_id
+          AND COALESCE(cx.excluido, FALSE) = FALSE
+          AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+          AND cx.codigo_chave <> c.codigo_chave
+      )
+    )
+    AND (
+      $16::BOOLEAN IS DISTINCT FROM TRUE
+      OR COALESCE(NULLIF(TRIM(c.lote_fluxo_logistico), ''), '') <> ''
+    )
   `;
   const itens = await consultar(
     `SELECT
@@ -772,6 +820,7 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
       c.numero_documento,
       c.numero_pedido,
       c.codigo_chave,
+      c.lote_fluxo_logistico,
       c.data_documento,
       c.origem_comercial,
       c.situacao_pedido,
@@ -795,7 +844,8 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
       c.numero_cte,
       c.bloqueado_para_alteracao,
       e.nome AS etapa_nome,
-      t.nome_fantasia AS transportadora_escolhida
+      t.nome_fantasia AS transportadora_escolhida,
+      COALESCE(outras.total_outras_cotacoes, 0) AS total_outras_cotacoes
     FROM cotacoes_frete c
     LEFT JOIN etapas_kanban e ON e.id = c.etapa_kanban_id
     LEFT JOIN transportadoras t ON t.id = c.transportadora_escolhida_id
@@ -809,9 +859,21 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
         AND nf.numero_documento = c.numero_documento
         AND nf.codigo_chave = c.codigo_chave
     ) nfes ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS total_outras_cotacoes
+      FROM cotacoes_frete cx
+      WHERE cx.empresa_id = c.empresa_id
+        AND COALESCE(cx.excluido, FALSE) = FALSE
+        AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
+        AND NOT (
+          cx.tipo_documento = c.tipo_documento
+          AND cx.numero_documento = c.numero_documento
+          AND cx.codigo_chave = c.codigo_chave
+        )
+    ) outras ON TRUE
     WHERE ${where}
     ORDER BY c.criado_em DESC
-    LIMIT $15 OFFSET $16`,
+    LIMIT $17 OFFSET $18`,
     [...parametros, limite, offset]
   );
   const total = await consultarUm<{ total: string }>(
@@ -841,6 +903,24 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
 
 
 export async function obterCotacaoFrete(empresaId: number, cotacaoId: string | number) {
+  await consultar(
+    `CREATE TABLE IF NOT EXISTS motivos_escolha_transportadora (
+      id BIGSERIAL PRIMARY KEY,
+      codigo VARCHAR(80) NOT NULL UNIQUE,
+      descricao VARCHAR(220) NOT NULL,
+      padrao_transportadora_pedido BOOLEAN NOT NULL DEFAULT FALSE,
+      ativo BOOLEAN NOT NULL DEFAULT TRUE,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      alterado_em TIMESTAMPTZ
+    )`
+  );
+  await consultar(
+    `ALTER TABLE cotacoes_frete
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_id BIGINT REFERENCES motivos_escolha_transportadora(id),
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_descricao TEXT,
+      ADD COLUMN IF NOT EXISTS lote_fluxo_logistico VARCHAR(80)`
+  );
+
   const chave = interpretarChaveCotacao(empresaId, cotacaoId);
 
   const cotacao = await consultarUm(
@@ -854,10 +934,13 @@ export async function obterCotacaoFrete(empresaId: number, cotacaoId: string | n
       ctes.total_ctes,
       ctes.valor_frete_cte_total,
       ctes.ultimo_cte_em,
-      ctes.transportadora_cte_nome
+      ctes.transportadora_cte_nome,
+      COALESCE(met.descricao, c.motivo_escolha_transportadora_descricao) AS motivo_escolha_transportadora_descricao
     FROM cotacoes_frete c
     LEFT JOIN etapas_kanban e
       ON e.id = c.etapa_kanban_id
+    LEFT JOIN motivos_escolha_transportadora met
+      ON met.id = c.motivo_escolha_transportadora_id
     LEFT JOIN LATERAL (
       SELECT
         STRING_AGG(nf.numero_nfe::TEXT, ', ' ORDER BY nf.data_nfe DESC NULLS LAST, nf.numero_nfe::TEXT) AS numeros_nfe,
@@ -918,7 +1001,9 @@ export async function obterCotacaoFrete(empresaId: number, cotacaoId: string | n
       t.recebe_prazo_solicitado,
       t.exige_prazo_resposta,
       t.prazo_resposta_obrigatorio,
+      t.solicita_numero_cotacao,
       t.apresenta_lista_produtos,
+      cft.numero_cotacao_transportadora,
       ultimo_link.url_publica,
       ultimo_link.token_status,
       ultimo_link.status_envio,
@@ -1031,6 +1116,41 @@ export async function obterCotacaoFrete(empresaId: number, cotacaoId: string | n
     parametrosChave(chave)
   );
 
+  const outrasCotacoes = await consultar(
+    `SELECT
+      ${montarIdCotacaoSql('cx')} AS id,
+      cx.tipo_documento,
+      cx.numero_documento,
+      cx.numero_pedido,
+      cx.codigo_chave,
+      cx.lote_fluxo_logistico,
+      cx.data_documento,
+      cx.criado_em,
+      cx.status,
+      e.nome AS etapa_nome,
+      cx.nome_destinatario,
+      cx.cidade_destino,
+      cx.uf_destino,
+      cx.valor_mercadoria,
+      cx.valor_frete_pedido,
+      cx.valor_frete_final
+    FROM cotacoes_frete cx
+    LEFT JOIN etapas_kanban e
+      ON e.id = cx.etapa_kanban_id
+    WHERE cx.empresa_id = $1
+      AND COALESCE(cx.excluido, FALSE) = FALSE
+      AND COALESCE(cx.numero_pedido, cx.numero_documento) = COALESCE($5::VARCHAR, $3::VARCHAR)
+      AND NOT (
+        cx.tipo_documento = $2
+        AND cx.numero_documento = $3
+        AND cx.codigo_chave = $4
+      )
+    ORDER BY cx.criado_em DESC NULLS LAST, cx.data_documento DESC NULLS LAST`,
+    [...parametrosChave(chave), cotacao.numero_pedido ?? cotacao.numero_documento]
+  );
+
+  cotacao.total_outras_cotacoes = outrasCotacoes.length;
+
   return {
     cotacao,
     itens,
@@ -1038,7 +1158,8 @@ export async function obterCotacaoFrete(empresaId: number, cotacaoId: string | n
     historicos,
     timeline,
     notasFiscais,
-    ctes
+    ctes,
+    outrasCotacoes
   };
 }
 
@@ -1076,6 +1197,11 @@ export async function obterResumoPublicoPorToken(tokenHash: string) {
       c.percentual_sobre_nf,
       c.valor_solicitado,
       c.valor_frete_venda,
+      c.cnpj_emitente,
+      c.endereco_coleta,
+      c.cep_coleta,
+      c.cidade_coleta,
+      c.uf_coleta,
       c.prazo_pedido_dias,
       COALESCE(c.prazo_informado_venda_dias, c.prazo_vendedor_dias) AS prazo_informado_venda_dias,
       c.vendedor_nome,
@@ -1094,6 +1220,7 @@ export async function obterResumoPublicoPorToken(tokenHash: string) {
       t.recebe_prazo_solicitado,
       t.exige_prazo_resposta,
       t.prazo_resposta_obrigatorio,
+      t.solicita_numero_cotacao,
       t.apresenta_lista_produtos,
       e.nome_fantasia AS empresa_nome,
       e.nome_exibido AS empresa_nome_exibido,
@@ -1355,6 +1482,7 @@ export async function registrarRespostaTransportadora(dados: {
   transportadoraId: number;
   valorFrete: number;
   prazoDias?: number | null;
+  numeroCotacaoTransportadora?: string | null;
   observacao?: string | null;
   ip?: string | null;
   agenteUsuario?: string | null;
@@ -1376,17 +1504,19 @@ export async function registrarRespostaTransportadora(dados: {
       prazo_origem,
       origem_cotacao,
       origem_detalhada,
+      numero_cotacao_transportadora,
       observacao,
       status,
       cotada_em,
       respondida_em
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, 'LINK', 'EXTERNA', 'LINK_TRANSPORTADORA', $8, 'RESPONDIDA', NOW(), NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'LINK', 'EXTERNA', 'LINK_TRANSPORTADORA', $8, $9, 'RESPONDIDA', NOW(), NOW())
     ON CONFLICT (empresa_id, tipo_documento, numero_documento, codigo_chave, transportadora_id, origem_cotacao) DO UPDATE SET
       valor_frete = EXCLUDED.valor_frete,
       prazo_dias = EXCLUDED.prazo_dias,
       prazo_origem = EXCLUDED.prazo_origem,
       origem_detalhada = EXCLUDED.origem_detalhada,
+      numero_cotacao_transportadora = EXCLUDED.numero_cotacao_transportadora,
       observacao = EXCLUDED.observacao,
       status = 'RESPONDIDA',
       cotada_em = NOW(),
@@ -1399,6 +1529,7 @@ export async function registrarRespostaTransportadora(dados: {
       dados.transportadoraId,
       dados.valorFrete,
       dados.prazoDias ?? null,
+      dados.numeroCotacaoTransportadora ?? null,
       dados.observacao ?? null
     ]
   );
@@ -1442,6 +1573,7 @@ export async function registrarRespostaTransportadora(dados: {
         transportadora_id: dados.transportadoraId,
         valor_frete: dados.valorFrete,
         prazo_dias: dados.prazoDias ?? null,
+        numero_cotacao_transportadora: dados.numeroCotacaoTransportadora ?? null,
         observacao: dados.observacao ?? null
       })
     ]
@@ -1452,10 +1584,11 @@ export async function registrarRespostaTransportadora(dados: {
     transportadoraId: dados.transportadoraId,
     tipoEvento: 'RESPOSTA_LINK',
     titulo: 'Resposta da transportadora',
-    descricao: `Valor informado: ${dados.valorFrete}${dados.prazoDias ? `, prazo: ${dados.prazoDias} dias` : ''}.`,
+    descricao: `Valor informado: ${dados.valorFrete}${dados.prazoDias ? `, prazo: ${dados.prazoDias} dias` : ''}${dados.numeroCotacaoTransportadora ? `, cotacao: ${dados.numeroCotacaoTransportadora}` : ''}.`,
     dadosEvento: {
       valor_frete: dados.valorFrete,
       prazo_dias: dados.prazoDias ?? null,
+      numero_cotacao_transportadora: dados.numeroCotacaoTransportadora ?? null,
       observacao: dados.observacao ?? null
     }
   });
@@ -1551,7 +1684,32 @@ export async function escolherTransportadora(dados: {
   cotacaoId: string | number;
   cotacaoTransportadoraId: string | number;
   usuarioId: number;
+  motivoId?: number | null;
+  motivoDescricao?: string | null;
 }) {
+  await consultar(
+    `CREATE TABLE IF NOT EXISTS motivos_escolha_transportadora (
+      id BIGSERIAL PRIMARY KEY,
+      codigo VARCHAR(80) NOT NULL UNIQUE,
+      descricao VARCHAR(220) NOT NULL,
+      padrao_transportadora_pedido BOOLEAN NOT NULL DEFAULT FALSE,
+      ativo BOOLEAN NOT NULL DEFAULT TRUE,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      alterado_em TIMESTAMPTZ
+    )`
+  );
+  await consultar(
+    `ALTER TABLE cotacoes_frete
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_id BIGINT REFERENCES motivos_escolha_transportadora(id),
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_descricao TEXT`
+  );
+
+  await consultar(
+    `ALTER TABLE cotacoes_frete_transportadoras
+      ADD COLUMN IF NOT EXISTS escolhida_plataforma BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS sequencia INTEGER`
+  );
+
   const cotacaoBase = await resolverCotacaoBase(dados.empresaId, dados.cotacaoId);
   if (!cotacaoBase) {
     return null;
@@ -1568,29 +1726,51 @@ export async function escolherTransportadora(dados: {
 
   const cotacao = await consultarUm<{
     bloqueado_para_alteracao: boolean;
+    status: string | null;
+    origem_comercial: string | null;
+    transportadora_pedido_id: number | null;
+    transportadora_pedido_nome: string | null;
     tipo_documento: string;
     numero_documento: string;
     codigo_chave: string;
     transportadora_id: number;
+    nome_fantasia: string | null;
     valor_frete: string;
     prazo_dias: number | null;
     origem_cotacao: string;
+    menor_valor_frete: string | null;
   }>(
     `SELECT
       c.bloqueado_para_alteracao,
+      c.status,
+      c.origem_comercial,
+      c.transportadora_pedido_id,
+      c.transportadora_pedido_nome,
       c.tipo_documento,
       c.numero_documento,
       c.codigo_chave,
       cft.transportadora_id,
+      t.nome_fantasia,
       cft.valor_frete,
       COALESCE(cft.prazo_dias, 0) AS prazo_dias,
-      cft.origem_cotacao
+      cft.origem_cotacao,
+      menor.menor_valor_frete
     FROM cotacoes_frete c
     INNER JOIN cotacoes_frete_transportadoras cft
       ON cft.empresa_id = c.empresa_id
      AND cft.tipo_documento = c.tipo_documento
      AND cft.numero_documento = c.numero_documento
      AND cft.codigo_chave = c.codigo_chave
+    LEFT JOIN transportadoras t ON t.id = cft.transportadora_id
+    LEFT JOIN LATERAL (
+      SELECT MIN(valor_frete) AS menor_valor_frete
+      FROM cotacoes_frete_transportadoras cft_menor
+      WHERE cft_menor.empresa_id = c.empresa_id
+        AND cft_menor.tipo_documento = c.tipo_documento
+        AND cft_menor.numero_documento = c.numero_documento
+        AND cft_menor.codigo_chave = c.codigo_chave
+        AND COALESCE(cft_menor.valor_frete, 0) > 0
+    ) menor ON TRUE
     WHERE c.empresa_id = $1
       AND c.tipo_documento = $2
       AND c.numero_documento = $3
@@ -1613,20 +1793,64 @@ export async function escolherTransportadora(dados: {
     return null;
   }
 
+  if (String(cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO') {
+    return null;
+  }
+
+  const parametroOrigens = await consultarUm<{ valor: string }>(
+    `SELECT valor
+    FROM parametros_sistema
+    WHERE chave = 'ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO'`
+  );
+  const origensObrigatorias = String(parametroOrigens?.valor ?? '')
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+  const origemAtual = String(cotacao.origem_comercial ?? '').trim().toUpperCase();
+  const obrigaTransportadoraPedido = Boolean(cotacao.transportadora_pedido_id) && origensObrigatorias.includes(origemAtual);
+
+  let motivoId = dados.motivoId ?? null;
+  let motivoDescricao = dados.motivoDescricao?.trim() || null;
+
+  if (obrigaTransportadoraPedido && Number(cotacao.transportadora_pedido_id) !== Number(cotacao.transportadora_id)) {
+    throw new Error('Esta origem obriga escolher a transportadora definida no pedido.');
+  }
+
+  if (obrigaTransportadoraPedido) {
+    const parametroMotivo = await consultarUm<{ valor: string }>(
+      `SELECT valor
+      FROM parametros_sistema
+      WHERE chave = 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID'`
+    );
+    const motivoPadrao = Number(parametroMotivo?.valor ?? 0);
+    if (motivoPadrao > 0) {
+      motivoId = motivoPadrao;
+    }
+    motivoDescricao = motivoDescricao || 'Transportadora definida no pedido/origem comercial.';
+  }
+
+  const menorValor = Number(cotacao.menor_valor_frete ?? 0);
+  const valorEscolhido = Number(cotacao.valor_frete ?? 0);
+  const escolhaNaoVencedora = menorValor > 0 && valorEscolhido > menorValor;
+  if (escolhaNaoVencedora && !motivoId && !motivoDescricao) {
+    throw new Error('Informe o motivo para escolher uma transportadora que nÃ£o venceu a cotaÃ§Ã£o.');
+  }
+
   await consultar(
     `UPDATE cotacoes_frete_transportadoras
-    SET selecionada = FALSE
+    SET selecionada = FALSE,
+      escolhida_plataforma = FALSE
     WHERE empresa_id = $1
       AND tipo_documento = $2
       AND numero_documento = $3
-      AND codigo_chave = $4
-      AND COALESCE(excluido, FALSE) = FALSE`,
+      AND codigo_chave = $4`,
     [dados.empresaId, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave]
   );
 
   await consultar(
     `UPDATE cotacoes_frete_transportadoras
     SET selecionada = TRUE,
+      escolhida_plataforma = TRUE,
       validada = TRUE,
       validada_por_usuario_id = $3,
       validada_em = NOW(),
@@ -1655,7 +1879,8 @@ export async function escolherTransportadora(dados: {
       escolhido_em = NOW(),
       valor_frete_final = $7,
       prazo_final_dias = $8,
-      retorno_erp_status = 'PENDENTE',
+      motivo_escolha_transportadora_id = $9,
+      motivo_escolha_transportadora_descricao = $10,
       alterado_em = NOW(),
       alterado_por_usuario_id = $6
     WHERE empresa_id = $1
@@ -1671,7 +1896,9 @@ export async function escolherTransportadora(dados: {
       cotacao.transportadora_id,
       dados.usuarioId,
       cotacao.valor_frete,
-      cotacao.prazo_dias
+      cotacao.prazo_dias,
+      motivoId,
+      motivoDescricao
     ]
   );
 
@@ -1683,15 +1910,18 @@ export async function escolherTransportadora(dados: {
     transportadoraId: cotacao.transportadora_id,
     tipoEvento: 'APROVACAO_ANALISTA',
     titulo: 'Transportadora aprovada',
-    descricao: `Valor final ${cotacao.valor_frete}${cotacao.prazo_dias ? `, prazo ${cotacao.prazo_dias} dias` : ''}.`,
+    descricao: `Valor final ${cotacao.valor_frete}${cotacao.prazo_dias ? `, prazo ${cotacao.prazo_dias} dias` : ''}${motivoDescricao ? ` Motivo: ${motivoDescricao}` : ''}.`,
     dadosEvento: {
       transportadora_id: cotacao.transportadora_id,
       valor_frete_final: cotacao.valor_frete,
-      prazo_final_dias: cotacao.prazo_dias
+      prazo_final_dias: cotacao.prazo_dias,
+      motivo_id: motivoId,
+      motivo_descricao: motivoDescricao,
+      escolha_nao_vencedora: escolhaNaoVencedora
     }
   });
 
-  return { transportadora_id: cotacao.transportadora_id, valor_frete_final: cotacao.valor_frete, prazo_final_dias: cotacao.prazo_dias };
+  return { transportadora_id: cotacao.transportadora_id, valor_frete_final: cotacao.valor_frete, prazo_final_dias: cotacao.prazo_dias, motivo_id: motivoId, motivo_descricao: motivoDescricao };
 }
 
 export async function alterarValorFreteManual(dados: {
@@ -2042,7 +2272,12 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
     [empresaId]
   );
 
-  const cotacao = await consultarUm<{ id: number }>(
+  const cotacao = await consultarUm<{
+    id: number;
+    tipo_documento: string;
+    numero_documento: string;
+    codigo_chave: string;
+  }>(
     `INSERT INTO cotacoes_frete (
       empresa_id,
       etapa_kanban_id,
@@ -2061,6 +2296,11 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       cubagem_total,
       percentual_sobre_nf,
       valor_solicitado,
+      cnpj_emitente,
+      endereco_coleta,
+      cep_coleta,
+      cidade_coleta,
+      uf_coleta,
       cep_destino,
       uf_destino,
       cidade_destino,
@@ -2072,7 +2312,7 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       identificador_externo,
       payload_recebido
     )
-    VALUES ($1, $2, $3, $4, COALESCE($5, CONCAT($4, '-P001')), $6, $7, $8, 'RECEBIDO_ERP', $9, $10, COALESCE($11::NUMERIC, 0), COALESCE($12::NUMERIC, 0), COALESCE($13::NUMERIC, 0), COALESCE($14::NUMERIC, 0), $15::NUMERIC, $16::NUMERIC, $17, $18, $19, $20, $21, $22, COALESCE($23::BOOLEAN, FALSE), COALESCE($24::BOOLEAN, FALSE), $25, $26::JSONB)
+    VALUES ($1, $2, $3, $4, COALESCE($5, CONCAT($4, '-P001')), $6, $7, $8, 'RECEBIDO_ERP', $9, $10, COALESCE($11::NUMERIC, 0), COALESCE($12::NUMERIC, 0), COALESCE($13::NUMERIC, 0), COALESCE($14::NUMERIC, 0), $15::NUMERIC, $16::NUMERIC, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, COALESCE($28::BOOLEAN, FALSE), COALESCE($29::BOOLEAN, FALSE), $30, $31::JSONB)
     ON CONFLICT (empresa_id, tipo_documento, numero_documento, codigo_chave) DO UPDATE SET
       chave_nfe = EXCLUDED.chave_nfe,
       numero_pedido = EXCLUDED.numero_pedido,
@@ -2085,6 +2325,11 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       cubagem_total = EXCLUDED.cubagem_total,
       percentual_sobre_nf = EXCLUDED.percentual_sobre_nf,
       valor_solicitado = EXCLUDED.valor_solicitado,
+      cnpj_emitente = EXCLUDED.cnpj_emitente,
+      endereco_coleta = EXCLUDED.endereco_coleta,
+      cep_coleta = EXCLUDED.cep_coleta,
+      cidade_coleta = EXCLUDED.cidade_coleta,
+      uf_coleta = EXCLUDED.uf_coleta,
       cep_destino = EXCLUDED.cep_destino,
       uf_destino = EXCLUDED.uf_destino,
       cidade_destino = EXCLUDED.cidade_destino,
@@ -2097,7 +2342,7 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       payload_recebido = EXCLUDED.payload_recebido,
       alterado_em = NOW()
     WHERE COALESCE(cotacoes_frete.excluido, FALSE) = FALSE
-    RETURNING id`,
+    RETURNING id, tipo_documento, numero_documento, codigo_chave`,
     [
       empresaId,
       etapa?.id ?? null,
@@ -2115,6 +2360,11 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       dados.cubagem_total ?? 0,
       dados.percentual_sobre_nf ?? null,
       dados.valor_solicitado ?? null,
+      dados.cnpj_emitente ?? dados.cnpj_remetente ?? dados.documento_emitente ?? null,
+      dados.endereco_coleta ?? dados.endereco_remetente ?? null,
+      dados.cep_coleta ?? dados.cep_origem ?? null,
+      dados.cidade_coleta ?? dados.cidade_origem ?? null,
+      dados.uf_coleta ?? dados.uf_origem ?? null,
       dados.cep_destino ?? null,
       dados.uf_destino ?? null,
       dados.cidade_destino ?? null,
@@ -2256,8 +2506,13 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       await consultar(
         `INSERT INTO cotacoes_frete_transportadoras (
           cotacao_frete_id,
+          empresa_id,
+          tipo_documento,
+          numero_documento,
+          codigo_chave,
           transportadora_id,
           codigo_transportadora,
+          sequencia,
           valor_frete,
           prazo_dias,
           prazo_origem,
@@ -2268,8 +2523,13 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
           observacao,
           status
         )
-        VALUES ($1, $2, $3, COALESCE($4::NUMERIC, 0), $5::INTEGER, 'ERP', $6::NUMERIC, $7::INTEGER, 'ERP', 'COTACAO_AUTOMATICA', $8, 'RECEBIDA')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::INTEGER, COALESCE($9::NUMERIC, 0), $10::INTEGER, 'ERP', $11::NUMERIC, $12::INTEGER, 'ERP', 'COTACAO_AUTOMATICA', $13, 'RECEBIDA')
         ON CONFLICT (cotacao_frete_id, transportadora_id, origem_cotacao) DO UPDATE SET
+          empresa_id = EXCLUDED.empresa_id,
+          tipo_documento = EXCLUDED.tipo_documento,
+          numero_documento = EXCLUDED.numero_documento,
+          codigo_chave = EXCLUDED.codigo_chave,
+          sequencia = EXCLUDED.sequencia,
           valor_frete = EXCLUDED.valor_frete,
           prazo_dias = EXCLUDED.prazo_dias,
           prazo_origem = EXCLUDED.prazo_origem,
@@ -2281,8 +2541,13 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
           cotada_em = NOW()`,
         [
           cotacao.id,
+          empresaId,
+          cotacao.tipo_documento,
+          cotacao.numero_documento,
+          cotacao.codigo_chave,
           transportadora.id,
           transporte.codigo_transportadora ?? transporte.codigo_interno,
+          transporte.sequencia ?? transporte.SEQUENCIA ?? null,
           transporte.valor_frete ?? 0,
           transporte.prazo_dias ?? transporte.prazo ?? null,
           transporte.percentual_frete ?? null,
@@ -2390,6 +2655,7 @@ export async function adicionarTransportadoraCotacao(dados: {
         ELSE 'PENDENTE_ENVIO'
       END
     RETURNING
+      id AS registro_id,
       CONCAT_WS('|', empresa_id, tipo_documento, numero_documento, codigo_chave, transportadora_id, origem_cotacao) AS id,
       *`,
     [
@@ -2415,6 +2681,77 @@ export async function adicionarTransportadoraCotacao(dados: {
   }
 
   return registro;
+}
+
+export async function excluirTransportadoraCotacao(dados: {
+  empresaId: number;
+  cotacaoId: string | number;
+  cotacaoTransportadoraId: string | number;
+  usuarioId: number;
+}) {
+  await consultar(
+    `ALTER TABLE cotacoes_frete_transportadoras
+      ADD COLUMN IF NOT EXISTS escolhida_plataforma BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+
+  const cotacao = await resolverCotacaoBase(dados.empresaId, dados.cotacaoId);
+  if (!cotacao) {
+    return null;
+  }
+
+  const identificador = decodeURIComponent(String(dados.cotacaoTransportadoraId ?? '')).trim();
+  const partes = identificador.split('|');
+  const transportadoraId = Number(partes.length >= 5 ? partes[4] : dados.cotacaoTransportadoraId);
+  const origemCotacao = partes.length >= 6 ? partes.slice(5).join('|') : null;
+
+  if (!Number.isFinite(transportadoraId) || transportadoraId <= 0) {
+    return null;
+  }
+
+  const removida = await consultarUm<{
+    registro_id: number;
+    transportadora_id: number;
+    origem_cotacao: string | null;
+    valor_frete: string | null;
+  }>(
+    `DELETE FROM cotacoes_frete_transportadoras
+    WHERE empresa_id = $1
+      AND tipo_documento = $2
+      AND numero_documento = $3
+      AND codigo_chave = $4
+      AND transportadora_id = $5
+      AND ($6::VARCHAR IS NULL OR origem_cotacao = $6)
+      AND COALESCE(valor_frete, 0) = 0
+      AND COALESCE(validada, FALSE) = FALSE
+      AND COALESCE(selecionada, FALSE) = FALSE
+      AND COALESCE(escolhida_plataforma, FALSE) = FALSE
+      AND respondida_em IS NULL
+      AND UPPER(COALESCE(status, '')) NOT IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTACAO_TRANSPORTADORA_RECEBIDA')
+      AND UPPER(COALESCE(origem_cotacao, '')) IN ('MANUAL', 'EXTERNA')
+    RETURNING id AS registro_id, transportadora_id, origem_cotacao, valor_frete`,
+    [
+      dados.empresaId,
+      cotacao.tipo_documento,
+      cotacao.numero_documento,
+      cotacao.codigo_chave,
+      transportadoraId,
+      origemCotacao
+    ]
+  );
+
+  if (removida) {
+    await registrarTimelineCotacao({
+      cotacaoId: cotacao.id,
+      usuarioId: dados.usuarioId,
+      transportadoraId,
+      tipoEvento: 'TRANSPORTADORA_REMOVIDA',
+      titulo: 'Transportadora removida',
+      descricao: 'Transportadora adicionada sem valor foi removida da cotacao.',
+      dadosEvento: removida
+    });
+  }
+
+  return removida;
 }
 
 export async function atualizarFluxoCotacaoErp(dados: {
@@ -2547,4 +2884,6 @@ export async function listarCotacoesPendentesErp(empresaId: number) {
     [empresaId]
   );
 }
+
+
 

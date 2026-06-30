@@ -13,12 +13,22 @@ export type ConfiguracaoEmailUsuario = {
   seguranca?: string | null;
   email_resposta?: string | null;
   assinatura_html?: string | null;
+  modelo_email_transportadora?: string | null;
   permite_envio_cotacao?: boolean;
   padrao?: boolean;
   ativo?: boolean;
 };
 
+async function garantirModeloEmailTransportadora() {
+  // Mantem compatibilidade com servidores que ainda nao executaram a migration 023.
+  await consultar(
+    `ALTER TABLE usuarios_configuracoes_email
+    ADD COLUMN IF NOT EXISTS modelo_email_transportadora TEXT`
+  );
+}
+
 export async function obterConfiguracaoEmailUsuario(usuarioId: number, incluirSenha = false) {
+  await garantirModeloEmailTransportadora();
   return consultarUm(
     `SELECT
       id,
@@ -34,6 +44,7 @@ export async function obterConfiguracaoEmailUsuario(usuarioId: number, incluirSe
       seguranca,
       email_resposta,
       assinatura_html,
+      modelo_email_transportadora,
       permite_envio_cotacao,
       padrao,
       ativo,
@@ -47,6 +58,7 @@ export async function obterConfiguracaoEmailUsuario(usuarioId: number, incluirSe
 }
 
 export async function obterConfiguracaoEmailPorId(configuracaoId: number, incluirSenha = false) {
+  await garantirModeloEmailTransportadora();
   return consultarUm(
     `SELECT
       id,
@@ -62,6 +74,7 @@ export async function obterConfiguracaoEmailPorId(configuracaoId: number, inclui
       seguranca,
       email_resposta,
       assinatura_html,
+      modelo_email_transportadora,
       permite_envio_cotacao,
       padrao,
       ativo,
@@ -75,6 +88,7 @@ export async function obterConfiguracaoEmailPorId(configuracaoId: number, inclui
 }
 
 export async function listarConfiguracoesEmailAdministracao() {
+  await garantirModeloEmailTransportadora();
   return consultar(
     `SELECT
       ce.id,
@@ -91,6 +105,7 @@ export async function listarConfiguracoesEmailAdministracao() {
       ce.seguranca,
       ce.email_resposta,
       ce.assinatura_html,
+      ce.modelo_email_transportadora,
       ce.permite_envio_cotacao,
       ce.padrao,
       ce.ativo,
@@ -106,6 +121,7 @@ export async function listarConfiguracoesEmailAdministracao() {
 }
 
 export async function salvarConfiguracaoEmailUsuario(usuarioId: number, dados: ConfiguracaoEmailUsuario) {
+  await garantirModeloEmailTransportadora();
   return consultarUm(
     `INSERT INTO usuarios_configuracoes_email (
       usuario_id,
@@ -120,11 +136,12 @@ export async function salvarConfiguracaoEmailUsuario(usuarioId: number, dados: C
       seguranca,
       email_resposta,
       assinatura_html,
+      modelo_email_transportadora,
       permite_envio_cotacao,
       padrao,
       ativo
     )
-    VALUES ($1, $2, $3, $4, LOWER($5), $6, $7, $8, PGP_SYM_ENCRYPT(COALESCE($9, ''), $16), $10, LOWER($11), $12, COALESCE($13, TRUE), COALESCE($14, FALSE), COALESCE($15, TRUE))
+    VALUES ($1, $2, $3, $4, LOWER($5), $6, $7, $8, PGP_SYM_ENCRYPT(COALESCE($9, ''), $17), $10, LOWER($11), $12, $13, COALESCE($14, TRUE), COALESCE($15, FALSE), COALESCE($16, TRUE))
     ON CONFLICT (usuario_id) DO UPDATE SET
       descricao = EXCLUDED.descricao,
       empresa_id = EXCLUDED.empresa_id,
@@ -140,6 +157,7 @@ export async function salvarConfiguracaoEmailUsuario(usuarioId: number, dados: C
       seguranca = EXCLUDED.seguranca,
       email_resposta = EXCLUDED.email_resposta,
       assinatura_html = EXCLUDED.assinatura_html,
+      modelo_email_transportadora = EXCLUDED.modelo_email_transportadora,
       permite_envio_cotacao = EXCLUDED.permite_envio_cotacao,
       padrao = EXCLUDED.padrao,
       ativo = EXCLUDED.ativo,
@@ -157,6 +175,7 @@ export async function salvarConfiguracaoEmailUsuario(usuarioId: number, dados: C
       seguranca,
       email_resposta,
       assinatura_html,
+      modelo_email_transportadora,
       permite_envio_cotacao,
       padrao,
       ativo`,
@@ -173,6 +192,7 @@ export async function salvarConfiguracaoEmailUsuario(usuarioId: number, dados: C
       dados.seguranca ?? 'STARTTLS',
       dados.email_resposta ?? null,
       dados.assinatura_html ?? null,
+      dados.modelo_email_transportadora ?? null,
       dados.permite_envio_cotacao ?? true,
       dados.padrao ?? false,
       dados.ativo ?? true,

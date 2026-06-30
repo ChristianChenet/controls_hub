@@ -19,6 +19,8 @@ import {
   listarPerfisAdministracao,
   listarPermissoesPerfil,
   listarParametrosSistema,
+  listarMotivosEscolhaTransportadora,
+  listarOrigensComerciaisCotacao,
   listarTelasFonte,
   listarUsuariosAdministracao,
   obterPreferenciasInterfaceUsuario,
@@ -26,6 +28,7 @@ import {
   registrarAuditoria,
   salvarEmpresa,
   salvarParametroSistema,
+  salvarMotivoEscolhaTransportadora,
   salvarPerfil,
   salvarPreferenciasInterfaceUsuario,
   salvarPermissoesPerfil,
@@ -54,6 +57,7 @@ import {
   listarItensPublicosPorToken,
   listarKanbanCotacao,
   adicionarTransportadoraCotacao,
+  excluirTransportadoraCotacao,
   alterarEtapaCotacao,
   avancarEtapaAposEnvio,
   atualizarFluxoCotacaoErp,
@@ -596,6 +600,50 @@ export async function criarApp() {
     return sucesso(await listarParametrosSistema());
   });
 
+  app.get('/api/admin/origens-comerciais-cotacao', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      return reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+    }
+
+    return sucesso(await listarOrigensComerciaisCotacao());
+  });
+
+  app.get('/api/admin/motivos-escolha-transportadora', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      return reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+    }
+
+    return sucesso(await listarMotivosEscolhaTransportadora());
+  });
+
+  app.post('/api/admin/motivos-escolha-transportadora', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      return reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+    }
+
+    const corpo = request.body as any;
+    if (!String(corpo?.descricao ?? '').trim()) {
+      return reply.status(400).send(falha('MOTIVO_OBRIGATORIO', 'Informe a descricao do motivo.'));
+    }
+
+    const motivo = await salvarMotivoEscolhaTransportadora(corpo);
+    await registrarAuditoria({
+      empresaId: usuario.empresaAtivaId,
+      usuarioId: usuario.id,
+      moduloCodigo: 'ADMINISTRACAO',
+      telaCodigo: 'CONFIGURACOES',
+      tipoEvento: 'SALVAR_MOTIVO_ESCOLHA_TRANSPORTADORA',
+      tabelaAfetada: 'motivos_escolha_transportadora',
+      registroId: Number((motivo as any).id),
+      descricao: `Motivo de escolha salvo: ${String((motivo as any).descricao)}`
+    });
+
+    return sucesso(motivo);
+  });
+
   app.get('/api/telas/fonte', { preHandler: (app as any).autenticar }, async (request, reply) => {
     if (!exigirSuperadmin(request)) {
       return reply.status(403).send(falha('ACESSO_NEGADO', 'Recurso disponivel apenas para superadmin.'));
@@ -645,7 +693,7 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -653,11 +701,13 @@ export async function criarApp() {
       dataInicial: request.query.data_inicial,
       dataFinal: request.query.data_final,
       etapaCodigo: request.query.etapa_codigo,
-      faturado: request.query.faturado
+      faturado: request.query.faturado,
+      multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
+      fluxoLogistico: request.query.fluxo_logistico === 'true'
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; faturado?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -675,12 +725,14 @@ export async function criarApp() {
       transportadora: request.query.transportadora,
       bloqueado: request.query.bloqueado,
       faturado: request.query.faturado,
+      multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
+      fluxoLogistico: request.query.fluxo_logistico === 'true',
       pagina: Number(request.query.pagina ?? 1),
       limite: Number(request.query.limite ?? 15)
     }));
   });
 
-  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; vendedor?: string; transportadora?: string; faturado?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -724,7 +776,7 @@ export async function criarApp() {
         const cotacoesGrupo = grupo.cotacoes_ids ?? [];
         const preparacaoGrupo = (await prepararEnvioMassa(usuario!.empresaAtivaId!, cotacoesGrupo as any) as any[])
           .filter((item: any) => Number(item.transportadora_id) === transportadoraIdGrupo);
-        const documentosEmail: Array<{ numero: string; chave: string; url: string; valor: string; sla: string }> = [];
+        const documentosEmail: Array<{ numero: string; chave: string; url: string; valor: string; validade: string }> = [];
         const atualizacoes: any[] = [];
         const fornecedorBase = preparacaoGrupo[0];
 
@@ -804,7 +856,7 @@ export async function criarApp() {
             chave: String(fornecedor.codigo_chave),
             url: urlCotacao,
             valor: String(fornecedor.valor_frete ?? '0'),
-            sla: slaLimiteEm.toLocaleString('pt-BR')
+            validade: slaLimiteEm.toLocaleString('pt-BR')
           });
           atualizacoes.push({ envio, fornecedor, tokenHash: registroToken?.token_hash ?? tokenHash, cotacaoId: fornecedor.cotacao_id });
         }
@@ -814,16 +866,31 @@ export async function criarApp() {
         }
 
         const linhas = documentosEmail.map((documento) => (
-          `<tr><td>${documento.numero}</td><td>${documento.chave}</td><td>R$ ${documento.valor}</td><td>${documento.sla}</td><td><a href="${documento.url}">${documento.url}</a></td></tr>`
+          `<tr><td>${documento.numero}</td><td>${documento.chave}</td><td style="text-align:right">R$ ${documento.valor}</td><td>${documento.validade}</td><td><a href="${documento.url}">${documento.url}</a></td></tr>`
         )).join('');
+        const tabelaDocumentos = `
+          <table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;color:#172033" border="1" cellpadding="6">
+            <thead><tr><th align="left">Documento</th><th align="left">Chave</th><th align="right">Valor refer&ecirc;ncia</th><th align="left">Validade do Link</th><th align="left">Link</th></tr></thead>
+            <tbody>${linhas}</tbody>
+          </table>`;
+        const modeloConfigurado = String(configuracaoEmail.modelo_email_transportadora ?? '').trim();
+        const htmlBaseConfigurado = grupo.html?.trim()
+          ? grupo.html
+          : modeloConfigurado || `<div style="font-family:Arial,sans-serif;color:#172033"><p>Ol&aacute;, TRANSPORTADORA.</p><p>Solicitamos a cota&ccedil;&atilde;o de frete dos documentos abaixo:</p><p>DOCUMENTOS</p><br><p>Atenciosamente.</p></div>`;
         const htmlBase = grupo.html?.trim()
           ? `<div>${grupo.html}</div>`
-          : `<p>Olá, ${fornecedorBase.nome_fantasia}.</p><p>Solicitamos a cotação de frete dos documentos abaixo.</p>`;
-        const html = `${htmlBase}
+          : `<div style="font-family:Arial,sans-serif;color:#172033"><p>Olá, ${fornecedorBase.nome_fantasia}.</p><p>Solicitamos a cotação de frete dos documentos abaixo:</p><p>DOCUMENTOS</p><br><p>Atenciosamente.</p></div>`;
+        const htmlLegado = `${htmlBase}
           <table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">
-            <thead><tr><th>Documento</th><th>Chave</th><th>Valor referência</th><th>SLA</th><th>Link</th></tr></thead>
+            <thead><tr><th>Documento</th><th>Chave</th><th>Valor referência</th><th>Validade do Link</th><th>Link</th></tr></thead>
             <tbody>${linhas}</tbody>
           </table>
+          ${configuracaoEmail.assinatura_html ?? ''}`;
+
+        void htmlLegado;
+        const html = `${htmlBaseConfigurado
+          .replaceAll('TRANSPORTADORA', fornecedorBase.nome_fantasia)
+          .replaceAll('DOCUMENTOS', tabelaDocumentos)}
           ${configuracaoEmail.assinatura_html ?? ''}`;
 
         try {
@@ -977,7 +1044,7 @@ export async function criarApp() {
           await enviarEmail(configuracaoEmail, {
             para: fornecedor.email,
             assunto: `Cotacao de frete ${base.numero_documento} - ${envio.codigo_chave}`,
-            html: `<p>Ola, ${fornecedor.nome_fantasia}.</p><p>Por favor, preencha a cotacao de frete pelo link abaixo:</p><p><a href="${urlCotacao}">${urlCotacao}</a></p><p>Chave da cotacao: <strong>${envio.codigo_chave}</strong></p><p>SLA de resposta: ${slaLimiteEm.toLocaleString('pt-BR')}</p>${configuracaoEmail.assinatura_html ?? ''}`,
+            html: `<p>Ola, ${fornecedor.nome_fantasia}.</p><p>Por favor, preencha a cotacao de frete pelo link abaixo:</p><p><a href="${urlCotacao}">${urlCotacao}</a></p><p>Chave da cotacao: <strong>${envio.codigo_chave}</strong></p><p>Validade do Link: ${slaLimiteEm.toLocaleString('pt-BR')}</p>${configuracaoEmail.assinatura_html ?? ''}`,
             texto: `Preencha a cotacao: ${urlCotacao}`
           });
 
@@ -1073,8 +1140,38 @@ export async function criarApp() {
       telaCodigo: 'COTACAO_FRETE_DETALHE',
       tipoEvento: 'ADICIONAR_TRANSPORTADORA_COTACAO',
       tabelaAfetada: 'cotacoes_frete_transportadoras',
-      registroId: Number(resultado.id),
+      registroId: Number.isFinite(Number((resultado as any).registro_id)) ? Number((resultado as any).registro_id) : 0,
       descricao: 'Transportadora adicionada manualmente na cotacao.',
+      dadosNovos: resultado
+    });
+
+    return sucesso(resultado);
+  });
+
+  app.delete<{ Params: { id: string; transportadoraId: string } }>('/api/cotacao-frete/cotacoes/:id/transportadoras/:transportadoraId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirPermissao(request, reply, 'ADICIONAR_TRANSPORTADORA_COTACAO', 'Usuario sem permissao para remover transportadora da cotacao.');
+    if (!usuario) return;
+
+    const resultado = await excluirTransportadoraCotacao({
+      empresaId: usuario.empresaAtivaId!,
+      cotacaoId: obterChaveCotacaoParametro(request.params.id) as any,
+      cotacaoTransportadoraId: obterChaveCotacaoParametro(request.params.transportadoraId) as any,
+      usuarioId: usuario.id
+    });
+
+    if (!resultado) {
+      return reply.status(409).send(falha('TRANSPORTADORA_NAO_REMOVIDA', 'Somente transportadoras adicionadas, sem valor e sem resposta podem ser removidas.'));
+    }
+
+    await registrarAuditoria({
+      empresaId: usuario.empresaAtivaId,
+      usuarioId: usuario.id,
+      moduloCodigo: 'COTACAO_FRETE',
+      telaCodigo: 'COTACAO_FRETE_DETALHE',
+      tipoEvento: 'REMOVER_TRANSPORTADORA_COTACAO',
+      tabelaAfetada: 'cotacoes_frete_transportadoras',
+      registroId: Number((resultado as any).registro_id ?? 0),
+      descricao: 'Transportadora adicionada sem valor removida da cotacao.',
       dadosNovos: resultado
     });
 
@@ -1101,7 +1198,7 @@ export async function criarApp() {
     return sucesso(resultado);
   });
 
-  app.post<{ Params: { id: string }; Body: { cotacao_transportadora_id?: string | number } }>('/api/cotacao-frete/cotacoes/:id/escolher-transportadora', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: { cotacao_transportadora_id?: string | number; motivo_id?: number | null; motivo_descricao?: string | null } }>('/api/cotacao-frete/cotacoes/:id/escolher-transportadora', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'ESCOLHER_TRANSPORTADORA', 'Usuario sem permissao para escolher transportadora.');
     if (!usuario) return;
     const cotacaoTransportadoraId = request.body.cotacao_transportadora_id;
@@ -1109,12 +1206,19 @@ export async function criarApp() {
       return reply.status(400).send(falha('COTACAO_TRANSPORTADORA_OBRIGATORIA', 'Informe a cotacao da transportadora.'));
     }
 
-    const resultado = await escolherTransportadora({
-      empresaId: usuario!.empresaAtivaId!,
-      cotacaoId: obterChaveCotacaoParametro(request.params.id) as any,
-      cotacaoTransportadoraId,
-      usuarioId: usuario!.id
-    });
+    let resultado;
+    try {
+      resultado = await escolherTransportadora({
+        empresaId: usuario!.empresaAtivaId!,
+        cotacaoId: obterChaveCotacaoParametro(request.params.id) as any,
+        cotacaoTransportadoraId,
+        usuarioId: usuario!.id,
+        motivoId: request.body.motivo_id ?? null,
+        motivoDescricao: request.body.motivo_descricao ?? null
+      });
+    } catch (error) {
+      return reply.status(409).send(falha('ESCOLHA_TRANSPORTADORA_INVALIDA', error instanceof Error ? error.message : 'Nao foi possivel escolher a transportadora.'));
+    }
 
     if (!resultado) {
       return reply.status(409).send(falha('COTACAO_BLOQUEADA', 'Cotacao inexistente ou bloqueada para alteracao.'));
@@ -1477,7 +1581,7 @@ export async function criarApp() {
     });
   });
 
-  app.post<{ Params: { token: string }; Body: { valor_frete?: number; prazo_dias?: number; observacao?: string } }>('/api/publico/cotacao/:token/responder', async (request, reply) => {
+  app.post<{ Params: { token: string }; Body: { valor_frete?: number; prazo_dias?: number; numero_cotacao_transportadora?: string; observacao?: string } }>('/api/publico/cotacao/:token/responder', async (request, reply) => {
     const tokenResolvido = await resolverTokenPublico(request.params.token);
     const resumo = tokenResolvido?.resumo;
 
@@ -1512,6 +1616,7 @@ export async function criarApp() {
       transportadoraId: (resumo as any).transportadora_id,
       valorFrete,
       prazoDias,
+      numeroCotacaoTransportadora: request.body.numero_cotacao_transportadora?.trim() || null,
       observacao: request.body.observacao,
       ip: request.ip,
       agenteUsuario: request.headers['user-agent']
@@ -1538,6 +1643,7 @@ export async function criarApp() {
                 <tr><td><strong>Cliente</strong></td><td>${String((resumo as any).nome_destinatario ?? '')}</td></tr>
                 <tr><td><strong>Destino</strong></td><td>${String((resumo as any).cidade_destino ?? '')}/${String((resumo as any).uf_destino ?? '')}</td></tr>
                 <tr><td><strong>Valor informado</strong></td><td>R$ ${valorFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+                ${request.body.numero_cotacao_transportadora ? `<tr><td><strong>Numero da cotacao da transportadora</strong></td><td>${String(request.body.numero_cotacao_transportadora)}</td></tr>` : ''}
                 <tr><td><strong>% frete sobre o total</strong></td><td>${percentualFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</td></tr>
                 <tr><td><strong>Prazo informado</strong></td><td>${Number(prazoDias ?? 0)} dia(s)</td></tr>
                 <tr><td><strong>Observacao</strong></td><td>${String(request.body.observacao ?? '-')}</td></tr>
@@ -1549,9 +1655,9 @@ export async function criarApp() {
 
         await enviarEmail(configuracaoEmail, {
           para: emailTransportadora,
-          assunto: `Cotacao registrada - ${String((resumo as any).numero_documento ?? '')}`,
+          assunto: `Cotacao registrada${request.body.numero_cotacao_transportadora ? ` ${String(request.body.numero_cotacao_transportadora)}` : ''} - ${String((resumo as any).numero_documento ?? '')}`,
           html: htmlComprovante,
-          texto: `Cotacao registrada. Documento ${String((resumo as any).numero_documento ?? '')}. Valor R$ ${valorFrete}. Prazo ${Number(prazoDias ?? 0)} dia(s).`
+          texto: `Cotacao registrada. Documento ${String((resumo as any).numero_documento ?? '')}. ${request.body.numero_cotacao_transportadora ? `Numero da cotacao ${String(request.body.numero_cotacao_transportadora)}. ` : ''}Valor R$ ${valorFrete}. Prazo ${Number(prazoDias ?? 0)} dia(s).`
         });
       }
     } catch (erroEmailConfirmacao) {
