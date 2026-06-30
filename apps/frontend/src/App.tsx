@@ -134,6 +134,34 @@ const menus: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = 
   { id: 'configuracoes' as TelaAtual, nome: 'Configurações', icone: Settings }
 ];
 
+const permissoesPorMenu: Partial<Record<TelaAtual, string[]>> = {
+  dashboard: ['UTILIZA_COTACAO_FRETE'],
+  cotacoes: ['UTILIZA_COTACAO_FRETE'],
+  envioMassa: ['UTILIZA_COTACAO_FRETE'],
+  kanban: ['UTILIZA_COTACAO_FRETE'],
+  transportadoras: ['UTILIZA_COTACAO_FRETE'],
+  etapas: ['UTILIZA_COTACAO_FRETE'],
+  empresas: ['ADMINISTRAR_EMPRESAS'],
+  usuarios: ['ADMINISTRAR_USUARIOS'],
+  perfis: ['ADMINISTRAR_PERFIS'],
+  direitos: ['ADMINISTRAR_PERFIS'],
+  auditoria: ['VISUALIZAR_AUDITORIA'],
+  emailConfiguracoes: ['CONFIGURAR_EMAIL'],
+  configuracoes: ['ADMINISTRAR_EMPRESAS']
+};
+
+function usuarioPodeVerMenu(usuario: UsuarioLogado, telaMenu: TelaAtual) {
+  if (usuario.superadmin || usuario.administrador) {
+    return true;
+  }
+  const permissoesNecessarias = permissoesPorMenu[telaMenu] ?? [];
+  if (!permissoesNecessarias.length) {
+    return true;
+  }
+  const permissoesUsuario = new Set(usuario.permissoes ?? []);
+  return permissoesNecessarias.some((permissao) => permissoesUsuario.has(permissao));
+}
+
 
 const rotasPorTela: Record<TelaAtual, string> = {
   dashboard: '/Dashboard',
@@ -2050,6 +2078,30 @@ function formatarMoeda(valor: unknown) {
   return numero.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function interpretarMoedaBrasileira(valor: unknown) {
+  const texto = String(valor ?? '').trim();
+  if (!texto) {
+    return 0;
+  }
+  const normalizado = texto
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3}(\D|$))/g, '')
+    .replace(',', '.');
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) ? numero : NaN;
+}
+
+function compararValorFreteRanking(a: RegistroGenerico, b: RegistroGenerico) {
+  const valorA = Number(a.valor_frete ?? 0);
+  const valorB = Number(b.valor_frete ?? 0);
+  const validoA = valorA > 0;
+  const validoB = valorB > 0;
+  if (validoA !== validoB) {
+    return validoA ? -1 : 1;
+  }
+  return valorA - valorB;
+}
+
 function formatarNumero(valor: unknown, casas = 0) {
   return Number(valor ?? 0).toLocaleString('pt-BR', {
     minimumFractionDigits: casas,
@@ -2566,7 +2618,7 @@ function AbaTransportadoras({
   escolhaBloqueada?: boolean;
 }) {
   const [verTodas, setVerTodas] = useState(false);
-  const ordenadas = [...transportadoras].sort((a, b) => Number(a.valor_frete ?? 0) - Number(b.valor_frete ?? 0));
+  const ordenadas = [...transportadoras].sort(compararValorFreteRanking);
   const exibidas = verTodas ? ordenadas : ordenadas.slice(0, 3);
   const valorPedidoBase = cotacao.valor_frete_pedido ?? cotacao.valor_frete_venda ?? cotacao.valor_solicitado;
 
@@ -2594,7 +2646,7 @@ function AbaTransportadoras({
               <small>Prazo {String(transportadora.prazo_dias ?? 0)} dias</small>
               {transportadora.numero_cotacao_transportadora && <small>Nº cotação: {String(transportadora.numero_cotacao_transportadora)}</small>}
               <small>Status: {String(transportadora.status ?? transportadora.status_envio ?? '-')}</small>
-              {indice === 0 && <small className="pillDivergencia ok">Melhor oferta</small>}
+              {indice === 0 && Number(transportadora.valor_frete ?? 0) > 0 && <small className="pillDivergencia ok">Melhor oferta</small>}
               {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
               {transportadora.url_publica && <small className="linkQuebra">Link enviado: {String(transportadora.url_publica)}</small>}
               <div>
@@ -3105,7 +3157,10 @@ function TabelaDocumentosFiscais({ titulo, dados, colunas }: { titulo: string; d
 }
 
 function PodioCotacao({ transportadoras }: { transportadoras: RegistroGenerico[] }) {
-  const top = [...transportadoras].sort((a, b) => Number(a.valor_frete ?? 0) - Number(b.valor_frete ?? 0)).slice(0, 3);
+  const top = [...transportadoras]
+    .filter((transportadora) => Number(transportadora.valor_frete ?? 0) > 0)
+    .sort(compararValorFreteRanking)
+    .slice(0, 3);
 
   if (!top.length) {
     return null;
@@ -3273,7 +3328,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
   const melhorFrete = Number(dados?.resumo.menor_frete_atual ?? 0);
-  const valorInformado = Number(valorFrete.replace(',', '.'));
+  const valorInformado = interpretarMoedaBrasileira(valorFrete);
   const diferenca = melhorFrete > 0 && valorInformado > 0 ? ((valorInformado / melhorFrete) - 1) * 100 : 0;
   const valorMercadoriaPublico = Number(dados?.resumo.valor_mercadoria ?? 0);
   const valorTabelaPublico = Number(dados?.resumo.valor_tabela_transportadora ?? 0);
@@ -3292,7 +3347,11 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
     setMensagem('');
 
     try {
-      const resposta = await responderCotacaoPublica(token, Number(valorFrete), observacao, prazoDias ? Number(prazoDias) : null, numeroCotacaoTransportadora.trim() || null);
+      if (!Number.isFinite(valorInformado) || valorInformado <= 0) {
+        setErro('Informe um valor de frete válido. Exemplo: 1.200,50.');
+        return;
+      }
+      const resposta = await responderCotacaoPublica(token, valorInformado, observacao, prazoDias ? Number(prazoDias) : null, numeroCotacaoTransportadora.trim() || null);
       setMensagem(String((resposta as any).mensagem ?? 'Operação concluída.'));
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao responder cotação.');
@@ -3496,6 +3555,8 @@ function EnvioMassaCotacoes() {
   });
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
+  const [emailEnvioConfigurado, setEmailEnvioConfigurado] = useState(false);
+  const [emailEnvioAviso, setEmailEnvioAviso] = useState('Validando configuração de e-mail do usuário...');
   const [transportadorasCadastro, setTransportadorasCadastro] = useState<RegistroGenerico[]>([]);
   const [seletorEnvioAberto, setSeletorEnvioAberto] = useState(false);
   const [erroSeletorEnvio, setErroSeletorEnvio] = useState('');
@@ -3523,6 +3584,25 @@ function EnvioMassaCotacoes() {
 
   useEffect(() => {
     listarTransportadoras().then(setTransportadorasCadastro).catch(() => setTransportadorasCadastro([]));
+  }, []);
+
+  useEffect(() => {
+    obterMinhaConfiguracaoEmail()
+      .then((configuracao: RegistroGenerico) => {
+        const configurado = Boolean(
+          configuracao
+          && configuracao.ativo !== false
+          && configuracao.email_remetente
+          && configuracao.servidor_smtp
+          && configuracao.usuario_smtp
+        );
+        setEmailEnvioConfigurado(configurado);
+        setEmailEnvioAviso(configurado ? '' : 'Configure o e-mail do usuário antes de enviar cotações por e-mail.');
+      })
+      .catch(() => {
+        setEmailEnvioConfigurado(false);
+        setEmailEnvioAviso('Configure o e-mail do usuário antes de enviar cotações por e-mail.');
+      });
   }, []);
 
   function atualizarColuna(chave: string, dados: Partial<ColunaEnvioCotacao>) {
@@ -3586,6 +3666,10 @@ function EnvioMassaCotacoes() {
   async function preparar() {
     setErro('');
     setMensagem('');
+    if (!emailEnvioConfigurado) {
+      setErro(emailEnvioAviso || 'Configure o e-mail do usuário antes de enviar cotações por e-mail.');
+      return;
+    }
     const retorno = await prepararEnvioMassa(selecionados);
     const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
     const filtrados = somenteTop3
@@ -3692,6 +3776,10 @@ function EnvioMassaCotacoes() {
   async function enviar(reenviar: boolean, itensEnvio?: RegistroGenerico[], grupoEnvio?: { chave: string; transportadoraId: number; nome: string }) {
     setErro('');
     setMensagem('');
+    if (!emailEnvioConfigurado) {
+      setErro(emailEnvioAviso || 'Configure o e-mail do usuário antes de enviar cotações por e-mail.');
+      return;
+    }
     try {
       const lista = itensEnvio ?? preparacaoLista;
       const cotacoes = Array.from(new Set(lista.map((item: any) => String(item.cotacao_id ?? item.cotacao_frete_id)).filter(Boolean)));
@@ -3819,11 +3907,12 @@ function EnvioMassaCotacoes() {
         <div className="acoesDashboard">
           <button className="ghost" onClick={() => setFiltrosAbertos(!filtrosAbertos)}>{filtrosAbertos ? 'Recolher filtros' : 'Filtros'}</button>
           <div className="acoesEnvioPrincipal">
-            <button className="primary" onClick={preparar} disabled={!selecionados.length}>Enviar cotação transportadora</button>
+            <button className="primary" onClick={preparar} disabled={!selecionados.length || !emailEnvioConfigurado}>Enviar cotação transportadora</button>
             <button className="ghost botaoEscolherMassa" onClick={escolherTransportadorasSelecionadas} disabled={!selecionados.length}>Escolher Transportadora</button>
           </div>
         </div>
       </header>
+      {!emailEnvioConfigurado && <div className="alerta">{emailEnvioAviso}</div>}
       {erro && <div className="alerta">{erro}</div>}
       {mensagem && <div className="sucesso">{mensagem}</div>}
       <div className="filtrosLinha envioFiltros">
@@ -4072,7 +4161,7 @@ function EnvioMassaCotacoes() {
                         }
                         enviar(possuiReenvio, grupo.itens, grupo);
                       }}
-                      disabled={!grupo.email}
+                      disabled={!grupo.email || !emailEnvioConfigurado}
                     >
                       Enviar para esta transportadora
                     </button>
@@ -4220,17 +4309,19 @@ function ConfiguracaoEmailUsuario() {
 
 function TransportadorasOperacional() {
   const [filtro, setFiltro] = useState('');
+  const [filtroAceitaCotacao, setFiltroAceitaCotacao] = useState('');
   const [versao, setVersao] = useState(0);
 
   async function carregar() {
     const dados = await listarTransportadoras();
     const busca = filtro.trim().toLowerCase();
-    if (!busca) {
-      return dados;
-    }
     return dados.filter((item: RegistroGenerico) => {
       const texto = `${item.codigo_interno ?? ''} ${item.nome_fantasia ?? ''} ${item.razao_social ?? ''} ${item.documento ?? ''}`.toLowerCase();
-      return texto.includes(busca);
+      const passouBusca = !busca || texto.includes(busca);
+      const passouAceita = !filtroAceitaCotacao
+        || (filtroAceitaCotacao === 'SIM' && Boolean(item.aceita_cotacao_externa))
+        || (filtroAceitaCotacao === 'NAO' && !Boolean(item.aceita_cotacao_externa));
+      return passouBusca && passouAceita;
     });
   }
 
@@ -4238,10 +4329,15 @@ function TransportadorasOperacional() {
     <>
       <div className="filtrosLinha">
         <input placeholder="Filtrar por nome, código, razão social ou documento" value={filtro} onChange={(evento) => setFiltro(evento.target.value)} />
+        <select value={filtroAceitaCotacao} onChange={(evento) => setFiltroAceitaCotacao(evento.target.value)}>
+          <option value="">Aceita cotação: todos</option>
+          <option value="SIM">Aceita cotação: sim</option>
+          <option value="NAO">Aceita cotação: não</option>
+        </select>
         <button className="ghost" onClick={() => setVersao((atual) => atual + 1)}>Filtrar</button>
       </div>
       <TabelaOperacional
-        key={`${filtro}-${versao}`}
+        key={`${filtro}-${filtroAceitaCotacao}-${versao}`}
         titulo="Transportadoras"
         subtitulo="Transportadoras disponíveis para cotação automática e retorno público por link."
         carregar={carregar}
@@ -4756,10 +4852,27 @@ export function App() {
     );
   }
 
+  const menusPermitidos = menus.filter((item) => usuarioPodeVerMenu(usuario, item.id));
   const menusOrdenados = ordemMenus
-    .map((id) => menus.find((item: any) => item.id === id))
+    .map((id) => menusPermitidos.find((item: any) => item.id === id))
     .filter(Boolean) as typeof menus;
+  const menusVisiveis = [
+    ...menusOrdenados,
+    ...menusPermitidos.filter((item) => !menusOrdenados.some((menu) => menu.id === item.id))
+  ];
   const titulo = menus.find((item: any) => item.id === tela)?.nome ?? 'Control S Hub';
+  const telaAtualPermitida = usuarioPodeVerMenu(usuario, tela);
+
+  useEffect(() => {
+    if (!telaAtualPermitida && menusVisiveis.length) {
+      setTela(menusVisiveis[0].id);
+      navegarParaTela(menusVisiveis[0].id, true);
+    }
+  }, [telaAtualPermitida, menusVisiveis, tela]);
+
+  if (!telaAtualPermitida && menusVisiveis.length) {
+    return null;
+  }
 
   function reordenarMenu(destino: TelaAtual) {
     if (!menuArrastado || menuArrastado === destino) {
@@ -4784,7 +4897,7 @@ export function App() {
           </div>
         </div>
         <nav>
-          {menusOrdenados.map((item: any) => {
+          {menusVisiveis.map((item: any) => {
             const Icone = item.icone;
             return (
               <button
