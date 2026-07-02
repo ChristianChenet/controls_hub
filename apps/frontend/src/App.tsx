@@ -91,6 +91,13 @@ import {
   trocarEmpresa,
   UsuarioLogado
 } from './servicos/api';
+import {
+  ConfiguracoesPim,
+  DashboardPim,
+  LogoProdutoCentral,
+  PainelPimGenerico,
+  ProdutosPim
+} from './modulos/cadastro_produto_central/Pim';
 
 type TelaAtual =
   | 'dashboard'
@@ -105,7 +112,24 @@ type TelaAtual =
   | 'etapas'
   | 'auditoria'
   | 'emailConfiguracoes'
-  | 'configuracoes';
+  | 'configuracoes'
+  | 'pimDashboard'
+  | 'pimProdutos'
+  | 'pimConjuntos'
+  | 'pimComponentes'
+  | 'pimSkus'
+  | 'pimAtributos'
+  | 'pimCanais'
+  | 'pimImportacao'
+  | 'pimAssets'
+  | 'pimWorkflows'
+  | 'pimAprovacoes'
+  | 'pimIa'
+  | 'pimIntegracoes'
+  | 'pimAuditoria'
+  | 'pimConfiguracoes';
+
+type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central';
 
 type DetalheCotacaoNormalizado = {
   cotacao: RegistroGenerico;
@@ -134,6 +158,29 @@ const menus: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = 
   { id: 'configuracoes' as TelaAtual, nome: 'Configurações', icone: Settings }
 ];
 
+const menusCadastroProduto: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = [
+  { id: 'pimDashboard' as TelaAtual, nome: 'Dashboard', icone: LayoutDashboard },
+  { id: 'pimProdutos' as TelaAtual, nome: 'Produtos', icone: FileCode2 },
+  { id: 'pimConjuntos' as TelaAtual, nome: 'Conjuntos', icone: FileCode2 },
+  { id: 'pimComponentes' as TelaAtual, nome: 'Componentes', icone: FileCode2 },
+  { id: 'pimSkus' as TelaAtual, nome: 'SKUs', icone: FileCode2 },
+  { id: 'pimAtributos' as TelaAtual, nome: 'Atributos', icone: Settings },
+  { id: 'pimCanais' as TelaAtual, nome: 'Canais / Marketplaces', icone: Settings },
+  { id: 'pimImportacao' as TelaAtual, nome: 'Importacao', icone: FileCode2 },
+  { id: 'pimAssets' as TelaAtual, nome: 'Imagens e Documentos', icone: FileCode2 },
+  { id: 'pimWorkflows' as TelaAtual, nome: 'Workflows', icone: Columns3 },
+  { id: 'pimAprovacoes' as TelaAtual, nome: 'Aprovacoes', icone: ShieldCheck },
+  { id: 'pimIa' as TelaAtual, nome: 'IA & Enriquecimento', icone: Settings },
+  { id: 'pimIntegracoes' as TelaAtual, nome: 'Integracoes', icone: Settings },
+  { id: 'pimAuditoria' as TelaAtual, nome: 'Auditoria', icone: FileCode2 },
+  { id: 'pimConfiguracoes' as TelaAtual, nome: 'Configuracoes', icone: Settings },
+  { id: 'empresas' as TelaAtual, nome: 'Empresas', icone: Building2 },
+  { id: 'usuarios' as TelaAtual, nome: 'Usuarios', icone: Users },
+  { id: 'perfis' as TelaAtual, nome: 'Perfis e Direitos', icone: ShieldCheck },
+  { id: 'direitos' as TelaAtual, nome: 'Matriz de Permissoes', icone: ShieldCheck },
+  { id: 'configuracoes' as TelaAtual, nome: 'Configuracoes Gerais', icone: Settings }
+];
+
 const permissoesPorMenu: Partial<Record<TelaAtual, string[]>> = {
   dashboard: ['UTILIZA_COTACAO_FRETE'],
   cotacoes: ['UTILIZA_COTACAO_FRETE'],
@@ -150,11 +197,46 @@ const permissoesPorMenu: Partial<Record<TelaAtual, string[]>> = {
   configuracoes: ['ADMINISTRAR_EMPRESAS']
 };
 
+const permissoesMenuPim: Partial<Record<TelaAtual, string[]>> = {
+  pimDashboard: ['PIM_VISUALIZAR_DASHBOARD', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
+  pimProdutos: ['PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
+  pimConjuntos: ['PIM_VISUALIZAR_CONJUNTOS', 'PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
+  pimComponentes: ['PIM_VISUALIZAR_COMPONENTES', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
+  pimSkus: ['PIM_VISUALIZAR_SKUS', 'PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
+  pimAtributos: ['PIM_VISUALIZAR_ATRIBUTOS', 'CONFIGURAR_ATRIBUTOS_PIM'],
+  pimCanais: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM'],
+  pimImportacao: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'],
+  pimAssets: ['PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'],
+  pimWorkflows: ['PIM_VISUALIZAR_WORKFLOW', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
+  pimAprovacoes: ['PIM_VISUALIZAR_APROVACAO', 'PIM_APROVAR', 'APROVAR_PRODUTO_PIM'],
+  pimIa: ['PIM_VISUALIZAR_IA', 'USAR_IA_PIM', 'CONFIGURAR_IA_PIM'],
+  pimIntegracoes: ['PIM_VISUALIZAR_INTEGRACOES', 'GERENCIAR_INTEGRACOES_PIM'],
+  pimAuditoria: ['PIM_VISUALIZAR_AUDITORIA', 'VISUALIZAR_AUDITORIA_PIM'],
+  pimConfiguracoes: ['PIM_VISUALIZAR_CONFIGURACOES', 'CONFIGURAR_MODULO_PIM'],
+  empresas: ['ADMINISTRAR_EMPRESAS'],
+  usuarios: ['ADMINISTRAR_USUARIOS'],
+  perfis: ['ADMINISTRAR_PERFIS'],
+  direitos: ['ADMINISTRAR_PERFIS'],
+  configuracoes: ['ADMINISTRAR_EMPRESAS']
+};
+
 function usuarioPodeVerMenu(usuario: UsuarioLogado, telaMenu: TelaAtual) {
   if (usuario.superadmin || usuario.administrador) {
     return true;
   }
   const permissoesNecessarias = permissoesPorMenu[telaMenu] ?? [];
+  if (!permissoesNecessarias.length) {
+    return true;
+  }
+  const permissoesUsuario = new Set(usuario.permissoes ?? []);
+  return permissoesNecessarias.some((permissao) => permissoesUsuario.has(permissao));
+}
+
+function usuarioPodeVerMenuPim(usuario: UsuarioLogado, telaMenu: TelaAtual) {
+  if (usuario.superadmin || usuario.administrador) {
+    return true;
+  }
+  const permissoesNecessarias = permissoesMenuPim[telaMenu] ?? [];
   if (!permissoesNecessarias.length) {
     return true;
   }
@@ -176,7 +258,22 @@ const rotasPorTela: Record<TelaAtual, string> = {
   etapas: '/Cotacao_Frete/Etapas_Kanban',
   auditoria: '/Auditoria',
   emailConfiguracoes: '/Configuracoes_Email',
-  configuracoes: '/Configuracoes'
+  configuracoes: '/Configuracoes',
+  pimDashboard: '/Cadastro_Produto_Central/Dashboard',
+  pimProdutos: '/Cadastro_Produto_Central/Produtos',
+  pimConjuntos: '/Cadastro_Produto_Central/Conjuntos',
+  pimComponentes: '/Cadastro_Produto_Central/Componentes',
+  pimSkus: '/Cadastro_Produto_Central/SKUs',
+  pimAtributos: '/Cadastro_Produto_Central/Atributos',
+  pimCanais: '/Cadastro_Produto_Central/Canais',
+  pimImportacao: '/Cadastro_Produto_Central/Importacao',
+  pimAssets: '/Cadastro_Produto_Central/Assets',
+  pimWorkflows: '/Cadastro_Produto_Central/Workflows',
+  pimAprovacoes: '/Cadastro_Produto_Central/Aprovacoes',
+  pimIa: '/Cadastro_Produto_Central/IA',
+  pimIntegracoes: '/Cadastro_Produto_Central/Integracoes',
+  pimAuditoria: '/Cadastro_Produto_Central/Auditoria',
+  pimConfiguracoes: '/Cadastro_Produto_Central/Configuracoes'
 };
 
 const MODELO_EMAIL_TRANSPORTADORA_PADRAO = `<div style="font-family:Arial,sans-serif;color:#172033">
@@ -204,6 +301,12 @@ const telasPorRota = Object.entries(rotasPorTela).reduce((acumulador, [tela, rot
 
 function obterTelaPelaRota(): TelaAtual {
   return telasPorRota[window.location.pathname.toLowerCase()] ?? 'dashboard';
+}
+
+function obterModuloPelaRota(): ModuloAtual {
+  return window.location.pathname.toLowerCase().startsWith('/cadastro_produto_central')
+    ? 'cadastro_produto_central'
+    : 'cotacao_frete';
 }
 
 function navegarParaTela(tela: TelaAtual, substituir = false) {
@@ -517,6 +620,12 @@ const moduloCotacao = {
   nome: 'Cotação de Frete',
   emoji: '🚚',
   descricao: 'Cotações por documento, transportadoras, kanban, tokens e integração banco x banco.'
+};
+
+const moduloCadastroProduto = {
+  id: 'cadastro_produto_central',
+  nome: 'Cadastro de Produto Central',
+  descricao: 'Cadastro mestre de produtos, atributos, imagens, documentos e integracao multicanal.'
 };
 
 function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: EmpresaUsuario[]) => void }) {
@@ -2136,6 +2245,71 @@ function formatarDataHoraBrasileira(valor: unknown) {
   return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
+function obterMinutosHorario(valor: unknown, padrao: string) {
+  const texto = String(valor ?? padrao).trim() || padrao;
+  const partes = texto.split(':').map((parte) => Number(parte));
+  const horas = Number.isFinite(partes[0]) ? partes[0] : Number(padrao.split(':')[0]);
+  const minutos = Number.isFinite(partes[1]) ? partes[1] : Number(padrao.split(':')[1] ?? 0);
+  return Math.max(0, Math.min(1439, (horas * 60) + minutos));
+}
+
+function ajustarHorario(data: Date, minutos: number) {
+  const nova = new Date(data);
+  nova.setHours(Math.floor(minutos / 60), minutos % 60, 0, 0);
+  return nova;
+}
+
+function codigoDiaExpediente(data: Date) {
+  return ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'][data.getDay()];
+}
+
+function proximoDiaExpediente(data: Date, diasExpediente: Set<string>) {
+  const nova = new Date(data);
+  do {
+    nova.setDate(nova.getDate() + 1);
+  } while (!diasExpediente.has(codigoDiaExpediente(nova)));
+  return nova;
+}
+
+function calcularSemaforoSlaCotacao(cotacao: RegistroGenerico | null | undefined, parametros: Record<string, string>) {
+  const criadoEm = cotacao?.criado_em;
+  if (!criadoEm) {
+    return { cor: 'cinza', titulo: 'SLA não calculado: cotação sem data de criação.', prazo: null as Date | null };
+  }
+
+  const criado = new Date(String(criadoEm));
+  if (Number.isNaN(criado.getTime())) {
+    return { cor: 'cinza', titulo: 'SLA não calculado: data de criação inválida.', prazo: null as Date | null };
+  }
+
+  const diasTexto = String(parametros.DIAS_EXPEDIENTE_COTACAO ?? 'SEG,TER,QUA,QUI,SEX,SAB');
+  const diasExpediente = new Set(diasTexto.split(',').map((dia) => dia.trim().toUpperCase()).filter(Boolean));
+  const inicio = obterMinutosHorario(parametros.HORA_INICIAL_EXPEDIENTE_COTACAO, '08:00');
+  const fim = obterMinutosHorario(parametros.HORA_FINAL_EXPEDIENTE_COTACAO, '17:30');
+  const corte = obterMinutosHorario(parametros.HORA_CORTE_DIARIA_COTACAO, '09:00');
+  const minutosCriacao = (criado.getHours() * 60) + criado.getMinutes();
+  const diaCriacaoEhExpediente = diasExpediente.has(codigoDiaExpediente(criado));
+  const base = diaCriacaoEhExpediente && minutosCriacao <= fim
+    ? proximoDiaExpediente(criado, diasExpediente)
+    : proximoDiaExpediente(proximoDiaExpediente(criado, diasExpediente), diasExpediente);
+  const prazo = ajustarHorario(base, corte);
+  const agora = new Date();
+  const horasRestantes = (prazo.getTime() - agora.getTime()) / 36e5;
+  const cor = horasRestantes < 0 ? 'vermelho' : horasRestantes <= 2 ? 'amarelo' : 'verde';
+  const titulo = `SLA de envio/retorno: ${cor === 'vermelho' ? 'vencido' : cor === 'amarelo' ? 'próximo do corte' : 'dentro do prazo'}. Prazo: ${formatarDataHoraBrasileira(prazo.toISOString())}. Expediente: ${String(parametros.HORA_INICIAL_EXPEDIENTE_COTACAO ?? '08:00')} às ${String(parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30')}. Corte: ${String(parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00')}.`;
+  return { cor, titulo, prazo };
+}
+
+function SemaforoSlaCotacao({ cotacao, parametros, compacto = false }: { cotacao: RegistroGenerico; parametros: Record<string, string>; compacto?: boolean }) {
+  const semaforo = calcularSemaforoSlaCotacao(cotacao, parametros);
+  return (
+    <span className={`semaforoSla ${semaforo.cor}${compacto ? ' compacto' : ''}`} title={semaforo.titulo}>
+      <i />
+      {!compacto && <small>{semaforo.cor === 'vermelho' ? 'SLA vencido' : semaforo.cor === 'amarelo' ? 'SLA próximo' : semaforo.cor === 'verde' ? 'SLA ok' : 'SLA'}</small>}
+    </span>
+  );
+}
+
 const rotulosCampos: Record<string, string> = {
   origem_comercial: 'Origem comercial',
   lote_fluxo_logistico: 'Lote Fluxo Logístico',
@@ -2644,11 +2818,14 @@ function AbaTransportadoras({
               <span>{formatarMoeda(transportadora.valor_frete)}</span>
               <small>{percentualContraBase(transportadora.valor_frete, valorPedidoBase)} vs Pedido</small>
               <small>Prazo {String(transportadora.prazo_dias ?? 0)} dias</small>
-              {transportadora.numero_cotacao_transportadora && <small>Nº cotação: {String(transportadora.numero_cotacao_transportadora)}</small>}
               <small>Status: {String(transportadora.status ?? transportadora.status_envio ?? '-')}</small>
               {indice === 0 && Number(transportadora.valor_frete ?? 0) > 0 && <small className="pillDivergencia ok">Melhor oferta</small>}
               {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
-              {transportadora.url_publica && <small className="linkQuebra">Link enviado: {String(transportadora.url_publica)}</small>}
+              <div className="metadadosRetornoTransportadora">
+                {transportadora.url_publica && <small className="linkQuebra">Link: {String(transportadora.url_publica)}</small>}
+                {transportadora.numero_cotacao_transportadora && <small>Nº cotação transportadora: {String(transportadora.numero_cotacao_transportadora)}</small>}
+                {transportadora.observacao && <small title={String(transportadora.observacao)}>Observação: {String(transportadora.observacao)}</small>}
+              </div>
               <div>
                 {transportadora.url_publica && pode('COPIAR_LINK_COTACAO') && <button className="ghost" onClick={() => copiarLink(transportadora.url_publica)}>Copiar link</button>}
                 {transportadora.url_publica && <button className="ghost" onClick={() => window.open(String(transportadora.url_publica), '_blank')}>Visualizar link</button>}
@@ -3052,6 +3229,7 @@ function DetalheCotacaoConteudo({
           <p className="metaDetalheCotacao">Cotação criada em: {formatarDataHoraBrasileira(detalhe.cotacao.criado_em)}</p>
         </div>
         <div className="statusRapidoDetalhe">
+          <SemaforoSlaCotacao cotacao={detalhe.cotacao} parametros={parametrosEscolha} />
           {String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status ?? '').trim() && <i className="tagStatusDetalhe etapaKanban">{String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status)}</i>}
           {(detalhe.cotacao.numeros_nfe || detalhe.cotacao.numero_nfe_faturada || Number(detalhe.cotacao.total_nfes ?? 0) > 0 || detalhe.cotacao.faturado_em) && <i className="tagStatusDetalhe faturado">Faturado</i>}
           {detalhe.cotacao.lote_fluxo_logistico && <i className="tagStatusDetalhe fluxoLogistico">Fluxo {String(detalhe.cotacao.lote_fluxo_logistico)}</i>}
@@ -3498,8 +3676,11 @@ type ColunaEnvioCotacao = {
 };
 
 const colunasPadraoEnvioCotacao: ColunaEnvioCotacao[] = [
+  { chave: 'sla_operacional', titulo: 'SLA', largura: 76, visivel: true },
   { chave: 'numero_documento', titulo: 'Pedido', largura: 92, visivel: true },
   { chave: 'codigo_chave', titulo: 'Chave', largura: 132, visivel: true },
+  { chave: 'criado_em', titulo: 'Data Cotação', largura: 138, visivel: true },
+  { chave: 'data_documento', titulo: 'Data Documento', largura: 120, visivel: true },
   { chave: 'status', titulo: 'Status', largura: 132, visivel: true },
   { chave: 'vendedor_nome', titulo: 'Vendedor do Pedido', largura: 180, visivel: true },
   { chave: 'transportadora_pedido_nome', titulo: 'Transportadora Pedido', largura: 180, visivel: true },
@@ -3532,7 +3713,12 @@ function EnvioMassaCotacoes() {
   const [busca, setBusca] = useState('');
   const [vendedorFiltro, setVendedorFiltro] = useState('');
   const [transportadoraFiltro, setTransportadoraFiltro] = useState('');
+  const [cotacaoCriadaInicio, setCotacaoCriadaInicio] = useState('');
+  const [cotacaoCriadaFim, setCotacaoCriadaFim] = useState('');
+  const [dataDocumentoInicio, setDataDocumentoInicio] = useState('');
+  const [dataDocumentoFim, setDataDocumentoFim] = useState('');
   const [sugestaoFiltro, setSugestaoFiltro] = useState('TODOS');
+  const [semaforoFiltro, setSemaforoFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
@@ -3555,6 +3741,7 @@ function EnvioMassaCotacoes() {
   });
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
+  const [parametrosSla, setParametrosSla] = useState<Record<string, string>>({});
   const [emailEnvioConfigurado, setEmailEnvioConfigurado] = useState(false);
   const [emailEnvioAviso, setEmailEnvioAviso] = useState('Validando configuração de e-mail do usuário...');
   const [transportadorasCadastro, setTransportadorasCadastro] = useState<RegistroGenerico[]>([]);
@@ -3571,6 +3758,9 @@ function EnvioMassaCotacoes() {
     if (sugestaoFiltro === 'EXCETO_SUGESTAO' && pedido.sugestao_cotacao) {
       return false;
     }
+    if (semaforoFiltro && calcularSemaforoSlaCotacao(pedido, parametrosSla).cor !== semaforoFiltro) {
+      return false;
+    }
     return true;
   });
   const totalPaginas = Math.max(1, Math.ceil(pedidosFiltrados.length / limite));
@@ -3584,6 +3774,13 @@ function EnvioMassaCotacoes() {
 
   useEffect(() => {
     listarTransportadoras().then(setTransportadorasCadastro).catch(() => setTransportadorasCadastro([]));
+    listarParametrosSistema().then((dados: any) => {
+      const mapa: Record<string, string> = {};
+      (Array.isArray(dados) ? dados : []).forEach((item: any) => {
+        mapa[String(item.chave)] = String(item.valor ?? '');
+      });
+      setParametrosSla(mapa);
+    }).catch(() => setParametrosSla({}));
   }, []);
 
   useEffect(() => {
@@ -3645,7 +3842,20 @@ function EnvioMassaCotacoes() {
   }
 
   async function carregar() {
-    const retorno = await listarPedidosEnvioMassa({ situacao: 'ATIVOS', envio, status: statusFiltro || undefined, busca, vendedor: vendedorFiltro, transportadora: transportadoraFiltro, faturado: faturadoFiltro || undefined, fluxo_logistico: fluxoLogisticoFiltro || undefined });
+    const retorno = await listarPedidosEnvioMassa({
+      situacao: 'ATIVOS',
+      envio,
+      status: statusFiltro || undefined,
+      busca,
+      vendedor: vendedorFiltro,
+      transportadora: transportadoraFiltro,
+      faturado: faturadoFiltro || undefined,
+      fluxo_logistico: fluxoLogisticoFiltro || undefined,
+      cotacao_criada_inicio: cotacaoCriadaInicio || undefined,
+      cotacao_criada_fim: cotacaoCriadaFim || undefined,
+      data_documento_inicio: dataDocumentoInicio || undefined,
+      data_documento_fim: dataDocumentoFim || undefined
+    });
     const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
     setPedidos(dados);
     setPagina(1);
@@ -3948,6 +4158,12 @@ function EnvioMassaCotacoes() {
           <option value="SOMENTE">Somente com fluxo</option>
           <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
         </select>
+        <select value={semaforoFiltro} onChange={(evento) => { setSemaforoFiltro(evento.target.value); setPagina(1); }} title="Filtra pelo semáforo de SLA calculado pela data de criação da cotação.">
+          <option value="">Semáforo: todos</option>
+          <option value="verde">SLA verde</option>
+          <option value="amarelo">SLA amarelo</option>
+          <option value="vermelho">SLA vermelho</option>
+        </select>
         <button className="ghost" onClick={() => {
           const bloqueados = pedidosPagina.filter((pedido: any) => pedidoSemOfertaBloqueante(pedido));
           if (bloqueados.length) {
@@ -3977,6 +4193,10 @@ function EnvioMassaCotacoes() {
         <div className="filtrosLinha">
           <input placeholder="Vendedor" value={vendedorFiltro} onChange={(evento) => setVendedorFiltro(evento.target.value)} />
           <input placeholder="Transportadora" value={transportadoraFiltro} onChange={(evento) => setTransportadoraFiltro(evento.target.value)} />
+          <label>Cotação criada em inicial<input type="datetime-local" value={cotacaoCriadaInicio} onChange={(evento) => setCotacaoCriadaInicio(evento.target.value)} /></label>
+          <label>Cotação criada em final<input type="datetime-local" value={cotacaoCriadaFim} onChange={(evento) => setCotacaoCriadaFim(evento.target.value)} /></label>
+          <label>Data documento inicial<input type="date" value={dataDocumentoInicio} onChange={(evento) => setDataDocumentoInicio(evento.target.value)} /></label>
+          <label>Data documento final<input type="date" value={dataDocumentoFim} onChange={(evento) => setDataDocumentoFim(evento.target.value)} /></label>
         </div>
       )}
       {colunasAbertas && (
@@ -4031,7 +4251,9 @@ function EnvioMassaCotacoes() {
                 </td>
                 {colunasVisiveis.map((coluna) => (
                   <td key={coluna.chave} style={{ minWidth: coluna.largura, width: coluna.largura }}>
-                    {renderizarValorCampo(coluna.chave, pedido[coluna.chave], { semMoeda: true })}
+                    {coluna.chave === 'sla_operacional'
+                      ? <SemaforoSlaCotacao cotacao={pedido} parametros={parametrosSla} compacto />
+                      : renderizarValorCampo(coluna.chave, pedido[coluna.chave], { semMoeda: true })}
                   </td>
                 ))}
                 <td>
@@ -4072,6 +4294,7 @@ function EnvioMassaCotacoes() {
               <h3>{String(detalheEnvio.cotacao.tipo_documento)} {String(detalheEnvio.cotacao.numero_documento)}</h3>
               <p>Chave {String(detalheEnvio.cotacao.codigo_chave ?? '-')} · {String(detalheEnvio.cotacao.nome_destinatario ?? '-')}</p>
             </div>
+            <SemaforoSlaCotacao cotacao={detalheEnvio.cotacao} parametros={parametrosSla} />
             <button className="ghost" onClick={() => setDetalheEnvio(null)}>Fechar</button>
           </header>
           <div className="motivoSugestaoCotacao">
@@ -4594,7 +4817,12 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         { chave: 'VALOR_FRETE_COTADO_AUT_MAIOR_QUE', valor: parametros.VALOR_FRETE_COTADO_AUT_MAIOR_QUE ?? '' },
         { chave: 'DIFERENCA_FRETE_COTADO', valor: parametros.DIFERENCA_FRETE_COTADO ?? '' },
         { chave: 'PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT', valor: parametros.PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT ?? '' },
+        { chave: 'PERCENTUAL_FRETE_COTADO_TOTAL', valor: parametros.PERCENTUAL_FRETE_COTADO_TOTAL ?? '' },
         { chave: 'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO', valor: parametros.DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO ?? '' },
+        { chave: 'HORA_INICIAL_EXPEDIENTE_COTACAO', valor: parametros.HORA_INICIAL_EXPEDIENTE_COTACAO ?? '08:00' },
+        { chave: 'HORA_FINAL_EXPEDIENTE_COTACAO', valor: parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30' },
+        { chave: 'HORA_CORTE_DIARIA_COTACAO', valor: parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00' },
+        { chave: 'DIAS_EXPEDIENTE_COTACAO', valor: parametros.DIAS_EXPEDIENTE_COTACAO ?? 'SEG,TER,QUA,QUI,SEX,SAB' },
         { chave: 'ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO', valor: parametros.ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO ?? '' },
         { chave: 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID', valor: parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? '' }
       ]);
@@ -4637,6 +4865,39 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         <label>Diferença frete cotado<input value={parametros.DIFERENCA_FRETE_COTADO ?? ''} onChange={(evento) => setParametros({ ...parametros, DIFERENCA_FRETE_COTADO: evento.target.value })} /></label>
         <label>% diferença frete cotado aut.<input value={parametros.PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT ?? ''} onChange={(evento) => setParametros({ ...parametros, PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT: evento.target.value })} /></label>
         <label>Dias aceitáveis prazo pedido x cotação<input value={parametros.DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO ?? ''} onChange={(evento) => setParametros({ ...parametros, DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO: evento.target.value })} /></label>
+        <label>% frete cotado com o total<input value={parametros.PERCENTUAL_FRETE_COTADO_TOTAL ?? ''} onChange={(evento) => setParametros({ ...parametros, PERCENTUAL_FRETE_COTADO_TOTAL: evento.target.value })} /></label>
+        <label>Hora inicial expediente<input type="time" value={parametros.HORA_INICIAL_EXPEDIENTE_COTACAO ?? '08:00'} onChange={(evento) => setParametros({ ...parametros, HORA_INICIAL_EXPEDIENTE_COTACAO: evento.target.value })} /></label>
+        <label>Hora final expediente<input type="time" value={parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30'} onChange={(evento) => setParametros({ ...parametros, HORA_FINAL_EXPEDIENTE_COTACAO: evento.target.value })} /></label>
+        <label>Hora de corte diário<input type="time" value={parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00'} onChange={(evento) => setParametros({ ...parametros, HORA_CORTE_DIARIA_COTACAO: evento.target.value })} /></label>
+        <fieldset className="campoLargo grupoConfiguracao">
+          <legend>Dias de expediente da cotação</legend>
+          <div className="chipsSelecao">
+            {[
+              ['SEG', 'Segunda'],
+              ['TER', 'Terça'],
+              ['QUA', 'Quarta'],
+              ['QUI', 'Quinta'],
+              ['SEX', 'Sexta'],
+              ['SAB', 'Sábado']
+            ].map(([codigo, nome]) => {
+              const dias = String(parametros.DIAS_EXPEDIENTE_COTACAO ?? 'SEG,TER,QUA,QUI,SEX,SAB').split(',').map((dia) => dia.trim().toUpperCase()).filter(Boolean);
+              const selecionado = dias.includes(codigo);
+              return (
+                <label key={codigo} className={selecionado ? 'chipOpcao ativo' : 'chipOpcao'}>
+                  <input
+                    type="checkbox"
+                    checked={selecionado}
+                    onChange={() => {
+                      const proximos = selecionado ? dias.filter((dia) => dia !== codigo) : [...dias, codigo];
+                      setParametros({ ...parametros, DIAS_EXPEDIENTE_COTACAO: proximos.join(',') });
+                    }}
+                  />
+                  {nome}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
         <fieldset className="campoLargo grupoConfiguracao">
           <legend>Obriga transportadora do Pedido para</legend>
           <small>Selecione as origens comerciais em que a transportadora definida no pedido deve ser obrigatória.</small>
@@ -4695,10 +4956,11 @@ function SelecaoModulo({
   empresaAtiva: EmpresaUsuario | null;
   empresas: EmpresaUsuario[];
   aoTrocarEmpresa: (empresaId: number) => void;
-  aoAbrirModulo: () => void;
+  aoAbrirModulo: (modulo: ModuloAtual) => void;
   aoSair: () => void;
 }) {
   const podeCotacao = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('UTILIZA_COTACAO_FRETE');
+  const podePim = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_CADASTRO_PRODUTO_CENTRAL') || usuario.permissoes?.includes('PIM_VISUALIZAR_DASHBOARD');
 
   return (
     <main className="selecaoModulo">
@@ -4718,10 +4980,15 @@ function SelecaoModulo({
         </div>
       </section>
       <section className="modulosGrid">
-        <button className="moduloCard" disabled={!podeCotacao} onClick={aoAbrirModulo}>
+        <button className="moduloCard" disabled={!podeCotacao} onClick={() => aoAbrirModulo('cotacao_frete')}>
           <strong>{moduloCotacao.emoji}</strong>
           <span>{moduloCotacao.nome}</span>
           <small>{podeCotacao ? moduloCotacao.descricao : 'Sem permissão: UTILIZA_COTACAO_FRETE'}</small>
+        </button>
+        <button className="moduloCard" disabled={!podePim} onClick={() => aoAbrirModulo('cadastro_produto_central')}>
+          <strong><LogoProdutoCentral pequeno /></strong>
+          <span>{moduloCadastroProduto.nome}</span>
+          <small>{podePim ? moduloCadastroProduto.descricao : 'Sem permissao: VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'}</small>
         </button>
       </section>
     </main>
@@ -4734,6 +5001,7 @@ export function App() {
   const [empresaAtiva, setEmpresaAtiva] = useState<EmpresaUsuario | null>(null);
   const [tela, setTela] = useState<TelaAtual>(() => obterTelaPelaRota());
   const [moduloAberto, setModuloAberto] = useState(false);
+  const [moduloAtual, setModuloAtual] = useState<ModuloAtual>(() => obterModuloPelaRota());
   const [menuRecolhido, setMenuRecolhido] = useState(false);
   const [perfisCadastro, setPerfisCadastro] = useState<RegistroGenerico[]>([]);
   const [usuariosCadastro, setUsuariosCadastro] = useState<RegistroGenerico[]>([]);
@@ -4762,6 +5030,7 @@ export function App() {
     }
     const telaRota = obterTelaPelaRota();
     setTela(telaRota);
+    setModuloAtual(obterModuloPelaRota());
     setModuloAberto(window.location.pathname !== '/');
   }
 
@@ -4810,6 +5079,7 @@ export function App() {
     const aoAlterarRota = () => {
       const telaRota = obterTelaPelaRota();
       setTela(telaRota);
+      setModuloAtual(obterModuloPelaRota());
       if (window.location.pathname !== '/') {
         setModuloAberto(true);
       }
@@ -4831,6 +5101,33 @@ export function App() {
     ? window.location.pathname.replace('/cotacao/token/', '')
     : '';
 
+  const menusBase = moduloAtual === 'cadastro_produto_central' ? menusCadastroProduto : menus;
+  const podeVerMenuAtual = (item: { id: TelaAtual }) => {
+    if (!usuario) {
+      return true;
+    }
+    return moduloAtual === 'cadastro_produto_central'
+      ? usuarioPodeVerMenuPim(usuario, item.id)
+      : usuarioPodeVerMenu(usuario, item.id);
+  };
+  const menusPermitidos = usuario ? menusBase.filter((item) => podeVerMenuAtual(item)) : [];
+  const menusOrdenados = ordemMenus
+    .map((id) => menusPermitidos.find((item: any) => item.id === id))
+    .filter(Boolean) as typeof menusBase;
+  const menusVisiveis = [
+    ...menusOrdenados,
+    ...menusPermitidos.filter((item) => !menusOrdenados.some((menu) => menu.id === item.id))
+  ];
+  const titulo = menusBase.find((item: any) => item.id === tela)?.nome ?? 'Control S Hub';
+  const telaAtualPermitida = usuario ? podeVerMenuAtual({ id: tela }) : true;
+
+  useEffect(() => {
+    if (usuario && moduloAberto && !telaAtualPermitida && menusVisiveis.length) {
+      setTela(menusVisiveis[0].id);
+      navegarParaTela(menusVisiveis[0].id, true);
+    }
+  }, [usuario, moduloAberto, telaAtualPermitida, menusVisiveis, tela]);
+
   if (tokenPublico) {
     return <PaginaPublicaCotacao token={tokenPublico} />;
   }
@@ -4846,29 +5143,17 @@ export function App() {
         empresaAtiva={empresaAtiva}
         empresas={empresas}
         aoTrocarEmpresa={alterarEmpresaAtiva}
-        aoAbrirModulo={() => { setModuloAberto(true); navegarParaTela(tela, true); }}
+        aoAbrirModulo={(modulo) => {
+          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : 'dashboard';
+          setModuloAtual(modulo);
+          setTela(telaInicial);
+          setModuloAberto(true);
+          navegarParaTela(telaInicial, true);
+        }}
         aoSair={sair}
       />
     );
   }
-
-  const menusPermitidos = menus.filter((item) => usuarioPodeVerMenu(usuario, item.id));
-  const menusOrdenados = ordemMenus
-    .map((id) => menusPermitidos.find((item: any) => item.id === id))
-    .filter(Boolean) as typeof menus;
-  const menusVisiveis = [
-    ...menusOrdenados,
-    ...menusPermitidos.filter((item) => !menusOrdenados.some((menu) => menu.id === item.id))
-  ];
-  const titulo = menus.find((item: any) => item.id === tela)?.nome ?? 'Control S Hub';
-  const telaAtualPermitida = usuarioPodeVerMenu(usuario, tela);
-
-  useEffect(() => {
-    if (!telaAtualPermitida && menusVisiveis.length) {
-      setTela(menusVisiveis[0].id);
-      navegarParaTela(menusVisiveis[0].id, true);
-    }
-  }, [telaAtualPermitida, menusVisiveis, tela]);
 
   if (!telaAtualPermitida && menusVisiveis.length) {
     return null;
@@ -4948,6 +5233,21 @@ export function App() {
           </button>
           <button className="ghost" onClick={() => { setModuloAberto(false); window.history.pushState(null, '', '/'); }}>Módulos</button>
         </header>
+        {tela === 'pimDashboard' && <DashboardPim />}
+        {tela === 'pimProdutos' && <ProdutosPim />}
+        {tela === 'pimConjuntos' && <ProdutosPim modo="conjuntos" />}
+        {tela === 'pimSkus' && <ProdutosPim modo="skus" />}
+        {tela === 'pimComponentes' && <PainelPimGenerico tela={tela} titulo="Componentes" subtitulo="Cadastre evaporadoras, condensadoras, controles, kits e acessórios reutilizáveis." />}
+        {tela === 'pimAtributos' && <PainelPimGenerico tela={tela} titulo="Atributos" subtitulo="Motor de atributos dinâmicos por escopo, grupo, tipo e validação." />}
+        {tela === 'pimCanais' && <PainelPimGenerico tela={tela} titulo="Canais / Marketplaces" subtitulo="Categorias, regras, mapeamentos e score mínimo por canal." />}
+        {tela === 'pimImportacao' && <PainelPimGenerico tela={tela} titulo="Importação" subtitulo="Upload, de-para, pré-validação, logs e entrada como rascunho." />}
+        {tela === 'pimAssets' && <PainelPimGenerico tela={tela} titulo="Imagens e Documentos" subtitulo="Biblioteca de imagens, manuais, fichas técnicas, vídeos e URLs." />}
+        {tela === 'pimWorkflows' && <PainelPimGenerico tela={tela} titulo="Workflows" subtitulo="Fluxos de revisão, aprovação, publicação e arquivamento." />}
+        {tela === 'pimAprovacoes' && <PainelPimGenerico tela={tela} titulo="Aprovações" subtitulo="Pendências de aprovação, comparação e histórico de decisão." />}
+        {tela === 'pimIa' && <PainelPimGenerico tela={tela} titulo="IA & Enriquecimento" subtitulo="Configurações, sugestões e validações assistidas por IA." />}
+        {tela === 'pimIntegracoes' && <PainelPimGenerico tela={tela} titulo="Integrações" subtitulo="Arquitetura preparada para ERP Decis, ShopPub, e-commerce e marketplaces." />}
+        {tela === 'pimAuditoria' && <PainelPimGenerico tela={tela} titulo="Auditoria" subtitulo="Trilha de alterações relevantes do Cadastro de Produto Central." />}
+        {tela === 'pimConfiguracoes' && <ConfiguracoesPim />}
         {tela === 'dashboard' && <Dashboard />}
         {tela === 'cotacoes' && <CotacoesOperacional usuario={usuario} cotacaoInicialId={cotacaoParaAbrir} aoCotacaoInicialAberta={() => setCotacaoParaAbrir(null)} />}
         {tela === 'envioMassa' && <EnvioMassaCotacoes />}

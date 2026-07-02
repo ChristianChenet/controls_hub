@@ -13,6 +13,283 @@
   --nav-soft: #111c2e;
 }
 
+.pimLogoAsset {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #06131a;
+  border: 1px solid rgba(58, 255, 101, 0.35);
+  overflow: hidden;
+}
+
+.pimLogoAsset.pequeno {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.pimLogoAsset img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pimDashboardGrid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.pimProdutoShell {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(520px, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.pimFormProduto,
+.pimConfigForm {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.pimProdutoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pimProdutoHeader h3 {
+  margin: 2px 0;
+}
+
+.pimProdutoHeader p {
+  margin: 0;
+  color: #475569;
+}
+
+.pimScoreBox {
+  min-width: 92px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #07151c;
+  color: #ffffff;
+  text-align: center;
+}
+
+.pimScoreBox strong {
+  display: block;
+  font-size: 1.35rem;
+}
+
+.pimScoreBox small {
+  color: #9dfaaa;
+}
+
+.pimAbas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  padding-bottom: 8px;
+}
+
+.pimAbas button {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #ffffff;
+  color: #172033;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 700;
+}
+
+.pimAbas button.ativo {
+  background: #0b1d24;
+  border-color: #2cff65;
+  color: #ffffff;
+}
+
+.pimGridDuplo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.pimGridDuplo label,
+.pimConfigForm label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimGridDuplo input,
+.pimGridDuplo textarea,
+.pimConfigForm input,
+.pimConfigForm textarea {
+  min-height: 38px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #0f172a;
+  background: #ffffff;
+  text-transform: none;
+  font-weight: 600;
+}
+
+.pimGridDuplo textarea,
+.pimConfigForm textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+@media (max-width: 1080px) {
+  .pimProdutoShell {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pimModulo {
+  display: grid;
+  gap: 16px;
+}
+
+.pimModulo .pimCabecalho {
+  min-height: 78px;
+  padding: 16px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-left: 4px solid var(--verde);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(6, 19, 26, 0.96), rgba(12, 31, 37, 0.90)),
+    url("/brand/fundo-control-s.png") center / cover no-repeat;
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
+}
+
+.pimModulo .pimCabecalho small {
+  color: #9dfaaa;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.pimModulo .pimCabecalho h2 {
+  color: #fff;
+  margin: 4px 0 0;
+}
+
+.pimModulo .pimLogoAsset {
+  background: #06131a;
+  border-color: rgba(46, 230, 111, 0.75);
+  box-shadow: 0 0 0 3px rgba(46, 230, 111, 0.10), 0 12px 22px rgba(0, 0, 0, 0.22);
+}
+
+.pimModulo .cardMetrica,
+.pimModulo .cardTabela,
+.pimModulo .pimFormProduto,
+.pimModulo .pimConfigForm {
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.07);
+}
+
+.pimModulo .cardMetrica {
+  min-height: 96px;
+  padding: 16px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.pimModulo .cardMetrica small,
+.pimModulo .cardTabela h3 {
+  color: #41506a;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pimModulo .cardMetrica strong {
+  color: #07151c;
+  font-size: 1.65rem;
+}
+
+.pimModulo .barraAcoes {
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.pimModulo .barraAcoes button,
+.pimModulo .pimGridDuplo button,
+.pimModulo .pimConfigForm button {
+  border-color: rgba(15, 23, 42, 0.14);
+  font-weight: 800;
+}
+
+.pimModulo .barraAcoes button:first-of-type,
+.pimModulo .pimConfigForm button[type="submit"],
+.pimModulo .pimGridDuplo button[type="button"]:first-of-type {
+  background: #0b1d24;
+  border-color: var(--verde);
+  color: #fff;
+}
+
+.pimModulo .tabelaResponsiva {
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.pimModulo table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pimModulo th {
+  background: #07151c;
+  color: #eafef0;
+  font-size: 0.74rem;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.pimModulo th,
+.pimModulo td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.pimModulo tbody tr:hover {
+  background: rgba(46, 230, 111, 0.07);
+}
+
+.pimModulo .pimAbas {
+  padding: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.pimModulo .pimAbas button {
+  min-height: 34px;
+}
+
+.pimModulo .pimScoreBox {
+  border: 1px solid rgba(46, 230, 111, 0.55);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -2658,6 +2935,54 @@ h2 {
   align-items: center;
 }
 
+.envioMassa .filtrosLinha label {
+  min-width: 170px;
+}
+
+.semaforoSla {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid #d7e4ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #172033;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.semaforoSla i {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, .06);
+}
+
+.semaforoSla.compacto {
+  padding: 4px;
+  border: 0;
+  background: transparent;
+}
+
+.semaforoSla.verde i {
+  background: #16a34a;
+}
+
+.semaforoSla.amarelo i {
+  background: #f59e0b;
+}
+
+.semaforoSla.vermelho i {
+  background: #dc2626;
+}
+
+.semaforoSla.cinza i {
+  background: #94a3b8;
+}
+
 .painelColunasEnvio {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -2773,6 +3098,32 @@ h2 {
 .linkQuebra {
   max-width: 100%;
   overflow-wrap: anywhere;
+}
+
+.metadadosRetornoTransportadora {
+  display: grid !important;
+  gap: 2px;
+  margin: 5px 0 2px !important;
+}
+
+.metadadosRetornoTransportadora small {
+  color: #536278;
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.metadadosRetornoTransportadora .linkQuebra {
+  color: #667085;
+  font-size: 8px;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .detalhamentoCompleto {

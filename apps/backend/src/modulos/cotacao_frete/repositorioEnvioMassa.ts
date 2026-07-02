@@ -84,6 +84,10 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   transportadora?: string;
   faturado?: string;
   fluxo_logistico?: string;
+  cotacao_criada_inicio?: string;
+  cotacao_criada_fim?: string;
+  data_documento_inicio?: string;
+  data_documento_fim?: string;
 }) {
   const situacao = filtros.situacao ?? 'ATIVOS';
   const busca = `%${String(filtros.busca ?? '').toLowerCase()}%`;
@@ -105,6 +109,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.lote_fluxo_logistico,
       c.situacao_pedido,
       c.status,
+      c.criado_em,
       c.vendedor_nome,
       c.transportadora_pedido_nome,
       COALESCE(c.valor_frete_pedido, 0) AS valor_frete_pedido,
@@ -144,6 +149,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         WHEN params.limite_diferenca_percentual IS NOT NULL
           AND COALESCE(c.valor_frete_pedido, 0) > 0
           AND ROUND(((COALESCE(melhor.valor_frete, 0) - c.valor_frete_pedido) / c.valor_frete_pedido) * 100, 2) > params.limite_diferenca_percentual THEN TRUE
+        WHEN params.limite_percentual_frete_total IS NOT NULL
+          AND COALESCE(c.valor_mercadoria, 0) > 0
+          AND ROUND((COALESCE(melhor.valor_frete, 0) / c.valor_mercadoria) * 100, 2) > params.limite_percentual_frete_total THEN TRUE
         WHEN params.limite_dias_prazo IS NOT NULL
           AND COALESCE(c.prazo_pedido_dias, 0) > 0
           AND (COALESCE(melhor.prazo_dias, 0) - COALESCE(c.prazo_pedido_dias, 0)) > params.limite_dias_prazo THEN TRUE
@@ -171,6 +179,11 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
           AND COALESCE(c.valor_frete_pedido, 0) > 0
           AND ROUND(((COALESCE(melhor.valor_frete, 0) - c.valor_frete_pedido) / c.valor_frete_pedido) * 100, 2) > params.limite_diferenca_percentual
           THEN CONCAT('Diferença percentual: ', ROUND(((COALESCE(melhor.valor_frete, 0) - c.valor_frete_pedido) / c.valor_frete_pedido) * 100, 2), '% acima do parâmetro ', params.limite_diferenca_percentual, '%.')
+        END,
+        CASE WHEN params.limite_percentual_frete_total IS NOT NULL
+          AND COALESCE(c.valor_mercadoria, 0) > 0
+          AND ROUND((COALESCE(melhor.valor_frete, 0) / c.valor_mercadoria) * 100, 2) > params.limite_percentual_frete_total
+          THEN CONCAT('% Frete cotado com o total: ', ROUND((COALESCE(melhor.valor_frete, 0) / c.valor_mercadoria) * 100, 2), '% acima do parametro ', params.limite_percentual_frete_total, '%.')
         END,
         CASE WHEN params.limite_dias_prazo IS NOT NULL
           AND COALESCE(c.prazo_pedido_dias, 0) > 0
@@ -267,12 +280,14 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
         MAX(CASE WHEN chave = 'VALOR_FRETE_COTADO_AUT_MAIOR_QUE' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_valor_auto,
         MAX(CASE WHEN chave = 'DIFERENCA_FRETE_COTADO' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_diferenca_valor,
         MAX(CASE WHEN chave = 'PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_diferenca_percentual,
+        MAX(CASE WHEN chave = 'PERCENTUAL_FRETE_COTADO_TOTAL' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_percentual_frete_total,
         MAX(CASE WHEN chave = 'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_dias_prazo
       FROM parametros_sistema
       WHERE chave IN (
         'VALOR_FRETE_COTADO_AUT_MAIOR_QUE',
         'DIFERENCA_FRETE_COTADO',
         'PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT',
+        'PERCENTUAL_FRETE_COTADO_TOTAL',
         'DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO'
       )
     ) params
@@ -318,6 +333,10 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
             AND COALESCE(NULLIF(TRIM(cf.lote_fluxo_logistico), ''), '') <> ''
         ))
       )
+      AND ($10::TIMESTAMPTZ IS NULL OR c.criado_em >= $10::TIMESTAMPTZ)
+      AND ($11::TIMESTAMPTZ IS NULL OR c.criado_em <= $11::TIMESTAMPTZ)
+      AND ($12::DATE IS NULL OR c.data_documento >= $12::DATE)
+      AND ($13::DATE IS NULL OR c.data_documento <= $13::DATE)
     GROUP BY
       c.empresa_id,
       c.tipo_documento,
@@ -328,6 +347,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       c.lote_fluxo_logistico,
       c.situacao_pedido,
       c.status,
+      c.criado_em,
       c.vendedor_nome,
       c.transportadora_pedido_nome,
       c.valor_frete_pedido,
@@ -351,6 +371,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       params.limite_valor_auto,
       params.limite_diferenca_valor,
       params.limite_diferenca_percentual,
+      params.limite_percentual_frete_total,
       params.limite_dias_prazo
     HAVING (
       $4 = 'TODOS'
@@ -358,7 +379,21 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       OR ($4 = 'JA_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') > 0)
     )
     ORDER BY c.criado_em DESC`,
-    [empresaId, situacao, busca, filtros.envio ?? 'TODOS', vendedor, transportadora, filtros.faturado ?? null, filtros.status ?? null, filtroFluxoLogistico]
+    [
+      empresaId,
+      situacao,
+      busca,
+      filtros.envio ?? 'TODOS',
+      vendedor,
+      transportadora,
+      filtros.faturado ?? null,
+      filtros.status ?? null,
+      filtroFluxoLogistico,
+      filtros.cotacao_criada_inicio || null,
+      filtros.cotacao_criada_fim || null,
+      filtros.data_documento_inicio || null,
+      filtros.data_documento_fim || null
+    ]
   );
 }
 

@@ -213,7 +213,20 @@ export async function listarCotacoes(filtros?: {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/cotacoes${montarQuery(filtros)}`);
 }
 
-export async function listarPedidosEnvioMassa(filtros: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string }) {
+export async function listarPedidosEnvioMassa(filtros: {
+  situacao?: string;
+  busca?: string;
+  envio?: string;
+  status?: string;
+  vendedor?: string;
+  transportadora?: string;
+  faturado?: string;
+  fluxo_logistico?: string;
+  cotacao_criada_inicio?: string;
+  cotacao_criada_fim?: string;
+  data_documento_inicio?: string;
+  data_documento_fim?: string;
+}) {
   const parametros = new URLSearchParams();
   Object.entries(filtros).forEach(([chave, valor]) => {
     if (valor !== undefined && valor !== null && valor !== '') {
@@ -428,4 +441,133 @@ export async function responderCotacaoPublica(token: string, valor_frete: number
     method: 'POST',
     body: JSON.stringify({ valor_frete, prazo_dias, numero_cotacao_transportadora, observacao })
   });
+}
+
+export async function buscarDashboardPim() {
+  return requisitar<Record<string, any>>('/api/cadastro-produto-central/dashboard');
+}
+
+export async function listarProdutosPim(filtros?: { busca?: string; status?: string }) {
+  return requisitar<RegistroGenerico[]>(`/api/cadastro-produto-central/produtos${montarQuery(filtros)}`);
+}
+
+export async function obterProdutoPim(id: number) {
+  return requisitar<{
+    produto: RegistroGenerico;
+    skus: RegistroGenerico[];
+    componentes: RegistroGenerico[];
+    atributos: RegistroGenerico[];
+    canais: RegistroGenerico[];
+    assets: RegistroGenerico[];
+    historico: RegistroGenerico[];
+    aprovacoes: RegistroGenerico[];
+  }>(`/api/cadastro-produto-central/produtos/${id}`);
+}
+
+export async function salvarProdutoPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/produtos', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirProdutoPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/produtos/${id}`, { method: 'DELETE' });
+}
+
+export async function restaurarProdutoPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/produtos/${id}/restaurar`, { method: 'POST' });
+}
+
+export async function duplicarProdutoPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/produtos/${id}/duplicar`, { method: 'POST' });
+}
+
+export async function exportarProdutosPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/produtos-exportacao');
+}
+
+export async function alterarStatusProdutoPim(id: number, status: string, comentario?: string) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/produtos/${id}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status, comentario })
+  });
+}
+
+export async function listarComponentesPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/componentes');
+}
+
+export async function salvarComponentePim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/componentes', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarAtributosPim() {
+  return requisitar<{ atributos: RegistroGenerico[]; grupos: RegistroGenerico[] }>('/api/cadastro-produto-central/atributos');
+}
+
+export async function salvarAtributoPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/atributos', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarCanaisPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/canais');
+}
+
+export async function salvarCanalPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/canais', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarScoreCanaisPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/score-canais');
+}
+
+export async function listarAssetsPim(busca?: string) {
+  return requisitar<RegistroGenerico[]>(`/api/cadastro-produto-central/assets${montarQuery({ busca })}`);
+}
+
+export async function salvarAssetPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/assets', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarImportacoesPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/importacoes');
+}
+
+export async function registrarImportacaoPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/importacoes', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarWorkflowsPim() {
+  return requisitar<{ workflows: RegistroGenerico[]; aprovacoes: RegistroGenerico[] }>('/api/cadastro-produto-central/workflows');
+}
+
+export async function listarConfiguracoesPim() {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/configuracoes');
+}
+
+export async function salvarConfiguracoesPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/configuracoes', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarAuditoriaPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/auditoria');
 }

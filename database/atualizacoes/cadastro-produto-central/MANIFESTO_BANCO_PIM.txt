@@ -1,0 +1,11 @@
+# CONTROL S HUB
+# Manifesto de atualizacao de banco exclusivo do modulo Cadastro de Produto Central.
+# Nao incluir batches ou migrations do modulo Cotacao de Frete neste arquivo.
+#
+# Os caminhos sao relativos a raiz do projeto.
+
+database/migrations/012_cadastro_produto_central.sql
+database/migrations/013_evolucao_pim_identidade_visual.sql
+database/migrations/014_consolidacao_pim_permissoes.sql
+database/migrations/015_padronizar_pim_banco_portugues.sql
+

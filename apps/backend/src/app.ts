@@ -85,6 +85,33 @@ import {
   prepararEnvioMassa,
   registrarFornecedorEnvio
 } from './modulos/cotacao_frete/repositorioEnvioMassa.js';
+import {
+  alterarStatusProduto,
+  duplicarProduto,
+  excluirProduto,
+  exportarProdutos,
+  listarAssets,
+  listarAtributos,
+  listarAuditoriaPim,
+  listarCanais,
+  listarComponentes,
+  listarConfiguracoesModulo,
+  listarGruposAtributos,
+  listarImportacoes,
+  listarProdutos,
+  listarScoreCanais,
+  listarWorkflowAprovacoes,
+  obterDashboardPim,
+  obterProdutoCompleto,
+  registrarImportacao,
+  restaurarProduto,
+  salvarAsset,
+  salvarAtributo,
+  salvarCanal,
+  salvarComponente,
+  salvarConfiguracoesModulo,
+  salvarProduto
+} from './modulos/cadastro_produto_central/repositorioCadastroProdutoCentral.js';
 import { exigirSuperadmin, obterUsuarioSessao } from './seguranca/sessao.js';
 import { enviarEmail, testarConfiguracaoEmail } from './servicos/email.js';
 
@@ -145,6 +172,26 @@ export async function criarApp() {
 
     const permissoes = usuario.empresaAtivaId ? await listarCodigosPermissaoUsuario(usuario.id, usuario.empresaAtivaId) : [];
     if (!permissoes.includes(codigo)) {
+      reply.status(403).send(falha('ACESSO_NEGADO', mensagem));
+      return null;
+    }
+
+    return usuario;
+  }
+
+  async function exigirUmaPermissao(request: any, reply: any, codigos: string[], mensagem: string) {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+      return null;
+    }
+
+    if (usuario.superadmin || usuario.administrador) {
+      return usuario;
+    }
+
+    const permissoes = usuario.empresaAtivaId ? await listarCodigosPermissaoUsuario(usuario.id, usuario.empresaAtivaId) : [];
+    if (!codigos.some((codigo) => permissoes.includes(codigo))) {
       reply.status(403).send(falha('ACESSO_NEGADO', mensagem));
       return null;
     }
@@ -652,6 +699,181 @@ export async function criarApp() {
     return sucesso(await listarTelasFonte());
   });
 
+  app.get('/api/cadastro-produto-central/dashboard', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_DASHBOARD', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar Cadastro de Produto Central.');
+    if (!usuario) return;
+    return sucesso(await obterDashboardPim(usuario.empresaAtivaId!));
+  });
+
+  app.get<{ Querystring: { busca?: string; status?: string } }>('/api/cadastro-produto-central/produtos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar produtos.');
+    if (!usuario) return;
+    return sucesso(await listarProdutos(usuario.empresaAtivaId!, request.query.busca, request.query.status));
+  });
+
+  app.get<{ Params: { id: string } }>('/api/cadastro-produto-central/produtos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar produto.');
+    if (!usuario) return;
+    const produto = await obterProdutoCompleto(usuario.empresaAtivaId!, Number(request.params.id));
+    if (!produto) {
+      return reply.status(404).send(falha('PRODUTO_NAO_ENCONTRADO', 'Produto nao encontrado.'));
+    }
+    return sucesso(produto);
+  });
+
+  app.post('/api/cadastro-produto-central/produtos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_CRIAR', 'PIM_EDITAR', 'CRIAR_PRODUTO_PIM', 'EDITAR_PRODUTO_PIM'], 'Usuario sem permissao para salvar produtos.');
+    if (!usuario) return;
+    const produto = await salvarProduto(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({
+      empresaId: usuario.empresaAtivaId,
+      usuarioId: usuario.id,
+      moduloCodigo: 'CADASTRO_PRODUTO_CENTRAL',
+      telaCodigo: 'PIM_PRODUTOS',
+      tipoEvento: 'SALVAR_PRODUTO',
+      tabelaAfetada: 'produtos',
+      registroId: Number((produto as any)?.id ?? 0),
+      descricao: 'Produto mestre criado ou atualizado.',
+      dadosNovos: produto
+    });
+    return sucesso(produto);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/cadastro-produto-central/produtos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EXCLUIR', 'EXCLUIR_PRODUTO_PIM'], 'Usuario sem permissao para excluir produtos.');
+    if (!usuario) return;
+    const resultado = await excluirProduto(usuario.empresaAtivaId!, Number(request.params.id), usuario.id);
+    return sucesso(resultado);
+  });
+
+  app.post<{ Params: { id: string }; Body: { status?: string; comentario?: string } }>('/api/cadastro-produto-central/produtos/:id/status', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const status = request.body.status ?? 'RASCUNHO';
+    const permissaoPorStatus: Record<string, string[]> = {
+      AGUARDANDO_APROVACAO: ['PIM_SOLICITAR_AJUSTES', 'PIM_EDITAR', 'EDITAR_PRODUTO_PIM'],
+      APROVADO: ['PIM_APROVAR', 'APROVAR_PRODUTO_PIM'],
+      REJEITADO: ['PIM_REJEITAR', 'REJEITAR_PRODUTO_PIM'],
+      PUBLICADO: ['PIM_PUBLICAR', 'PUBLICAR_PRODUTO_PIM'],
+      ARQUIVADO: ['PIM_ARQUIVAR'],
+      RASCUNHO: ['PIM_EDITAR', 'EDITAR_PRODUTO_PIM']
+    };
+    const usuario = await exigirUmaPermissao(request, reply, permissaoPorStatus[status] ?? ['PIM_EDITAR', 'EDITAR_PRODUTO_PIM'], 'Usuario sem permissao para alterar status de produto.');
+    if (!usuario) return;
+    const resultado = await alterarStatusProduto(usuario.empresaAtivaId!, Number(request.params.id), status, usuario.id, request.body.comentario);
+    return sucesso(resultado);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cadastro-produto-central/produtos/:id/restaurar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_RESTAURAR', 'PIM_REATIVAR', 'PIM_EDITAR'], 'Usuario sem permissao para restaurar produtos.');
+    if (!usuario) return;
+    return sucesso(await restaurarProduto(usuario.empresaAtivaId!, Number(request.params.id), usuario.id));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cadastro-produto-central/produtos/:id/duplicar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_DUPLICAR', 'PIM_CRIAR', 'CRIAR_PRODUTO_PIM'], 'Usuario sem permissao para duplicar produtos.');
+    if (!usuario) return;
+    const resultado = await duplicarProduto(usuario.empresaAtivaId!, Number(request.params.id), usuario.id);
+    if (!resultado) {
+      return reply.status(404).send(falha('PRODUTO_NAO_ENCONTRADO', 'Produto nao encontrado para duplicacao.'));
+    }
+    return sucesso(resultado);
+  });
+
+  app.get('/api/cadastro-produto-central/produtos-exportacao', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EXPORTAR'], 'Usuario sem permissao para exportar produtos.');
+    if (!usuario) return;
+    return sucesso(await exportarProdutos(usuario.empresaAtivaId!));
+  });
+
+  app.get('/api/cadastro-produto-central/componentes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_COMPONENTES', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar componentes.');
+    if (!usuario) return;
+    return sucesso(await listarComponentes(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/componentes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'EDITAR_PRODUTO_PIM'], 'Usuario sem permissao para salvar componentes.');
+    if (!usuario) return;
+    return sucesso(await salvarComponente(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get('/api/cadastro-produto-central/atributos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_ATRIBUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar atributos.');
+    if (!usuario) return;
+    return sucesso({ atributos: await listarAtributos(usuario.empresaAtivaId!), grupos: await listarGruposAtributos(usuario.empresaAtivaId!) });
+  });
+
+  app.post('/api/cadastro-produto-central/atributos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_ATRIBUTOS', 'CONFIGURAR_ATRIBUTOS_PIM'], 'Usuario sem permissao para configurar atributos.');
+    if (!usuario) return;
+    return sucesso(await salvarAtributo(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.get('/api/cadastro-produto-central/canais', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_INTEGRACOES', 'PIM_VISUALIZAR_PUBLICACAO', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar canais.');
+    if (!usuario) return;
+    return sucesso(await listarCanais(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/canais', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM'], 'Usuario sem permissao para configurar canais.');
+    if (!usuario) return;
+    return sucesso(await salvarCanal(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.get('/api/cadastro-produto-central/score-canais', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'PIM_VISUALIZAR_PUBLICACAO', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar score por canal.');
+    if (!usuario) return;
+    return sucesso(await listarScoreCanais(usuario.empresaAtivaId!));
+  });
+
+  app.get<{ Querystring: { busca?: string } }>('/api/cadastro-produto-central/assets', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_ASSETS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar imagens e documentos.');
+    if (!usuario) return;
+    return sucesso(await listarAssets(usuario.empresaAtivaId!, request.query.busca));
+  });
+
+  app.post('/api/cadastro-produto-central/assets', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'], 'Usuario sem permissao para gerenciar ativos digitais.');
+    if (!usuario) return;
+    return sucesso(await salvarAsset(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get('/api/cadastro-produto-central/importacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para importar planilhas.');
+    if (!usuario) return;
+    return sucesso(await listarImportacoes(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/importacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para importar planilhas.');
+    if (!usuario) return;
+    return sucesso(await registrarImportacao(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get('/api/cadastro-produto-central/workflows', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_WORKFLOW', 'PIM_VISUALIZAR_APROVACAO', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar workflows.');
+    if (!usuario) return;
+    return sucesso(await listarWorkflowAprovacoes(usuario.empresaAtivaId!));
+  });
+
+  app.get('/api/cadastro-produto-central/configuracoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_CONFIGURACOES', 'PIM_EDITAR', 'CONFIGURAR_MODULO_PIM'], 'Usuario sem permissao para configurar o modulo.');
+    if (!usuario) return;
+    return sucesso(await listarConfiguracoesModulo(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/configuracoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_CONFIGURACOES', 'CONFIGURAR_MODULO_PIM'], 'Usuario sem permissao para configurar o modulo.');
+    if (!usuario) return;
+    return sucesso(await salvarConfiguracoesModulo(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get('/api/cadastro-produto-central/auditoria', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_AUDITORIA', 'VISUALIZAR_AUDITORIA_PIM'], 'Usuario sem permissao para visualizar auditoria do PIM.');
+    if (!usuario) return;
+    return sucesso(await listarAuditoriaPim(usuario.empresaAtivaId!));
+  });
+
   app.get<{
     Querystring: {
       data_inicial?: string;
@@ -732,7 +954,7 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string; cotacao_criada_inicio?: string; cotacao_criada_fim?: string; data_documento_inicio?: string; data_documento_fim?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -879,10 +1101,10 @@ export async function criarApp() {
           : modeloConfigurado || `<div style="font-family:Arial,sans-serif;color:#172033"><p>Ol&aacute;, TRANSPORTADORA.</p><p>Solicitamos a cota&ccedil;&atilde;o de frete dos documentos abaixo:</p><p>DOCUMENTOS</p><br><p>Atenciosamente.</p></div>`;
         const htmlBase = grupo.html?.trim()
           ? `<div>${grupo.html}</div>`
-          : `<div style="font-family:Arial,sans-serif;color:#172033"><p>Olá, ${fornecedorBase.nome_fantasia}.</p><p>Solicitamos a cotação de frete dos documentos abaixo:</p><p>DOCUMENTOS</p><br><p>Atenciosamente.</p></div>`;
+          : `<div style="font-family:Arial,sans-serif;color:#172033"><p>OlÃ¡, ${fornecedorBase.nome_fantasia}.</p><p>Solicitamos a cotaÃ§Ã£o de frete dos documentos abaixo:</p><p>DOCUMENTOS</p><br><p>Atenciosamente.</p></div>`;
         const htmlLegado = `${htmlBase}
           <table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">
-            <thead><tr><th>Documento</th><th>Chave</th><th>Valor referência</th><th>Validade do Link</th><th>Link</th></tr></thead>
+            <thead><tr><th>Documento</th><th>Chave</th><th>Valor referÃªncia</th><th>Validade do Link</th><th>Link</th></tr></thead>
             <tbody>${linhas}</tbody>
           </table>
           ${configuracaoEmail.assinatura_html ?? ''}`;
@@ -1545,7 +1767,7 @@ export async function criarApp() {
     const candidatos = [tokenHashCalculado];
 
     // Links antigos ou gravados por rotinas de envio podem conter o hash salvo.
-    // A rota pública aceita os dois formatos para não quebrar links já enviados.
+    // A rota pÃºblica aceita os dois formatos para nÃ£o quebrar links jÃ¡ enviados.
     if (/^[a-f0-9]{64}$/i.test(tokenInformado) && tokenInformado !== tokenHashCalculado) {
       candidatos.push(tokenInformado);
     }
