@@ -1336,6 +1336,22 @@ function KanbanCotacoes({
     }
   }
 
+  async function atualizarDetalheKanban() {
+    if (!detalheKanban) {
+      await carregarKanban();
+      return;
+    }
+
+    const detalheNormalizado = normalizarDetalheCotacao(await obterCotacao(String(detalheKanban.cotacao.id)));
+    setDetalheKanban(detalheNormalizado);
+    await carregarKanban();
+  }
+
+  function fecharDetalheKanban() {
+    setDetalheKanban(null);
+    carregarKanban().catch(() => undefined);
+  }
+
   const linhasFiltradas = linhas.filter((linha: any) => {
     const codigoEtapa = String(linha.etapa_codigo ?? '');
     if (etapasSelecionadas.length && !etapasSelecionadas.includes(codigoEtapa)) {
@@ -1516,9 +1532,9 @@ function KanbanCotacoes({
         largura="amplo"
         titulo={detalheKanban ? `${String(detalheKanban.cotacao.tipo_documento)} ${String(detalheKanban.cotacao.numero_documento)}` : 'Detalhe da seleção'}
         subtitulo={detalheKanban ? `Chave ${String(detalheKanban.cotacao.codigo_chave ?? '-')} · ${String(detalheKanban.cotacao.nome_destinatario ?? '-')}` : undefined}
-        aoFechar={() => setDetalheKanban(null)}
+        aoFechar={fecharDetalheKanban}
       >
-        {detalheKanban && <DetalheCotacaoConteudo detalhe={detalheKanban} usuario={null} aoAtualizar={async () => setDetalheKanban(normalizarDetalheCotacao(await obterCotacao(String(detalheKanban.cotacao.id))))} />}
+        {detalheKanban && <DetalheCotacaoConteudo detalhe={detalheKanban} usuario={null} aoAtualizar={atualizarDetalheKanban} />}
       </PainelContextual>
     </>
   );
@@ -2150,9 +2166,15 @@ function CotacoesOperacional({
         largura="amplo"
         titulo={detalhe ? `${String(detalhe.cotacao.tipo_documento)} ${String(detalhe.cotacao.numero_documento)}` : 'Detalhe da cotação'}
         subtitulo={detalhe ? `Chave ${String(detalhe.cotacao.codigo_chave ?? '-')} · ${String(detalhe.cotacao.nome_destinatario ?? '-')}` : undefined}
-        aoFechar={() => setDetalhe(null)}
+        aoFechar={() => {
+          setDetalhe(null);
+          setVersaoTabelaCotacao((atual) => atual + 1);
+        }}
       >
-        {detalhe && <DetalheCotacaoConteudo detalhe={detalhe} usuario={usuario} aoAtualizar={async () => setDetalhe(normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id))))} />}
+        {detalhe && <DetalheCotacaoConteudo detalhe={detalhe} usuario={usuario} aoAtualizar={async () => {
+          setDetalhe(normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id))));
+          setVersaoTabelaCotacao((atual) => atual + 1);
+        }} />}
         {false && null}
       </PainelContextual>
       <ModalConfirmacaoEscolha
@@ -3924,6 +3946,27 @@ function EnvioMassaCotacoes() {
     }
   }
 
+  function fecharDetalheEnvio() {
+    setDetalheEnvio(null);
+    carregar().catch(() => undefined);
+  }
+
+  async function atualizarDetalheCotacaoCompleto() {
+    if (!detalheCotacaoCompleto) {
+      await carregar();
+      return;
+    }
+
+    const detalheNormalizado = normalizarDetalheCotacao(await obterCotacao(String(detalheCotacaoCompleto.cotacao.id)));
+    setDetalheCotacaoCompleto(detalheNormalizado);
+    await carregar();
+  }
+
+  function fecharDetalheCotacaoCompleto() {
+    setDetalheCotacaoCompleto(null);
+    carregar().catch(() => undefined);
+  }
+
   async function adicionarTransportadoraNoDetalheEnvio() {
     if (!detalheEnvio) {
       return;
@@ -3950,6 +3993,7 @@ function EnvioMassaCotacoes() {
     try {
       await adicionarTransportadoraCotacao(String(detalheEnvio.cotacao.id), transportadoraId, 'Transportadora adicionada pela tela de envio.');
       await abrirDetalheEnvio(String(detalheEnvio.cotacao.id));
+      await carregar();
       setSeletorEnvioAberto(false);
       setErroSeletorEnvio('');
       setMensagem('Transportadora adicionada para envio da cotação.');
@@ -3976,6 +4020,7 @@ function EnvioMassaCotacoes() {
     try {
       await excluirTransportadoraCotacao(String(detalheEnvio.cotacao.id), String(transportadora.id));
       await abrirDetalheEnvio(String(detalheEnvio.cotacao.id));
+      await carregar();
       setErroSeletorEnvio('');
       setMensagem('Transportadora removida da cotação.');
     } catch (error) {
@@ -4284,7 +4329,7 @@ function EnvioMassaCotacoes() {
         largura="medio"
         titulo={detalheEnvio ? `${String(detalheEnvio.cotacao.tipo_documento)} ${String(detalheEnvio.cotacao.numero_documento)}` : 'Detalhe do envio'}
         subtitulo={detalheEnvio ? `Chave ${String(detalheEnvio.cotacao.codigo_chave ?? '-')} · ${String(detalheEnvio.cotacao.nome_destinatario ?? '-')}` : undefined}
-        aoFechar={() => setDetalheEnvio(null)}
+        aoFechar={fecharDetalheEnvio}
       >
         {detalheEnvio && (
         <section className="detalheEnvioMassa detalheEnvioContextual">
@@ -4347,9 +4392,9 @@ function EnvioMassaCotacoes() {
         largura="amplo"
         titulo={detalheCotacaoCompleto ? `${String(detalheCotacaoCompleto.cotacao.tipo_documento)} ${String(detalheCotacaoCompleto.cotacao.numero_documento)}` : 'Detalhe da cotação'}
         subtitulo={detalheCotacaoCompleto ? `Chave ${String(detalheCotacaoCompleto.cotacao.codigo_chave ?? '-')} · ${String(detalheCotacaoCompleto.cotacao.nome_destinatario ?? '-')}` : undefined}
-        aoFechar={() => setDetalheCotacaoCompleto(null)}
+        aoFechar={fecharDetalheCotacaoCompleto}
       >
-        {detalheCotacaoCompleto && <DetalheCotacaoConteudo detalhe={detalheCotacaoCompleto} usuario={null} aoAtualizar={async () => setDetalheCotacaoCompleto(normalizarDetalheCotacao(await obterCotacao(String(detalheCotacaoCompleto.cotacao.id))))} />}
+        {detalheCotacaoCompleto && <DetalheCotacaoConteudo detalhe={detalheCotacaoCompleto} usuario={null} aoAtualizar={atualizarDetalheCotacaoCompleto} />}
       </PainelContextual>
       <PainelContextual
         aberto={preparacao.length > 0}

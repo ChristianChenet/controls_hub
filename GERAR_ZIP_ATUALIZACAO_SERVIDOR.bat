@@ -16,8 +16,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$zip = '%ZIP%';" ^
   "$tmp = Join-Path $env:TEMP ('ControlSHub_zip_' + [guid]::NewGuid());" ^
   "New-Item -ItemType Directory -Path $tmp | Out-Null;" ^
-  "$excluir = '\\node_modules\\|\\logs\\|\\backups\\|\\.git\\|\\dist-atualizacao\\|\\.env$|\\.bak_';" ^
-  "Get-ChildItem -LiteralPath $raiz -Recurse -File | Where-Object { $_.FullName -notmatch $excluir } | ForEach-Object {" ^
+  "$excluir = '\\node_modules\\|\\logs\\|\\backups\\|\\.git\\|\\dist-atualizacao\\|\\dist-instalador\\|\\.env$';" ^
+  "Get-ChildItem -LiteralPath $raiz -Recurse -File | Where-Object { $_.FullName -notmatch $excluir -and $_.Name -notmatch '\.bak_' } | ForEach-Object {" ^
   "  $rel = $_.FullName.Substring($raiz.Length).TrimStart('\');" ^
   "  $dest = Join-Path $tmp $rel;" ^
   "  New-Item -ItemType Directory -Path (Split-Path $dest) -Force | Out-Null;" ^

@@ -42,10 +42,45 @@
 }
 
 .pimProdutoShell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  overflow: visible;
+}
+
+.pimProdutoShell > header,
+.pimProdutoShell > .filtrosLinha,
+.pimProdutoShell > .tabelaWrap,
+.pimProdutoShell > form,
+.pimProdutoShell > .alerta,
+.pimProdutoShell > .sucesso {
+  width: 100%;
+}
+
+.pimProdutoShell > form {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(520px, 1.4fr);
-  gap: 16px;
-  align-items: start;
+  gap: 12px;
+}
+
+.pimProdutoShell > .filtrosLinha {
+  margin: 0;
+}
+
+.pimProdutoShell .acoesDetalhe {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pimProdutoShell .tabelaWrap {
+  width: 100%;
+  border-top: 1px solid var(--linha);
+}
+
+.pimProdutoShell .tabelaWrap table {
+  min-width: 1120px;
 }
 
 .pimFormProduto,
@@ -110,7 +145,8 @@
   font-weight: 700;
 }
 
-.pimAbas button.ativo {
+.pimAbas button.ativo,
+.pimAbas button.active {
   background: #0b1d24;
   border-color: #2cff65;
   color: #ffffff;
@@ -150,12 +186,6 @@
 .pimConfigForm textarea {
   min-height: 96px;
   resize: vertical;
-}
-
-@media (max-width: 1080px) {
-  .pimProdutoShell {
-    grid-template-columns: 1fr;
-  }
 }
 
 .pimModulo {
@@ -3109,14 +3139,14 @@ h2 {
 .metadadosRetornoTransportadora small {
   color: #536278;
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.25;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   text-transform: none;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .metadadosRetornoTransportadora .linkQuebra {

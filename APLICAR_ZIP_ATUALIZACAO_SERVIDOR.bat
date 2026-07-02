@@ -31,7 +31,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralP
 if errorlevel 1 goto :falha
 
 call :log "Copiando arquivos sem apagar dados locais..."
-robocopy "%TMP%" "%RAIZ%" /E /NFL /NDL /NJH /NJS /NP /XD node_modules logs backups dist-atualizacao .git /XF .env *.backup >> "%LOG%" 2>&1
+robocopy "%TMP%" "%RAIZ%" /E /NFL /NDL /NJH /NJS /NP /XD node_modules logs backups dist-atualizacao .git /XF .env *.backup *.bak_* >> "%LOG%" 2>&1
 if %ERRORLEVEL% GEQ 8 goto :falha
 
 call :log "Limpando temporarios..."

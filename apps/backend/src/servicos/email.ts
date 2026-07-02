@@ -133,10 +133,19 @@ export async function enviarEmail(configuracao: ConfiguracaoEnvioEmail, dados: {
   texto?: string;
 }) {
   const transporte = criarTransporte(configuracao);
+  const destinatarios = String(dados.para ?? '')
+    .split(/[;,]/)
+    .map((email) => email.trim())
+    .filter(Boolean)
+    .join(', ');
+
+  if (!destinatarios) {
+    throw new Error('E-mail destinatario nao informado.');
+  }
 
   return transporte.sendMail({
     from: `"${configuracao.nome_remetente}" <${configuracao.email_remetente}>`,
-    to: dados.para,
+    to: destinatarios,
     replyTo: configuracao.email_resposta ?? configuracao.email_remetente,
     subject: dados.assunto,
     html: dados.html,
