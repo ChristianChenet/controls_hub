@@ -439,10 +439,16 @@ export type FiltrosDashboardCotacao = {
   valorPedidoMax?: number;
   percentualFreteMin?: number;
   percentualFreteMax?: number;
+  freteGratis?: string;
   comTrocaTransportadora?: boolean;
   comDivergenciaValor?: boolean;
   comDivergenciaPrazo?: boolean;
 };
+
+function normalizarFiltroFreteGratis(valor?: string | null) {
+  const filtro = String(valor ?? '').trim().toUpperCase();
+  return filtro === 'SIM' || filtro === 'NAO' ? filtro : null;
+}
 
 export async function obterIndicadoresCotacao(empresaId: number, filtros: FiltrosDashboardCotacao = {}) {
   await garantirColunasOperacionaisCotacao();
@@ -588,6 +594,11 @@ export async function obterIndicadoresCotacao(empresaId: number, filtros: Filtro
       AND ($8::VARCHAR IS NULL OR c.status = $8)
       AND ($9::NUMERIC IS NULL OR COALESCE(c.valor_mercadoria, 0) >= $9::NUMERIC)
       AND ($10::NUMERIC IS NULL OR COALESCE(c.valor_mercadoria, 0) <= $10::NUMERIC)
+      AND (
+        $11::VARCHAR IS NULL
+        OR ($11 = 'SIM' AND COALESCE(c.valor_frete_pedido, 0) <= 0)
+        OR ($11 = 'NAO' AND COALESCE(c.valor_frete_pedido, 0) > 0)
+      )
     ORDER BY c.criado_em DESC NULLS LAST, c.data_documento DESC NULLS LAST, c.numero_documento DESC`,
     [
       empresaId,
@@ -599,7 +610,8 @@ export async function obterIndicadoresCotacao(empresaId: number, filtros: Filtro
       filtros.uf || null,
       filtros.status || null,
       filtros.valorPedidoMin ?? null,
-      filtros.valorPedidoMax ?? null
+      filtros.valorPedidoMax ?? null,
+      normalizarFiltroFreteGratis(filtros.freteGratis)
     ]
   );
 
@@ -696,6 +708,7 @@ export type FiltrosCotacao = {
   multiplasCotacoes?: boolean;
   fluxoLogistico?: boolean | string;
   cteDiferenteEscolhido?: boolean;
+  freteGratis?: string;
   pagina?: number;
   limite?: number;
 };
@@ -855,6 +868,11 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
           )
         )
       )
+      AND (
+        $9::VARCHAR IS NULL
+        OR ($9 = 'SIM' AND COALESCE(c.valor_frete_pedido, 0) <= 0)
+        OR ($9 = 'NAO' AND COALESCE(c.valor_frete_pedido, 0) > 0)
+      )
     LEFT JOIN transportadoras t_escolhida ON t_escolhida.id = c.transportadora_escolhida_id
     LEFT JOIN LATERAL (
       SELECT
@@ -973,7 +991,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       AND e.ativa = TRUE
       AND ($4::VARCHAR IS NULL OR e.codigo = $4)
     ORDER BY e.ordem ASC, c.criado_em ASC NULLS LAST`,
-    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true]
+    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true, normalizarFiltroFreteGratis(filtros.freteGratis)]
   );
 }
 
@@ -1002,7 +1020,8 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     filtros.codigoChave ? `%${filtros.codigoChave}%` : null,
     filtros.faturado || null,
     filtros.multiplasCotacoes === true,
-    filtroFluxoLogistico
+    filtroFluxoLogistico,
+    normalizarFiltroFreteGratis(filtros.freteGratis)
   ];
   const where = `
     c.empresa_id = $1
@@ -1065,8 +1084,13 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
         WHERE cf.empresa_id = c.empresa_id
           AND COALESCE(cf.excluido, FALSE) = FALSE
           AND COALESCE(cf.numero_pedido, cf.numero_documento) = COALESCE(c.numero_pedido, c.numero_documento)
-          AND COALESCE(NULLIF(TRIM(cf.lote_fluxo_logistico), ''), '') <> ''
+        AND COALESCE(NULLIF(TRIM(cf.lote_fluxo_logistico), ''), '') <> ''
       ))
+    )
+    AND (
+      $17::VARCHAR IS NULL
+      OR ($17 = 'SIM' AND COALESCE(c.valor_frete_pedido, 0) <= 0)
+      OR ($17 = 'NAO' AND COALESCE(c.valor_frete_pedido, 0) > 0)
     )
   `;
   const itens = await consultar(
@@ -1133,7 +1157,7 @@ export async function listarCotacoesFrete(empresaId: number, filtros: FiltrosCot
     ) outras ON TRUE
     WHERE ${where}
     ORDER BY c.criado_em DESC
-    LIMIT $17 OFFSET $18`,
+    LIMIT $18 OFFSET $19`,
     [...parametros, limite, offset]
   );
   const total = await consultarUm<{ total: string }>(

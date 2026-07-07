@@ -770,6 +770,7 @@ function Dashboard() {
   const [valorPedidoMax, setValorPedidoMax] = useState('');
   const [percentualFreteMin, setPercentualFreteMin] = useState('');
   const [percentualFreteMax, setPercentualFreteMax] = useState('');
+  const [freteGratisFiltro, setFreteGratisFiltro] = useState('');
   const [somenteTrocaTransportadora, setSomenteTrocaTransportadora] = useState(false);
   const [somenteDivergenciaValor, setSomenteDivergenciaValor] = useState(false);
   const [somenteDivergenciaPrazo, setSomenteDivergenciaPrazo] = useState(false);
@@ -806,6 +807,7 @@ function Dashboard() {
         valor_pedido_max: valorPedidoMax || undefined,
         percentual_frete_min: percentualFreteMin || undefined,
         percentual_frete_max: percentualFreteMax || undefined,
+        frete_gratis: freteGratisFiltro || undefined,
         com_troca_transportadora: somenteTrocaTransportadora || undefined,
         com_divergencia_valor: somenteDivergenciaValor || undefined,
         com_divergencia_prazo: somenteDivergenciaPrazo || undefined
@@ -1228,6 +1230,11 @@ function Dashboard() {
         <input placeholder="Pedido máx." type="number" value={valorPedidoMax} onChange={(evento) => setValorPedidoMax(evento.target.value)} />
         <input placeholder="% frete mín." type="number" value={percentualFreteMin} onChange={(evento) => setPercentualFreteMin(evento.target.value)} />
         <input placeholder="% frete máx." type="number" value={percentualFreteMax} onChange={(evento) => setPercentualFreteMax(evento.target.value)} />
+        <select value={freteGratisFiltro} onChange={(evento) => setFreteGratisFiltro(evento.target.value)} title="Filtra pedidos conforme o frete cobrado no pedido.">
+          <option value="">Frete: todos</option>
+          <option value="SIM">Frete gr?tis</option>
+          <option value="NAO">Com frete</option>
+        </select>
         <label className="toggleLinha"><input type="checkbox" checked={somenteTrocaTransportadora} onChange={(evento) => setSomenteTrocaTransportadora(evento.target.checked)} />Troca de transportadora</label>
         <label className="toggleLinha"><input type="checkbox" checked={somenteDivergenciaValor} onChange={(evento) => setSomenteDivergenciaValor(evento.target.checked)} />Divergência de valor</label>
         <label className="toggleLinha"><input type="checkbox" checked={somenteDivergenciaPrazo} onChange={(evento) => setSomenteDivergenciaPrazo(evento.target.checked)} />Divergência de prazo</label>
@@ -1729,6 +1736,7 @@ function KanbanCotacoes({
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
   const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
+  const [freteGratisFiltro, setFreteGratisFiltro] = useState('');
   const [cteDiferenteEscolhidoFiltro, setCteDiferenteEscolhidoFiltro] = useState(false);
   const [somentePendentes, setSomentePendentes] = useState(true);
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
@@ -1748,6 +1756,7 @@ function KanbanCotacoes({
       faturado: faturadoFiltro || undefined,
       multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
       fluxo_logistico: fluxoLogisticoFiltro || undefined,
+      frete_gratis: freteGratisFiltro || undefined,
       cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined
     })
       .then(setLinhas)
@@ -1918,6 +1927,11 @@ function KanbanCotacoes({
           <option value="">Todos</option>
           <option value="SOMENTE">Faturados</option>
           <option value="EXCETO">Não faturados</option>
+        </select>
+        <select className="selectFiltroCompacto" value={freteGratisFiltro} onChange={(evento) => setFreteGratisFiltro(evento.target.value)} title="Filtra pedidos conforme o frete cobrado no pedido.">
+          <option value="">Frete: todos</option>
+          <option value="SIM">Frete gr?tis</option>
+          <option value="NAO">Com frete</option>
         </select>
         <button className="ghost" onClick={carregarKanban}>Filtrar</button>
       </div>
@@ -2213,6 +2227,7 @@ function CotacoesOperacional({
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
   const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
+  const [freteGratisFiltro, setFreteGratisFiltro] = useState('');
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [dataInicial, setDataInicial] = useState(() => obterDataDiasAtras(30));
   const [dataFinal, setDataFinal] = useState(() => obterDataIso(new Date()));
@@ -2261,6 +2276,7 @@ function CotacoesOperacional({
         faturado: faturadoFiltro || undefined,
         multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
         fluxo_logistico: fluxoLogisticoFiltro || undefined,
+      frete_gratis: freteGratisFiltro || undefined,
         pagina: String(paginaCotacao),
         limite: String(limiteCotacao)
       });
@@ -2605,6 +2621,11 @@ function CotacoesOperacional({
           <option value="SOMENTE">Somente com fluxo</option>
           <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
         </select>
+        <select value={freteGratisFiltro} onChange={(evento) => { setFreteGratisFiltro(evento.target.value); setPaginaCotacao(1); }} title="Filtra pedidos conforme o frete cobrado no pedido.">
+          <option value="">Frete: todos</option>
+          <option value="SIM">Frete gr?tis</option>
+          <option value="NAO">Com frete</option>
+        </select>
       </div>
       {filtrosAbertos && (
         <div className="filtrosLinha">
@@ -2618,7 +2639,7 @@ function CotacoesOperacional({
         </div>
       )}
       <TabelaOperacional
-        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${faturadoFiltro}-${multiplasCotacoesFiltro}-${fluxoLogisticoFiltro}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
+        key={`${busca}-${numeroDocumentoFiltro}-${numeroNfeFiltro}-${clienteFiltro}-${cidadeFiltro}-${codigoChaveFiltro}-${bloqueadoFiltro}-${faturadoFiltro}-${multiplasCotacoesFiltro}-${fluxoLogisticoFiltro}-${freteGratisFiltro}-${vendedorFiltro}-${transportadoraFiltro}-${dataInicial}-${dataFinal}-${etapaFiltro}-${paginaCotacao}-${limiteCotacao}-${versaoTabelaCotacao}`}
         titulo="Cotações de Frete"
         subtitulo="Clique em uma cotação para abrir o detalhe operacional, comparar transportadoras e acompanhar o fluxo completo."
         carregar={carregar}
@@ -4398,6 +4419,7 @@ function EnvioMassaCotacoes() {
   const [semaforoFiltro, setSemaforoFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
+  const [freteGratisFiltro, setFreteGratisFiltro] = useState('');
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [colunasAbertas, setColunasAbertas] = useState(false);
   const [pagina, setPagina] = useState(1);
@@ -4538,6 +4560,7 @@ function EnvioMassaCotacoes() {
       transportadora: transportadoraFiltro,
       faturado: faturadoFiltro || undefined,
       fluxo_logistico: fluxoLogisticoFiltro || undefined,
+      frete_gratis: freteGratisFiltro || undefined,
       cotacao_criada_inicio: cotacaoCriadaInicio || undefined,
       cotacao_criada_fim: cotacaoCriadaFim || undefined,
       data_documento_inicio: dataDocumentoInicio || undefined,
@@ -4550,7 +4573,7 @@ function EnvioMassaCotacoes() {
 
   useEffect(() => {
     carregar().catch(() => setPedidos([]));
-  }, [envio, faturadoFiltro, statusFiltro, fluxoLogisticoFiltro]);
+  }, [envio, faturadoFiltro, statusFiltro, fluxoLogisticoFiltro, freteGratisFiltro]);
 
   useEffect(() => {
     if (!mensagem) {
@@ -4886,6 +4909,11 @@ function EnvioMassaCotacoes() {
           <option value="">Fluxo: todos</option>
           <option value="SOMENTE">Somente com fluxo</option>
           <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
+        </select>
+        <select value={freteGratisFiltro} onChange={(evento) => { setFreteGratisFiltro(evento.target.value); setPagina(1); }} title="Filtra pedidos conforme o frete cobrado no pedido.">
+          <option value="">Frete: todos</option>
+          <option value="SIM">Frete gr?tis</option>
+          <option value="NAO">Com frete</option>
         </select>
         <select value={semaforoFiltro} onChange={(evento) => { setSemaforoFiltro(evento.target.value); setPagina(1); }} title="Filtra pelo semáforo de SLA calculado pela data de criação da cotação.">
           <option value="">Semáforo: todos</option>

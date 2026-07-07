@@ -32,6 +32,11 @@ function interpretarChaveCotacao(empresaId: number, valor: string | number): Cha
   };
 }
 
+function normalizarFiltroFreteGratis(valor?: string | null) {
+  const filtro = String(valor ?? '').trim().toUpperCase();
+  return filtro === 'SIM' || filtro === 'NAO' ? filtro : null;
+}
+
 async function garantirColunasTransportadoraEnvio() {
   await consultar(
     `ALTER TABLE transportadoras
@@ -91,6 +96,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   transportadora?: string;
   faturado?: string;
   fluxo_logistico?: string;
+  frete_gratis?: string;
   cotacao_criada_inicio?: string;
   cotacao_criada_fim?: string;
   data_documento_inicio?: string;
@@ -103,6 +109,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   const filtroFluxoLogistico = String(filtros.fluxo_logistico ?? '').toLowerCase() === 'true'
     ? 'SOMENTE'
     : String(filtros.fluxo_logistico ?? '').trim().toUpperCase() || null;
+  const filtroFreteGratis = normalizarFiltroFreteGratis(filtros.frete_gratis);
 
   return consultar(
     `SELECT
@@ -344,6 +351,11 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       AND ($11::TIMESTAMPTZ IS NULL OR c.criado_em <= $11::TIMESTAMPTZ)
       AND ($12::DATE IS NULL OR c.data_documento >= $12::DATE)
       AND ($13::DATE IS NULL OR c.data_documento <= $13::DATE)
+      AND (
+        $14::VARCHAR IS NULL
+        OR ($14 = 'SIM' AND COALESCE(c.valor_frete_pedido, 0) <= 0)
+        OR ($14 = 'NAO' AND COALESCE(c.valor_frete_pedido, 0) > 0)
+      )
     GROUP BY
       c.empresa_id,
       c.tipo_documento,
@@ -399,7 +411,8 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       filtros.cotacao_criada_inicio || null,
       filtros.cotacao_criada_fim || null,
       filtros.data_documento_inicio || null,
-      filtros.data_documento_fim || null
+      filtros.data_documento_fim || null,
+      filtroFreteGratis
     ]
   );
 }

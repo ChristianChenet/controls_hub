@@ -1038,6 +1038,7 @@ export async function criarApp() {
       valor_pedido_max?: string;
       percentual_frete_min?: string;
       percentual_frete_max?: string;
+      frete_gratis?: string;
       com_troca_transportadora?: string;
       com_divergencia_valor?: string;
       com_divergencia_prazo?: string;
@@ -1059,13 +1060,14 @@ export async function criarApp() {
       valorPedidoMax: request.query.valor_pedido_max ? Number(request.query.valor_pedido_max) : undefined,
       percentualFreteMin: request.query.percentual_frete_min ? Number(request.query.percentual_frete_min) : undefined,
       percentualFreteMax: request.query.percentual_frete_max ? Number(request.query.percentual_frete_max) : undefined,
+      freteGratis: request.query.frete_gratis,
       comTrocaTransportadora: request.query.com_troca_transportadora === 'true',
       comDivergenciaValor: request.query.com_divergencia_valor === 'true',
       comDivergenciaPrazo: request.query.com_divergencia_prazo === 'true'
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string; frete_gratis?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -1076,11 +1078,12 @@ export async function criarApp() {
       faturado: request.query.faturado,
       multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
       fluxoLogistico: request.query.fluxo_logistico,
-      cteDiferenteEscolhido: request.query.cte_diferente_escolhido === 'true'
+      cteDiferenteEscolhido: request.query.cte_diferente_escolhido === 'true',
+      freteGratis: request.query.frete_gratis
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; numero_documento?: string; numero_nfe?: string; cliente?: string; cidade?: string; codigo_chave?: string; vendedor?: string; transportadora?: string; bloqueado?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; frete_gratis?: string; pagina?: string; limite?: string } }>('/api/cotacao-frete/cotacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -1100,12 +1103,13 @@ export async function criarApp() {
       faturado: request.query.faturado,
       multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
       fluxoLogistico: request.query.fluxo_logistico,
+      freteGratis: request.query.frete_gratis,
       pagina: Number(request.query.pagina ?? 1),
       limite: Number(request.query.limite ?? 15)
     }));
   });
 
-  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string; cotacao_criada_inicio?: string; cotacao_criada_fim?: string; data_documento_inicio?: string; data_documento_fim?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string; frete_gratis?: string; cotacao_criada_inicio?: string; cotacao_criada_fim?: string; data_documento_inicio?: string; data_documento_fim?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
