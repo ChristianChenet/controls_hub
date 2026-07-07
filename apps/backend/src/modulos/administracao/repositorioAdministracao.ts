@@ -66,7 +66,7 @@ export async function buscarUsuarioPorEmail(email: string) {
       administrador,
       superadmin,
       ativo,
-      preferencias_interface
+      '{}'::JSONB AS preferencias_interface
     FROM usuarios
     WHERE LOWER(email) = LOWER($1)
       AND ativo = TRUE
@@ -678,6 +678,143 @@ export async function salvarMotivoEscolhaTransportadora(dados: {
       dados.descricao,
       dados.padrao_transportadora_pedido ?? false,
       dados.ativo ?? true
+    ]
+  );
+}
+
+async function garantirEstruturaMotivosPrejuizoLogistico() {
+  await consultar(
+    `CREATE TABLE IF NOT EXISTS motivos_prejuizo_logistico (
+      id BIGSERIAL PRIMARY KEY,
+      codigo VARCHAR(80) NOT NULL UNIQUE,
+      descricao VARCHAR(220) NOT NULL,
+      ativo BOOLEAN NOT NULL DEFAULT TRUE,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      alterado_em TIMESTAMPTZ
+    )`
+  );
+
+  await consultar(
+    `CREATE TABLE IF NOT EXISTS cotacoes_frete_motivos_prejuizo_logistico (
+      empresa_id BIGINT NOT NULL,
+      tipo_documento VARCHAR(30) NOT NULL,
+      numero_documento VARCHAR(80) NOT NULL,
+      codigo_chave VARCHAR(120) NOT NULL,
+      motivo_id BIGINT REFERENCES motivos_prejuizo_logistico(id),
+      motivo_descricao TEXT,
+      usuario_id BIGINT,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      alterado_em TIMESTAMPTZ,
+      PRIMARY KEY (empresa_id, tipo_documento, numero_documento, codigo_chave)
+    )`
+  );
+}
+
+export async function listarMotivosPrejuizoLogistico() {
+  await garantirEstruturaMotivosPrejuizoLogistico();
+
+  return consultar(
+    `SELECT
+      id,
+      codigo,
+      descricao,
+      ativo
+    FROM motivos_prejuizo_logistico
+    ORDER BY ativo DESC, descricao ASC`
+  );
+}
+
+export async function salvarMotivoPrejuizoLogistico(dados: {
+  id?: number | null;
+  codigo?: string | null;
+  descricao: string;
+  ativo?: boolean;
+}) {
+  await garantirEstruturaMotivosPrejuizoLogistico();
+
+  const codigo = String(dados.codigo ?? dados.descricao)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
+
+  return consultarUm(
+    `INSERT INTO motivos_prejuizo_logistico (
+      id,
+      codigo,
+      descricao,
+      ativo
+    )
+    VALUES (COALESCE($1, NEXTVAL(PG_GET_SERIAL_SEQUENCE('motivos_prejuizo_logistico', 'id'))), $2, $3, COALESCE($4, TRUE))
+    ON CONFLICT (codigo) DO UPDATE SET
+      descricao = EXCLUDED.descricao,
+      ativo = EXCLUDED.ativo,
+      alterado_em = NOW()
+    RETURNING *`,
+    [
+      dados.id ?? null,
+      codigo,
+      dados.descricao,
+      dados.ativo ?? true
+    ]
+  );
+}
+
+export async function salvarMotivoPrejuizoCotacao(dados: {
+  empresaId: number;
+  cotacaoId: string;
+  motivoId?: number | null;
+  motivoDescricao?: string | null;
+  usuarioId?: number | null;
+}) {
+  await garantirEstruturaMotivosPrejuizoLogistico();
+
+  const partes = decodeURIComponent(String(dados.cotacaoId ?? '')).split('|');
+  if (partes.length < 4) {
+    throw new Error('Chave da cotacao invalida para registrar motivo de prejuizo logistico.');
+  }
+
+  const empresaId = Number(partes[0]) || dados.empresaId;
+  const tipoDocumento = partes[1];
+  const numeroDocumento = partes[2];
+  const codigoChave = partes.slice(3).join('|');
+
+  const motivo = dados.motivoId
+    ? await consultarUm<{ descricao: string }>(
+      `SELECT descricao
+      FROM motivos_prejuizo_logistico
+      WHERE id = $1`,
+      [dados.motivoId]
+    )
+    : null;
+
+  return consultarUm(
+    `INSERT INTO cotacoes_frete_motivos_prejuizo_logistico (
+      empresa_id,
+      tipo_documento,
+      numero_documento,
+      codigo_chave,
+      motivo_id,
+      motivo_descricao,
+      usuario_id
+    )
+    VALUES ($1, $2, $3, $4, $5, COALESCE($6, $7), $8)
+    ON CONFLICT (empresa_id, tipo_documento, numero_documento, codigo_chave) DO UPDATE SET
+      motivo_id = EXCLUDED.motivo_id,
+      motivo_descricao = EXCLUDED.motivo_descricao,
+      usuario_id = EXCLUDED.usuario_id,
+      alterado_em = NOW()
+    RETURNING *`,
+    [
+      empresaId,
+      tipoDocumento,
+      numeroDocumento,
+      codigoChave,
+      dados.motivoId ?? null,
+      dados.motivoDescricao ?? null,
+      motivo?.descricao ?? null,
+      dados.usuarioId ?? null
     ]
   );
 }

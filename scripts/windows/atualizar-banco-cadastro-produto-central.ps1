@@ -32,7 +32,8 @@ $sqls = @(
   "database\migrations\012_cadastro_produto_central.sql",
   "database\migrations\013_evolucao_pim_identidade_visual.sql",
   "database\migrations\014_consolidacao_pim_permissoes.sql",
-  "database\migrations\015_padronizar_pim_banco_portugues.sql"
+  "database\migrations\015_padronizar_pim_banco_portugues.sql",
+  "database\migrations\027_pim_sqlserver_carga_manual.sql"
 )
 
 Write-Host "Atualizando banco do Cadastro de Produto Central..."

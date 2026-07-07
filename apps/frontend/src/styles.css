@@ -320,6 +320,173 @@
   border: 1px solid rgba(46, 230, 111, 0.55);
 }
 
+.pimTelaAvancada {
+  display: grid;
+  gap: 14px;
+  overflow: visible;
+}
+
+.pimTelaAvancada > header,
+.pimTelaAvancada > .alerta,
+.pimTelaAvancada > .sucesso {
+  width: 100%;
+}
+
+.pimGridOperacional {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.pimBloco {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.07);
+}
+
+.pimBloco h3 {
+  margin: 0 0 12px;
+  color: #172033;
+  font-size: 1rem;
+}
+
+.pimBloco p {
+  margin: 0;
+  color: #667085;
+  line-height: 1.45;
+}
+
+.pimBlocoTopo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pimBlocoTopo h3 {
+  margin: 0;
+}
+
+.pimBlocoTopo input {
+  min-width: 260px;
+  min-height: 36px;
+  border: 1px solid var(--linha);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.pimTelaAvancada .formCadastro {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.pimTelaAvancada .formCadastro .campoLargo {
+  grid-column: 1 / -1;
+}
+
+.pimTelaAvancada select[multiple] {
+  min-height: 104px;
+  padding: 8px;
+}
+
+.pimTelaAvancada input[type="file"] {
+  min-height: 40px;
+  padding: 7px;
+  background: #fff;
+}
+
+.pimResumoArquivo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pimResumoArquivo article {
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.pimResumoArquivo span {
+  display: block;
+  color: #667085;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pimResumoArquivo strong {
+  display: block;
+  margin-top: 6px;
+  color: #07151c;
+  overflow-wrap: anywhere;
+}
+
+.pimMapaImportacao {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.pimMapaImportacao label {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.pimMapaImportacao span {
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.pimCanaisAtributos {
+  display: grid;
+  gap: 14px;
+}
+
+.pimCanaisAtributos article {
+  min-width: 0;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pimCanaisAtributos article > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+  background: #f8fafc;
+}
+
+.pimCanaisAtributos article > header span {
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.pimCanaisAtributos table {
+  min-width: 860px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -3139,7 +3306,7 @@ h2 {
 .metadadosRetornoTransportadora small {
   color: #536278;
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.25;
   max-width: 100%;
@@ -3149,11 +3316,574 @@ h2 {
   white-space: normal;
 }
 
+.metadadosRetornoTransportadora .numeroCotacaoTransportadora {
+  color: #172033;
+  font-size: 12px;
+}
+
+.metadadosRetornoTransportadora .observacaoTransportadoraDestaque {
+  background: #fff7e6;
+  border: 1px solid #f4b950;
+  border-left: 4px solid #f59e0b;
+  border-radius: 6px;
+  color: #172033;
+  font-size: 12px;
+  font-weight: 900;
+  margin-top: 3px;
+  padding: 5px 7px;
+}
+
 .metadadosRetornoTransportadora .linkQuebra {
   color: #667085;
   font-size: 8px;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.abasDashboard {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  margin: 12px 0 16px;
+}
+
+.abasDashboard button {
+  color: #172033;
+  font-size: 13px;
+  min-height: 36px;
+  overflow: visible;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.abasDashboard button.active {
+  background: #052e16;
+  color: #ffffff;
+}
+
+.ganhoLogisticoPainel {
+  display: grid;
+  gap: 14px;
+}
+
+.graficoPizzaLogistico {
+  align-items: center;
+  aspect-ratio: 1;
+  border: 10px solid #f8fafc;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 18px #fff, 0 14px 32px rgba(15, 23, 42, .12);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 12px auto;
+  max-width: 190px;
+  width: 70%;
+}
+
+.graficoPizzaLogistico strong {
+  color: #102418;
+  font-size: 24px;
+}
+
+.graficoPizzaLogistico small {
+  color: #667085;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.linhaGanhoDia {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #d8e2ec;
+  border-radius: 10px;
+  color: #172033;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr auto;
+  margin-top: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.linhaGanhoDia small {
+  grid-column: 1 / -1;
+}
+
+.linhaGanhoDia.ativo {
+  background: #ecfdf3;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .14);
+}
+
+.barraDashboard.ganhoTransportadora span::before {
+  background: linear-gradient(90deg, #22c55e, #67ff3d);
+}
+
+.barraDashboard.ganhoTransportadora {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #172033;
+  cursor: pointer;
+  padding: 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.barraDashboard.ganhoTransportadora strong {
+  display: block;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.barraDashboard.ganhoTransportadora small {
+  display: block;
+  font-size: 10px;
+  text-align: left;
+}
+
+.barraDashboard.ganhoTransportadora:hover,
+.barraDashboard.ganhoTransportadora.ativo {
+  background: #ecfdf3;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .12);
+}
+
+.inputMotivoGanho {
+  min-width: 220px;
+}
+
+.celulaChaveClicavel {
+  color: #006bb6;
+  cursor: pointer;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.botaoMini {
+  background: #ffffff;
+  border: 1px solid #c9d8e6;
+  border-radius: 6px;
+  color: #172033;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 5px 8px;
+}
+
+.botaoMini:hover {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .12);
+}
+
+.botaoMini.ativo {
+  background: #052e16;
+  border-color: #22c55e;
+  color: #ffffff;
+}
+
+.painelMotivosPrejuizo {
+  align-content: start;
+}
+
+.cabecalhoMotivosPrejuizo {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.linhaMotivoPrejuizo {
+  background: #ffffff;
+  border: 1px solid #f2c6c6;
+  border-radius: 10px;
+  color: #172033;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 110px auto;
+  margin-top: 8px;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.linhaMotivoPrejuizo:hover,
+.linhaMotivoPrejuizo.ativo {
+  background: #fff5f5;
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, .10);
+}
+
+.linhaMotivoPrejuizo strong {
+  color: #172033;
+  display: block;
+  font-size: 12px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.linhaMotivoPrejuizo small {
+  color: #667085;
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+.linhaMotivoPrejuizo > span {
+  align-self: center;
+  background: #fee2e2;
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.linhaMotivoPrejuizo > span i {
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.linhaMotivoPrejuizo b {
+  align-self: center;
+  color: #b91c1c;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.destinoTabelaGanho {
+  color: #667085;
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+.checklistTrocaTransportadora {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-left: 4px solid #f97316;
+  border-radius: 10px;
+  color: #172033;
+  margin: 12px 0;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.checklistTrocaTransportadora strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.formLinkLocal {
+  margin-top: 12px;
+}
+
+.modalLinkLocal {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  max-height: calc(100vh - 28px);
+  width: min(760px, calc(100vw - 28px));
+}
+
+.modalLinkLocal .fichaLinkPrint {
+  overflow: auto;
+  padding: 22px 28px 16px;
+}
+
+.rodapeLinkLocal {
+  background: #ffffff;
+  border-top: 1px solid #d8e2ec;
+  z-index: 2;
+}
+
+.modalLinkLocal .formLinkLocal {
+  margin: 0;
+  padding: 12px 18px 0;
+}
+
+.modalLinkLocal footer {
+  background: #ffffff;
+}
+
+.fichaLinkPrint {
+  background: #ffffff;
+  color: #172033;
+}
+
+.fichaLinkPrint header {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d8e2ec;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 0 16px;
+  text-align: center;
+}
+
+.fichaLinkPrint header img {
+  height: 48px;
+  object-fit: contain;
+  width: 48px;
+}
+
+.fichaLinkPrint header strong {
+  color: #172033;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.fichaLinkPrint header span {
+  color: #172033;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.fichaLinkTitulo {
+  padding: 14px 0 10px;
+}
+
+.fichaLinkTitulo small {
+  color: #008f4c;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fichaLinkTitulo h2 {
+  color: #172033;
+  font-size: 21px;
+  margin: 5px 0 2px;
+}
+
+.fichaLinkTitulo p {
+  color: #667085;
+  font-size: 12px;
+  margin: 0;
+}
+
+.fichaTransportadoraBox {
+  background: #f0fff7;
+  border: 1px solid #c7f2d9;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.fichaTransportadoraBox strong {
+  color: #172033;
+  font-size: 13px;
+}
+
+.fichaTransportadoraBox span {
+  color: #44546a;
+  font-size: 12px;
+}
+
+.fichaLinkGrid {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.fichaLinkGrid div {
+  background: #f8fafc;
+  border: 1px solid #d8e2ec;
+  border-radius: 7px;
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.fichaLinkGrid small {
+  color: #667085;
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.2;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.fichaLinkGrid strong {
+  color: #172033;
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.fichaItensTabela {
+  margin-top: 14px;
+  overflow: auto;
+}
+
+.fichaItensTabela table {
+  border-collapse: collapse;
+  min-width: 680px;
+  width: 100%;
+}
+
+.fichaItensTabela th,
+.fichaItensTabela td {
+  border-bottom: 1px solid #e5eef5;
+  color: #172033;
+  font-size: 11px;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.fichaItensTabela th {
+  color: #44546a;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .fichaLinkGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.linhaFiltroGanhoLogistico {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.resumoLinkTransportadora {
+  background: #f8fafc;
+  border: 1px solid #d9e5ef;
+  border-radius: 10px;
+  margin-top: 12px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.resumoLinkTransportadora h3 {
+  color: #172033;
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.resumoLinkTransportadora article {
+  border-bottom: 1px solid #e5eef5;
+  display: grid;
+  gap: 3px;
+  padding: 7px 0;
+}
+
+.resumoLinkTransportadora article:last-child {
+  border-bottom: 0;
+}
+
+.resumoLinkTransportadora strong {
+  color: #172033;
+  font-size: 12px;
+}
+
+.resumoLinkTransportadora span,
+.resumoLinkTransportadora p {
+  color: #44546a;
+  font-size: 12px;
+  margin: 0;
+}
+
+.cabecalhoOrdenavel {
+  cursor: pointer;
+  user-select: none;
+}
+
+.cabecalhoOrdenavel span {
+  display: inline-flex;
+  max-width: calc(100% - 14px);
+  vertical-align: middle;
+}
+
+.cabecalhoOrdenavel b {
+  color: #008f4c;
+  display: inline-block;
+  font-size: 10px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.selectFiltroCompacto {
+  min-width: 116px !important;
+  width: 116px !important;
+}
+
+.kanbanPremium .cartao .statusRespostasKanban {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 3px 0 2px;
+}
+
+.kanbanPremium .cartao .statusRespostasKanban > span {
+  border-radius: 999px !important;
+  display: inline-block !important;
+  flex: 0 0 10px !important;
+  font-size: 0 !important;
+  height: 10px !important;
+  line-height: 0 !important;
+  min-height: 10px !important;
+  min-width: 10px !important;
+  padding: 0 !important;
+  width: 10px !important;
+}
+
+.kanbanPremium .cartao .statusRespostasKanban > span.respondida {
+  background: #22c55e !important;
+  border: 1px solid #86efac !important;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.16) !important;
+}
+
+.kanbanPremium .cartao .statusRespostasKanban > span.pendente {
+  background: #facc15 !important;
+  border: 1px solid #fde68a !important;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.16) !important;
+}
+
+.kanbanPremium .cartao .statusRespostasKanban > span.vencida {
+  background: #ef4444 !important;
+  border: 1px solid #fca5a5 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18) !important;
+}
+
+.statusRespostasKanban span {
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+}
+
+.statusRespostasKanban .respondida {
+  background: #22c55e;
+}
+
+.statusRespostasKanban .pendente {
+  background: #facc15;
+}
+
+.statusRespostasKanban .vencida {
+  background: #ef4444;
 }
 
 .detalhamentoCompleto {
@@ -3559,4 +4289,85 @@ h2 {
 .listaMotivosEscolha { margin-left: 20px; margin-right: 20px; }
 .listaMotivosEscolha button { border-color: #fecaca !important; background: #fff5f5 !important; }
 .listaMotivosEscolha button:hover { border-color: #f87171 !important; background: #fee2e2 !important; }
+
+/* Garantia visual do dashboard quando o menu lateral esta recolhido. */
+.abasCotacao.abasDashboard {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(190px, 1fr)) !important;
+  gap: 8px !important;
+  margin: 12px 0 16px !important;
+  padding: 8px !important;
+}
+
+.abasCotacao.abasDashboard > button {
+  align-items: center !important;
+  color: #172033 !important;
+  display: inline-flex !important;
+  font-size: 13px !important;
+  justify-content: center !important;
+  line-height: 1.2 !important;
+  min-height: 38px !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+  text-indent: 0 !important;
+  text-shadow: none !important;
+  visibility: visible !important;
+  white-space: nowrap !important;
+}
+
+.abasCotacao.abasDashboard > button.active {
+  background: #052e16 !important;
+  border-color: #22c55e !important;
+  color: #ffffff !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora {
+  align-items: stretch !important;
+  display: grid !important;
+  gap: 5px !important;
+  justify-items: start !important;
+  justify-content: stretch !important;
+  text-align: left !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora strong,
+.dashboardPainel .barraDashboard.ganhoTransportadora small {
+  justify-self: start !important;
+  text-align: left !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora strong {
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora > span {
+  display: block !important;
+  justify-self: start !important;
+  margin: 0 !important;
+  max-width: 100% !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora,
+.dashboardPainel .barraDashboard.ganhoTransportadora.ativo,
+.dashboardPainel .barraDashboard.ganhoTransportadora:hover {
+  place-items: stretch start !important;
+  text-align: left !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora * {
+  text-align: left !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora .resumoGanhoTransportadora {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  justify-content: flex-start !important;
+}
+
+.dashboardPainel .barraDashboard.ganhoTransportadora .resumoGanhoTransportadora b {
+  font-size: 9px !important;
+  white-space: nowrap !important;
+}
 

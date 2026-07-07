@@ -261,7 +261,7 @@ export async function enviarCotacoesMassa(dados: {
   });
 }
 
-export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string }) {
+export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string }) {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/kanban${montarQuery(filtros)}`);
 }
 
@@ -396,6 +396,24 @@ export async function salvarMotivoEscolhaTransportadora(dados: RegistroGenerico)
   });
 }
 
+export async function listarMotivosPrejuizoLogistico() {
+  return requisitar<RegistroGenerico[]>('/api/admin/motivos-prejuizo-logistico');
+}
+
+export async function salvarMotivoPrejuizoLogistico(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/admin/motivos-prejuizo-logistico', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function salvarMotivoPrejuizoCotacao(cotacaoId: string, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/motivo-prejuizo-logistico`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
 export async function obterMinhaConfiguracaoEmail() {
   return requisitar<RegistroGenerico>('/api/usuarios/minha-configuracao-email');
 }
@@ -516,6 +534,25 @@ export async function salvarAtributoPim(dados: RegistroGenerico) {
   });
 }
 
+export async function excluirAtributoPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/atributos/${id}`, { method: 'DELETE' });
+}
+
+export async function listarMapeamentosAtributosCanaisPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/atributos-canais-mapeamentos');
+}
+
+export async function salvarMapeamentoAtributoCanalPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/atributos-canais-mapeamentos', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirMapeamentoAtributoCanalPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/atributos-canais-mapeamentos/${id}`, { method: 'DELETE' });
+}
+
 export async function listarCanaisPim() {
   return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/canais');
 }
@@ -551,6 +588,39 @@ export async function registrarImportacaoPim(dados: RegistroGenerico) {
     method: 'POST',
     body: JSON.stringify(dados)
   });
+}
+
+export async function listarConexoesSqlServerPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/sqlserver/conexoes');
+}
+
+export async function salvarConexaoSqlServerPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/sqlserver/conexoes', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function testarConexaoSqlServerPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/sqlserver/conexoes/${id}/testar`, { method: 'POST' });
+}
+
+export async function consultarSqlServerPim(dados: RegistroGenerico) {
+  return requisitar<{ colunas: string[]; previa: RegistroGenerico[]; total_linhas: number }>('/api/cadastro-produto-central/sqlserver/consultar', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function executarCargaSqlServerPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/sqlserver/cargas', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarCargasSqlServerPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/sqlserver/cargas');
 }
 
 export async function listarWorkflowsPim() {

@@ -1,19 +1,26 @@
-import { BadgeCheck, Boxes, FileUp, ListChecks, PackageSearch, Settings, Sparkles } from 'lucide-react';
+import { BadgeCheck, Boxes, FileUp, ListChecks, PackageSearch, Settings, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   alterarStatusProdutoPim,
   buscarDashboardPim,
+  consultarSqlServerPim,
   duplicarProdutoPim,
+  executarCargaSqlServerPim,
   excluirProdutoPim,
   exportarProdutosPim,
+  excluirAtributoPim,
+  excluirMapeamentoAtributoCanalPim,
+  listarCargasSqlServerPim,
   listarAssetsPim,
   listarAtributosPim,
   listarAuditoriaPim,
   listarCanaisPim,
+  listarConexoesSqlServerPim,
   listarComponentesPim,
   listarConfiguracoesPim,
   listarImportacoesPim,
+  listarMapeamentosAtributosCanaisPim,
   listarProdutosPim,
   listarScoreCanaisPim,
   listarWorkflowsPim,
@@ -25,8 +32,11 @@ import {
   salvarAtributoPim,
   salvarCanalPim,
   salvarComponentePim,
+  salvarConexaoSqlServerPim,
   salvarConfiguracoesPim,
-  salvarProdutoPim
+  salvarMapeamentoAtributoCanalPim,
+  salvarProdutoPim,
+  testarConexaoSqlServerPim
 } from '../../servicos/api';
 
 type TelaAtual =
@@ -519,6 +529,669 @@ function TabelaPimCompacta({ linhas, colunas, vazio = 'Nenhum registro encontrad
   );
 }
 
+const CAMPOS_IMPORTACAO_PIM = [
+  'codigo_interno',
+  'codigo_erp_decis',
+  'sku_interno',
+  'sku_comercial',
+  'codigo_fabricante',
+  'ean_gtin',
+  'gtin',
+  'mpn',
+  'nome_interno',
+  'nome_comercial',
+  'marca',
+  'linha',
+  'modelo',
+  'familia',
+  'categoria',
+  'subcategoria',
+  'tipo_produto',
+  'status',
+  'ncm',
+  'cest',
+  'peso',
+  'altura',
+  'largura',
+  'comprimento'
+];
+
+const CAMPOS_SQLSERVER_POR_TIPO: Record<string, string[]> = {
+  PRODUTO_MESTRE: CAMPOS_IMPORTACAO_PIM,
+  PRODUTOS_CONJUNTO: ['conjunto_codigo', 'item_codigo', 'quantidade', 'status', 'ultima_alteracao'],
+  PRODUTOS_CJ_CARACTERISTICAS: ['conjunto_codigo', 'atributo_codigo', 'atributo_nome', 'grupo_nome', 'tipo_campo', 'escopo', 'unidade_medida', 'valor_texto', 'valor_numero', 'valor_booleano', 'ordem', 'obrigatorio'],
+  PRODUTOS_ITEM_CARACTERISTICAS: ['conjunto_codigo', 'item_codigo', 'item_nome', 'tipo_relacao', 'quantidade', 'ordem', 'obrigatorio', 'atributo_codigo', 'atributo_nome', 'grupo_nome', 'tipo_campo', 'escopo', 'unidade_medida', 'valor_texto', 'valor_numero', 'valor_booleano'],
+  SKU: ['produto_codigo', 'sku', 'tipo', 'status', 'sku_erp', 'sku_fornecedor', 'sku_marketplace', 'ean', 'codigo_fabricante', 'principal'],
+  COMPOSICAO: ['conjunto_codigo', 'componente_codigo', 'componente_nome', 'tipo_relacao', 'quantidade', 'ordem', 'obrigatorio', 'observacao'],
+  ATRIBUTOS_MARKETPLACE: ['canal_codigo', 'canal_nome', 'atributo_codigo', 'atributo_nome', 'atributo_canal_codigo', 'atributo_canal_nome', 'tipo_campo', 'escopo', 'obrigatorio', 'ordem', 'validacao']
+};
+
+function normalizarTextoPim(texto: string) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
+function detectarSeparadorCsv(conteudo: string) {
+  const primeiraLinha = conteudo.split(/\r?\n/).find((linha) => linha.trim()) ?? '';
+  const candidatos = [';', ',', '\t'];
+  return candidatos
+    .map((separador) => ({ separador, total: primeiraLinha.split(separador).length }))
+    .sort((a, b) => b.total - a.total)[0]?.separador ?? ';';
+}
+
+function lerCsvPim(conteudo: string) {
+  const separador = detectarSeparadorCsv(conteudo);
+  const linhas = conteudo.split(/\r?\n/).filter((linha) => linha.trim());
+  const colunas = (linhas.shift() ?? '').split(separador).map((coluna) => coluna.trim().replace(/^"|"$/g, ''));
+  const previa = linhas.slice(0, 8).map((linha) => {
+    const valores = linha.split(separador).map((valor) => valor.trim().replace(/^"|"$/g, ''));
+    return colunas.reduce<RegistroGenerico>((acc, coluna, indice) => ({ ...acc, [coluna]: valores[indice] ?? '' }), {});
+  });
+  return { colunas, previa, totalLinhas: linhas.length, separador };
+}
+
+async function lerArquivoImportacaoPim(file: File) {
+  const extensao = file.name.split('.').pop()?.toLowerCase();
+  if (extensao === 'csv' || extensao === 'txt') {
+    return lerCsvPim(await file.text());
+  }
+
+  throw new Error('Para gerar o De/Para inteligente, exporte a planilha Excel como CSV e selecione o arquivo CSV. O cadastro oficial nao sera alterado sem validacao.');
+}
+
+function sugerirMapeamentoPim(colunas: string[]) {
+  const aliases: Record<string, string[]> = {
+    codigo_interno: ['codigo', 'codigo_interno', 'cod_interno', 'id_produto'],
+    codigo_erp_decis: ['codigo_erp', 'erp', 'decis', 'codigo_decis'],
+    sku_interno: ['sku', 'sku_interno', 'sku_control_s'],
+    sku_comercial: ['sku_comercial', 'sku_venda'],
+    codigo_fabricante: ['codigo_fabricante', 'cod_fabricante', 'codigo_do_fabricante'],
+    ean_gtin: ['ean', 'ean_gtin', 'codigo_barras', 'gtin'],
+    gtin: ['gtin'],
+    mpn: ['mpn'],
+    nome_interno: ['nome_interno', 'descricao_interna'],
+    nome_comercial: ['nome', 'nome_comercial', 'produto', 'descricao', 'titulo'],
+    marca: ['marca', 'fabricante'],
+    linha: ['linha'],
+    modelo: ['modelo'],
+    familia: ['familia'],
+    categoria: ['categoria', 'departamento'],
+    subcategoria: ['subcategoria', 'sub_categoria'],
+    tipo_produto: ['tipo', 'tipo_produto'],
+    status: ['status', 'situacao'],
+    ncm: ['ncm'],
+    cest: ['cest'],
+    peso: ['peso', 'peso_liquido'],
+    altura: ['altura'],
+    largura: ['largura'],
+    comprimento: ['comprimento', 'profundidade']
+  };
+  const colunasNormalizadas = colunas.map((coluna) => ({ original: coluna, normalizada: normalizarTextoPim(coluna) }));
+  return colunas.reduce<RegistroGenerico>((acc, coluna) => {
+    const normalizada = normalizarTextoPim(coluna);
+    const campoDireto = CAMPOS_IMPORTACAO_PIM.find((campo) => campo === normalizada);
+    const campoPorAlias = Object.entries(aliases).find(([, lista]) => lista.includes(normalizada))?.[0];
+    const campoPorContem = Object.entries(aliases).find(([, lista]) => lista.some((alias) => normalizada.includes(alias) || alias.includes(normalizada)))?.[0];
+    const campo = campoDireto ?? campoPorAlias ?? campoPorContem ?? '';
+    return campo ? { ...acc, [coluna]: campo } : acc;
+  }, {});
+}
+
+function sugerirMapeamentoSqlServerPim(colunas: string[], tipoCarga: string) {
+  const campos = CAMPOS_SQLSERVER_POR_TIPO[tipoCarga] ?? CAMPOS_IMPORTACAO_PIM;
+  const aliasesExtras: Record<string, string[]> = {
+    conjunto_codigo: ['conjunto', 'codigo_conjunto', 'cod_conjunto', 'produto_conjunto', 'sku_conjunto'],
+    item_codigo: ['item', 'codigo_item', 'cod_item', 'materia_prima', 'cod_materia_prima', 'codigo_materia_prima', 'componente', 'codigo_componente'],
+    item_nome: ['nome_item', 'descricao_item', 'materia_prima_descricao', 'descricao_materia_prima', 'componente_nome'],
+    componente_codigo: ['componente', 'codigo_componente', 'cod_componente', 'materia_prima', 'codigo_materia_prima'],
+    componente_nome: ['nome_componente', 'descricao_componente', 'descricao_materia_prima'],
+    atributo_codigo: ['caracteristica', 'codigo_caracteristica', 'cod_caracteristica', 'atributo', 'codigo_atributo'],
+    atributo_nome: ['nome_caracteristica', 'descricao_caracteristica', 'atributo_nome', 'nome_atributo'],
+    valor_texto: ['valor', 'valor_texto', 'conteudo', 'descricao_valor'],
+    valor_numero: ['valor_numerico', 'valor_numero', 'numero'],
+    unidade_medida: ['unidade', 'um', 'unidade_medida'],
+    tipo_relacao: ['tipo', 'tipo_item', 'tipo_relacao', 'tipo_componente'],
+    quantidade: ['quantidade', 'qtde', 'qtd'],
+    status: ['situacao', 'flag_situacao', 'flagsituacao', 'status'],
+    ultima_alteracao: ['ultimaalteracao', 'ultima_alteracao', 'data_ultima_alteracao'],
+    ordem: ['ordem', 'sequencia', 'seq'],
+    obrigatorio: ['obrigatorio', 'requerido', 'mandatory']
+  };
+  const sugestaoBase = sugerirMapeamentoPim(colunas);
+  return colunas.reduce<RegistroGenerico>((acc, coluna) => {
+    const normalizada = normalizarTextoPim(coluna);
+    const direto = campos.find((campo) => campo === normalizada);
+    const porAlias = Object.entries(aliasesExtras)
+      .filter(([campo]) => campos.includes(campo))
+      .find(([, aliases]) => aliases.some((alias) => normalizada === alias || normalizada.includes(alias) || alias.includes(normalizada)))?.[0];
+    return { ...acc, [coluna]: direto ?? porAlias ?? sugestaoBase[coluna] ?? '' };
+  }, {});
+}
+
+export function ImportacaoPim() {
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [colunas, setColunas] = useState<string[]>([]);
+  const [previa, setPrevia] = useState<RegistroGenerico[]>([]);
+  const [mapeamento, setMapeamento] = useState<RegistroGenerico>({});
+  const [modo, setModo] = useState('APENAS_VALIDAR');
+  const [salvarLayout, setSalvarLayout] = useState(true);
+  const [nomeLayout, setNomeLayout] = useState('');
+  const [totalLinhas, setTotalLinhas] = useState(0);
+  const [separador, setSeparador] = useState(';');
+  const [linhas, setLinhas] = useState<RegistroGenerico[]>([]);
+  const [mensagem, setMensagem] = useState('');
+  const [erro, setErro] = useState('');
+
+  async function carregarHistorico() {
+    setLinhas(await listarImportacoesPim());
+  }
+
+  useEffect(() => {
+    carregarHistorico().catch(() => setLinhas([]));
+  }, []);
+
+  async function selecionarArquivo(file?: File | null) {
+    setArquivo(file ?? null);
+    setErro('');
+    setMensagem('');
+    setColunas([]);
+    setPrevia([]);
+    setMapeamento({});
+    setTotalLinhas(0);
+    if (!file) return;
+    setNomeLayout(file.name.replace(/\.[^.]+$/, ''));
+    try {
+      const leitura = await lerArquivoImportacaoPim(file);
+      setColunas(leitura.colunas);
+      setPrevia(leitura.previa);
+      setTotalLinhas(leitura.totalLinhas);
+      setSeparador(leitura.separador);
+      setMapeamento(sugerirMapeamentoPim(leitura.colunas));
+      setMensagem(`Arquivo lido com ${leitura.colunas.length} coluna(s). Confira o De/Para antes de importar.`);
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao ler arquivo.');
+    }
+  }
+
+  async function registrar() {
+    if (!arquivo) {
+      setErro('Selecione um arquivo da máquina antes de importar.');
+      return;
+    }
+    setErro('');
+    setMensagem('');
+    const camposObrigatorios = ['sku_interno', 'nome_comercial'];
+    const camposMapeados = Object.values(mapeamento).filter(Boolean);
+    const faltantes = camposObrigatorios.filter((campo) => !camposMapeados.includes(campo));
+    const logs = [
+      `Arquivo selecionado: ${arquivo.name}`,
+      `Separador detectado: ${separador === '\t' ? 'TAB' : separador}`,
+      `${Object.keys(mapeamento).length} coluna(s) com De/Para.`,
+      faltantes.length ? `Campos obrigatórios pendentes: ${faltantes.join(', ')}` : 'Campos obrigatórios mínimos mapeados.'
+    ];
+    await registrarImportacaoPim({
+      nome_arquivo: arquivo.name,
+      tipo_arquivo: arquivo.name.split('.').pop()?.toUpperCase() ?? 'CSV',
+      modo_importacao: modo,
+      total_linhas: totalLinhas,
+      colunas_detectadas: colunas,
+      mapeamento,
+      previa,
+      logs,
+      relatorio: {
+        produtos_novos: 0,
+        produtos_encontrados: 0,
+        produtos_com_erro: faltantes.length ? totalLinhas : 0,
+        campos_obrigatorios_faltantes: faltantes,
+        observacao: 'Importação registrada como rascunho para validação antes de atualizar cadastro oficial.'
+      },
+      salvar_layout: salvarLayout,
+      nome_layout: nomeLayout
+    });
+    setMensagem('Importação registrada como rascunho. Nenhum produto oficial foi alterado.');
+    await carregarHistorico();
+  }
+
+  const colunasHistorico = ['nome_arquivo', 'tipo_arquivo', 'modo_importacao', 'status', 'total_linhas', 'criado_em'];
+
+  return (
+    <section className="painelTabela pimTelaAvancada">
+      <header>
+        <div>
+          <span>Cadastro de Produto Central</span>
+          <h2>Importação por Arquivo</h2>
+          <p>Selecione um arquivo da máquina, valide as colunas, confirme o De/Para inteligente e registre a importação sempre como rascunho.</p>
+        </div>
+        <button className="ghost" onClick={registrar}><FileUp size={15} />Registrar importação</button>
+      </header>
+      {mensagem && <div className="sucesso">{mensagem}</div>}
+      {erro && <div className="alerta">{erro}</div>}
+      <div className="pimGridOperacional">
+        <section className="pimBloco">
+          <h3>Arquivo</h3>
+          <div className="formCadastro semBorda">
+            <label className="campoLargo">Selecionar arquivo<input type="file" accept=".csv,.txt,.xls,.xlsx" onChange={(e) => selecionarArquivo(e.target.files?.[0])} /></label>
+            <label>Modo<select value={modo} onChange={(e) => setModo(e.target.value)}>{['CRIAR_NOVOS', 'ATUALIZAR_EXISTENTES', 'CRIAR_RASCUNHOS', 'APENAS_VALIDAR'].map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Salvar layout<input type="checkbox" checked={salvarLayout} onChange={(e) => setSalvarLayout(e.target.checked)} /></label>
+            <label>Nome do layout<input value={nomeLayout} onChange={(e) => setNomeLayout(e.target.value)} /></label>
+          </div>
+        </section>
+        <section className="pimBloco">
+          <h3>Resumo</h3>
+          <div className="pimResumoArquivo">
+            <article><span>Arquivo</span><strong>{arquivo?.name ?? '-'}</strong></article>
+            <article><span>Colunas</span><strong>{colunas.length}</strong></article>
+            <article><span>Linhas</span><strong>{totalLinhas}</strong></article>
+            <article><span>Separador</span><strong>{separador === '\t' ? 'TAB' : separador}</strong></article>
+          </div>
+        </section>
+      </div>
+      <section className="pimBloco">
+        <div className="pimBlocoTopo">
+          <h3>De / Para inteligente</h3>
+          <button className="ghost" onClick={() => setMapeamento(sugerirMapeamentoPim(colunas))}>Sugerir novamente</button>
+        </div>
+        <div className="pimMapaImportacao">
+          {colunas.map((coluna) => (
+            <label key={coluna}>
+              <span>{coluna}</span>
+              <select value={String(mapeamento[coluna] ?? '')} onChange={(e) => setMapeamento({ ...mapeamento, [coluna]: e.target.value })}>
+                <option value="">Ignorar coluna</option>
+                {CAMPOS_IMPORTACAO_PIM.map((campo) => <option key={campo} value={campo}>{campo}</option>)}
+              </select>
+            </label>
+          ))}
+          {colunas.length === 0 && <p>Selecione um CSV para visualizar as colunas e validar o De/Para.</p>}
+        </div>
+      </section>
+      <section className="pimBloco">
+        <h3>Prévia</h3>
+        <TabelaPimCompacta linhas={previa} colunas={colunas.slice(0, 8)} vazio="Nenhuma prévia disponível." />
+      </section>
+      <CargaSqlServerPim />
+      <section className="pimBloco">
+        <h3>Histórico de importações</h3>
+        <TabelaPimCompacta linhas={linhas} colunas={colunasHistorico} />
+      </section>
+    </section>
+  );
+}
+
+function CargaSqlServerPim() {
+  const [conexoes, setConexoes] = useState<RegistroGenerico[]>([]);
+  const [cargas, setCargas] = useState<RegistroGenerico[]>([]);
+  const [conexao, setConexao] = useState<RegistroGenerico>({ porta: 1433, ambiente: 'PRODUCAO', ativo: true });
+  const [consulta, setConsulta] = useState('SELECT TOP 100 * FROM PRODUTOS');
+  const [conexaoId, setConexaoId] = useState('');
+  const [modoCarga, setModoCarga] = useState('APENAS_VALIDAR');
+  const [tipoCarga, setTipoCarga] = useState('PRODUTOS_CONJUNTO');
+  const [nomeCarga, setNomeCarga] = useState('Carga manual SQL Server');
+  const [colunas, setColunas] = useState<string[]>([]);
+  const [previa, setPrevia] = useState<RegistroGenerico[]>([]);
+  const [mapeamento, setMapeamento] = useState<RegistroGenerico>({});
+  const [totalLinhas, setTotalLinhas] = useState(0);
+  const [mensagem, setMensagem] = useState('');
+  const [erro, setErro] = useState('');
+
+  async function carregar() {
+    const [listaConexoes, listaCargas] = await Promise.all([
+      listarConexoesSqlServerPim(),
+      listarCargasSqlServerPim()
+    ]);
+    setConexoes(listaConexoes);
+    setCargas(listaCargas);
+    if (!conexaoId && listaConexoes[0]?.id) setConexaoId(String(listaConexoes[0].id));
+  }
+
+  useEffect(() => {
+    carregar().catch(() => {
+      setConexoes([]);
+      setCargas([]);
+    });
+  }, []);
+
+  async function salvarConexao(evento: FormEvent) {
+    evento.preventDefault();
+    setErro('');
+    setMensagem('');
+    try {
+      const salva = await salvarConexaoSqlServerPim(conexao);
+      setMensagem('Conexão SQL Server salva.');
+      setConexaoId(String(salva.id));
+      setConexao({ porta: 1433, ambiente: 'PRODUCAO', ativo: true });
+      await carregar();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao salvar conexão SQL Server.');
+    }
+  }
+
+  async function testar(id: number) {
+    setErro('');
+    setMensagem('');
+    try {
+      const retorno = await testarConexaoSqlServerPim(id);
+      setMensagem(String(retorno.ultima_mensagem ?? 'Conexão validada.'));
+      await carregar();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao testar conexão.');
+    }
+  }
+
+  async function consultarOrigem() {
+    setErro('');
+    setMensagem('');
+    try {
+      const retorno = await consultarSqlServerPim({ conexao_id: Number(conexaoId), consulta_sql: consulta, limite: 500 });
+      setColunas(retorno.colunas);
+      setPrevia(retorno.previa);
+      setTotalLinhas(retorno.total_linhas);
+      setMapeamento(sugerirMapeamentoSqlServerPim(retorno.colunas, tipoCarga));
+      setMensagem(`Consulta executada. ${retorno.colunas.length} coluna(s) detectada(s) e ${retorno.total_linhas} linha(s) retornada(s).`);
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao consultar SQL Server.');
+    }
+  }
+
+  async function executarCarga() {
+    setErro('');
+    setMensagem('');
+    try {
+      const retorno = await executarCargaSqlServerPim({
+        conexao_id: Number(conexaoId),
+        nome: nomeCarga,
+        tipo_carga: tipoCarga,
+        consulta_sql: consulta,
+        modo_carga: modoCarga,
+        mapeamento,
+        limite: 500
+      });
+      setMensagem(`Carga concluída. Processados: ${retorno.produtos_processados ?? 0}, inseridos: ${retorno.produtos_inseridos ?? 0}, atualizados: ${retorno.produtos_atualizados ?? 0}, erros: ${retorno.produtos_com_erro ?? 0}.`);
+      await carregar();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao executar carga SQL Server.');
+    }
+  }
+
+  return (
+    <section className="pimBloco pimSqlServer">
+      <div className="pimBlocoTopo">
+        <div>
+          <h3>Carga SQL Server oficial</h3>
+          <p>Conecte na base oficial, execute uma consulta de leitura, valide o De/Para e alimente o cadastro central como rascunho ou atualização controlada.</p>
+        </div>
+      </div>
+      {mensagem && <div className="sucesso">{mensagem}</div>}
+      {erro && <div className="alerta">{erro}</div>}
+      <div className="pimGridOperacional">
+        <form className="pimBlocoInterno" onSubmit={salvarConexao}>
+          <h4>Conexão</h4>
+          <div className="formCadastro semBorda">
+            <label>Nome<input value={String(conexao.nome ?? '')} onChange={(e) => setConexao({ ...conexao, nome: e.target.value })} /></label>
+            <label>Ambiente<select value={String(conexao.ambiente ?? 'PRODUCAO')} onChange={(e) => setConexao({ ...conexao, ambiente: e.target.value })}><option>PRODUCAO</option><option>HOMOLOGACAO</option></select></label>
+            <label>Host<input value={String(conexao.host ?? '')} onChange={(e) => setConexao({ ...conexao, host: e.target.value })} /></label>
+            <label>Porta<input type="number" value={String(conexao.porta ?? 1433)} onChange={(e) => setConexao({ ...conexao, porta: Number(e.target.value) })} /></label>
+            <label>Banco<input value={String(conexao.banco ?? '')} onChange={(e) => setConexao({ ...conexao, banco: e.target.value })} /></label>
+            <label>Usuário<input value={String(conexao.usuario ?? '')} onChange={(e) => setConexao({ ...conexao, usuario: e.target.value })} /></label>
+            <label>Senha<input type="password" placeholder="Preencha para gravar/trocar" value={String(conexao.senha ?? '')} onChange={(e) => setConexao({ ...conexao, senha: e.target.value })} /></label>
+            <label>Ativa<input type="checkbox" checked={conexao.ativo !== false} onChange={(e) => setConexao({ ...conexao, ativo: e.target.checked })} /></label>
+          </div>
+          <div className="rodapeAcoes">
+            <button className="primary">Salvar conexão</button>
+          </div>
+        </form>
+        <div className="pimBlocoInterno">
+          <h4>Conexões cadastradas</h4>
+          <TabelaPimCompacta linhas={conexoes} colunas={['nome', 'host', 'porta', 'banco', 'ambiente', 'ultima_validacao_em', 'ultima_mensagem']} vazio="Nenhuma conexão cadastrada." />
+          <div className="pimConexoesAcoes">
+            {conexoes.map((item) => (
+              <button key={String(item.id)} className="ghost" onClick={() => testar(Number(item.id))}>Testar {String(item.nome)}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="pimBlocoInterno">
+        <h4>Consulta SQL</h4>
+        <div className="formCadastro semBorda">
+          <label>Conexão<select value={conexaoId} onChange={(e) => setConexaoId(e.target.value)}><option value="">Selecione</option>{conexoes.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.nome)} · {String(item.banco)}</option>)}</select></label>
+          <label>Destino da carga<select value={tipoCarga} onChange={(e) => { setTipoCarga(e.target.value); setMapeamento({}); }}>
+            <option value="PRODUTOS_CONJUNTO">Composição do conjunto</option>
+            <option value="PRODUTOS_CJ_CARACTERISTICAS">Atributos técnicos do conjunto</option>
+            <option value="PRODUTOS_ITEM_CARACTERISTICAS">Composição e atributos dos itens</option>
+            <option value="PRODUTO_MESTRE">Produto Mestre</option>
+            <option value="SKU">SKUs</option>
+            <option value="COMPOSICAO">Composição</option>
+            <option value="ATRIBUTOS_MARKETPLACE">Atributos por Marketplace</option>
+          </select></label>
+          <label>Modo<select value={modoCarga} onChange={(e) => setModoCarga(e.target.value)}>{['APENAS_VALIDAR', 'CRIAR_RASCUNHOS', 'CRIAR_NOVOS', 'ATUALIZAR_EXISTENTES'].map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="campoLargo">Nome da carga<input value={nomeCarga} onChange={(e) => setNomeCarga(e.target.value)} /></label>
+          <label className="campoLargo">SQL de leitura<textarea value={consulta} onChange={(e) => setConsulta(e.target.value)} /></label>
+        </div>
+        <div className="rodapeAcoes">
+          <button className="ghost" onClick={consultarOrigem}>Consultar / Pré-validar</button>
+          <button className="primary" onClick={executarCarga}>Executar carga</button>
+        </div>
+      </div>
+      <div className="pimBlocoInterno">
+        <div className="pimBlocoTopo">
+          <h4>De / Para SQL Server</h4>
+          <span>{totalLinhas} linha(s) na consulta</span>
+        </div>
+        <div className="pimMapaImportacao">
+          {colunas.map((coluna) => (
+            <label key={coluna}>
+              <span>{coluna}</span>
+              <select value={String(mapeamento[coluna] ?? '')} onChange={(e) => setMapeamento({ ...mapeamento, [coluna]: e.target.value })}>
+                <option value="">Ignorar coluna</option>
+                {(CAMPOS_SQLSERVER_POR_TIPO[tipoCarga] ?? CAMPOS_IMPORTACAO_PIM).map((campo) => <option key={campo} value={campo}>{campo}</option>)}
+              </select>
+            </label>
+          ))}
+          {colunas.length === 0 && <p>Execute uma consulta para detectar colunas e montar o De/Para inteligente.</p>}
+        </div>
+      </div>
+      <div className="pimBlocoInterno">
+        <h4>Prévia da base oficial</h4>
+        <TabelaPimCompacta linhas={previa} colunas={colunas.slice(0, 8)} vazio="Nenhuma prévia carregada." />
+      </div>
+      <div className="pimBlocoInterno">
+        <h4>Histórico de cargas SQL Server</h4>
+        <TabelaPimCompacta linhas={cargas} colunas={['nome', 'conexao_nome', 'tipo_carga', 'modo_carga', 'status', 'total_linhas', 'produtos_inseridos', 'produtos_atualizados', 'produtos_com_erro', 'criado_em']} vazio="Nenhuma carga SQL Server registrada." />
+      </div>
+    </section>
+  );
+}
+
+export function AtributosPim() {
+  const [atributos, setAtributos] = useState<RegistroGenerico[]>([]);
+  const [grupos, setGrupos] = useState<RegistroGenerico[]>([]);
+  const [canais, setCanais] = useState<RegistroGenerico[]>([]);
+  const [mapeamentos, setMapeamentos] = useState<RegistroGenerico[]>([]);
+  const [formulario, setFormulario] = useState<RegistroGenerico>({ tipo_campo: 'TEXTO', escopo: 'PRODUTO', ativo: true, editavel: true, visivel: true });
+  const [mapa, setMapa] = useState<RegistroGenerico>({ ativo: true, obrigatorio: false, ordem: 0, canal_ids: [] });
+  const [busca, setBusca] = useState('');
+  const [mensagem, setMensagem] = useState('');
+  const [erro, setErro] = useState('');
+
+  async function carregar() {
+    const [dadosAtributos, dadosCanais, dadosMapeamentos] = await Promise.all([
+      listarAtributosPim(),
+      listarCanaisPim(),
+      listarMapeamentosAtributosCanaisPim()
+    ]);
+    setAtributos(dadosAtributos.atributos);
+    setGrupos(dadosAtributos.grupos);
+    setCanais(dadosCanais);
+    setMapeamentos(dadosMapeamentos);
+  }
+
+  useEffect(() => {
+    carregar().catch(() => {
+      setAtributos([]);
+      setCanais([]);
+      setMapeamentos([]);
+    });
+  }, []);
+
+  async function salvarAtributo(evento: FormEvent) {
+    evento.preventDefault();
+    setErro('');
+    setMensagem('');
+    try {
+      await salvarAtributoPim(formulario);
+      setFormulario({ tipo_campo: 'TEXTO', escopo: 'PRODUTO', ativo: true, editavel: true, visivel: true });
+      setMensagem('Atributo salvo.');
+      await carregar();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao salvar atributo.');
+    }
+  }
+
+  async function salvarMapa(evento: FormEvent) {
+    evento.preventDefault();
+    setErro('');
+    setMensagem('');
+    try {
+      await salvarMapeamentoAtributoCanalPim(mapa);
+      setMapa({ ativo: true, obrigatorio: false, ordem: 0, canal_ids: [] });
+      setMensagem('Atributo vinculado às plataformas selecionadas.');
+      await carregar();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao salvar mapeamento.');
+    }
+  }
+
+  const atributosFiltrados = atributos.filter((atributo) => {
+    const texto = `${atributo.codigo ?? ''} ${atributo.nome_exibido ?? ''} ${atributo.escopo ?? ''}`.toLowerCase();
+    return texto.includes(busca.toLowerCase());
+  });
+
+  const mapeamentosPorCanal = canais.map((canal) => ({
+    canal,
+    linhas: mapeamentos.filter((item) => Number(item.canal_id) === Number(canal.id))
+  }));
+
+  return (
+    <section className="painelTabela pimTelaAvancada">
+      <header>
+        <div>
+          <span>Cadastro de Produto Central</span>
+          <h2>Atributos</h2>
+          <p>Crie, edite, inative e organize atributos dinâmicos por escopo e por plataforma, com ordem e mapeamento de manutenção fácil.</p>
+        </div>
+      </header>
+      {mensagem && <div className="sucesso">{mensagem}</div>}
+      {erro && <div className="alerta">{erro}</div>}
+      <div className="pimGridOperacional">
+        <form className="pimBloco" onSubmit={salvarAtributo}>
+          <h3>{formulario.id ? 'Editar atributo' : 'Novo atributo'}</h3>
+          <div className="formCadastro semBorda">
+            <label>Grupo<select value={String(formulario.atributo_grupo_id ?? formulario.attribute_group_id ?? '')} onChange={(e) => setFormulario({ ...formulario, atributo_grupo_id: Number(e.target.value) })}><option value="">Selecione</option>{grupos.map((g) => <option key={String(g.id)} value={String(g.id)}>{String(g.nome)}</option>)}</select></label>
+            <label>Código<input value={String(formulario.codigo ?? '')} onChange={(e) => setFormulario({ ...formulario, codigo: e.target.value })} /></label>
+            <label>Nome exibido<input value={String(formulario.nome_exibido ?? '')} onChange={(e) => setFormulario({ ...formulario, nome_exibido: e.target.value, nome_interno: normalizarTextoPim(e.target.value) })} /></label>
+            <label>Tipo<select value={String(formulario.tipo_campo ?? 'TEXTO')} onChange={(e) => setFormulario({ ...formulario, tipo_campo: e.target.value })}>{['TEXTO', 'NUMERO', 'DECIMAL', 'LISTA', 'MULTIPLA_ESCOLHA', 'BOOLEANO', 'DATA', 'URL', 'ARQUIVO', 'IMAGEM'].map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Escopo<select value={String(formulario.escopo ?? 'PRODUTO')} onChange={(e) => setFormulario({ ...formulario, escopo: e.target.value })}>{['PRODUTO', 'CONJUNTO', 'COMPONENTE', 'EVAPORADORA', 'CONDENSADORA', 'SKU', 'CANAL'].map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Unidade<input value={String(formulario.unidade_medida ?? '')} onChange={(e) => setFormulario({ ...formulario, unidade_medida: e.target.value })} /></label>
+            <label>Ordem<input type="number" value={String(formulario.ordem_exibicao ?? 0)} onChange={(e) => setFormulario({ ...formulario, ordem_exibicao: Number(e.target.value) })} /></label>
+            <label>Obrigatório<input type="checkbox" checked={Boolean(formulario.obrigatorio)} onChange={(e) => setFormulario({ ...formulario, obrigatorio: e.target.checked })} /></label>
+            <label>Editável<input type="checkbox" checked={formulario.editavel !== false} onChange={(e) => setFormulario({ ...formulario, editavel: e.target.checked })} /></label>
+            <label>Visível<input type="checkbox" checked={formulario.visivel !== false} onChange={(e) => setFormulario({ ...formulario, visivel: e.target.checked })} /></label>
+            <label>Ativo<input type="checkbox" checked={formulario.ativo !== false} onChange={(e) => setFormulario({ ...formulario, ativo: e.target.checked })} /></label>
+            <label className="campoLargo">Ajuda / Tooltip<input value={String(formulario.ajuda_tooltip ?? '')} onChange={(e) => setFormulario({ ...formulario, ajuda_tooltip: e.target.value })} /></label>
+          </div>
+          <div className="rodapeAcoes">
+            <button type="button" className="ghost" onClick={() => setFormulario({ tipo_campo: 'TEXTO', escopo: 'PRODUTO', ativo: true, editavel: true, visivel: true })}>Cancelar</button>
+            <button className="primary">Salvar atributo</button>
+          </div>
+        </form>
+        <form className="pimBloco" onSubmit={salvarMapa}>
+          <h3>Atributo por plataforma</h3>
+          <div className="formCadastro semBorda">
+            <label className="campoLargo">Atributo<select value={String(mapa.atributo_id ?? '')} onChange={(e) => {
+              const atributo = atributos.find((item) => Number(item.id) === Number(e.target.value));
+              setMapa({ ...mapa, atributo_id: Number(e.target.value), atributo_canal_codigo: atributo?.codigo, atributo_canal_nome: atributo?.nome_exibido });
+            }}><option value="">Selecione</option>{atributos.map((atributo) => <option key={String(atributo.id)} value={String(atributo.id)}>{String(atributo.nome_exibido)} · {String(atributo.escopo)}</option>)}</select></label>
+            <label className="campoLargo">Plataformas<select multiple value={(mapa.canal_ids ?? []).map(String)} onChange={(e) => setMapa({ ...mapa, canal_ids: Array.from(e.target.selectedOptions).map((opcao) => Number(opcao.value)) })}>{canais.map((canal) => <option key={String(canal.id)} value={String(canal.id)}>{String(canal.nome)}</option>)}</select></label>
+            <label>Código na plataforma<input value={String(mapa.atributo_canal_codigo ?? '')} onChange={(e) => setMapa({ ...mapa, atributo_canal_codigo: e.target.value })} /></label>
+            <label>Nome na plataforma<input value={String(mapa.atributo_canal_nome ?? '')} onChange={(e) => setMapa({ ...mapa, atributo_canal_nome: e.target.value })} /></label>
+            <label>Ordem<input type="number" value={String(mapa.ordem ?? 0)} onChange={(e) => setMapa({ ...mapa, ordem: Number(e.target.value) })} /></label>
+            <label>Obrigatório<input type="checkbox" checked={Boolean(mapa.obrigatorio)} onChange={(e) => setMapa({ ...mapa, obrigatorio: e.target.checked })} /></label>
+            <label>Ativo<input type="checkbox" checked={mapa.ativo !== false} onChange={(e) => setMapa({ ...mapa, ativo: e.target.checked })} /></label>
+            <label className="campoLargo">Validação<input value={String(mapa.validacao ?? '')} onChange={(e) => setMapa({ ...mapa, validacao: e.target.value })} /></label>
+          </div>
+          <div className="rodapeAcoes">
+            <button type="button" className="ghost" onClick={() => setMapa({ ativo: true, obrigatorio: false, ordem: 0, canal_ids: [] })}>Cancelar</button>
+            <button className="primary">Aplicar nas plataformas</button>
+          </div>
+        </form>
+      </div>
+      <section className="pimBloco">
+        <div className="pimBlocoTopo">
+          <h3>Atributos cadastrados</h3>
+          <input placeholder="Buscar atributo, código ou escopo" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        <div className="tabelaWrap">
+          <table>
+            <thead><tr><th>Código</th><th>Nome</th><th>Grupo</th><th>Tipo</th><th>Escopo</th><th>Ordem</th><th>Status</th><th>Ações</th></tr></thead>
+            <tbody>
+              {atributosFiltrados.map((atributo) => (
+                <tr key={String(atributo.id)}>
+                  <td>{String(atributo.codigo)}</td>
+                  <td>{String(atributo.nome_exibido)}</td>
+                  <td>{String(atributo.grupo_nome ?? '-')}</td>
+                  <td>{String(atributo.tipo_campo)}</td>
+                  <td>{String(atributo.escopo)}</td>
+                  <td>{String(atributo.ordem_exibicao ?? 0)}</td>
+                  <td>{atributo.ativo === false ? 'Inativo' : 'Ativo'}</td>
+                  <td className="acoesTabela">
+                    <button type="button" className="ghost" onClick={() => setFormulario(atributo)}>Editar</button>
+                    <button type="button" className="danger" onClick={async () => { await excluirAtributoPim(Number(atributo.id)); await carregar(); }}><Trash2 size={14} />Excluir</button>
+                  </td>
+                </tr>
+              ))}
+              {atributosFiltrados.length === 0 && <tr><td colSpan={8}>Nenhum atributo encontrado.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="pimBloco">
+        <h3>Visualização por plataforma</h3>
+        <div className="pimCanaisAtributos">
+          {mapeamentosPorCanal.map(({ canal, linhas }) => (
+            <article key={String(canal.id)}>
+              <header><strong>{String(canal.nome)}</strong><span>{linhas.length} atributo(s)</span></header>
+              <div className="tabelaWrap">
+                <table>
+                  <thead><tr><th>Ordem</th><th>Atributo interno</th><th>Atributo plataforma</th><th>Obrigatório</th><th>Status</th><th>Ações</th></tr></thead>
+                  <tbody>
+                    {linhas.map((linha) => (
+                      <tr key={String(linha.id)}>
+                        <td>{String(linha.ordem ?? 0)}</td>
+                        <td>{String(linha.atributo_nome)}<br /><small>{String(linha.atributo_codigo)}</small></td>
+                        <td>{String(linha.atributo_canal_nome ?? '-')}<br /><small>{String(linha.atributo_canal_codigo ?? '-')}</small></td>
+                        <td>{linha.obrigatorio ? 'Sim' : 'Não'}</td>
+                        <td>{linha.ativo === false ? 'Inativo' : 'Ativo'}</td>
+                        <td className="acoesTabela">
+                          <button type="button" className="ghost" onClick={() => setMapa({ ...linha, canal_ids: [linha.canal_id] })}>Editar</button>
+                          <button type="button" className="danger" onClick={async () => { await excluirMapeamentoAtributoCanalPim(Number(linha.id)); await carregar(); }}>Remover</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {linhas.length === 0 && <tr><td colSpan={6}>Nenhum atributo configurado para esta plataforma.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </section>
+  );
+}
+
 export function PainelPimGenerico({
   tela,
   titulo,
@@ -818,4 +1491,3 @@ export function ConfiguracoesPim() {
     </section>
   );
 }
-

@@ -32,6 +32,13 @@ function interpretarChaveCotacao(empresaId: number, valor: string | number): Cha
   };
 }
 
+async function garantirColunasTransportadoraEnvio() {
+  await consultar(
+    `ALTER TABLE transportadoras
+      ADD COLUMN IF NOT EXISTS solicita_numero_cotacao BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+}
+
 async function resolverCotacaoBase(empresaId: number, cotacaoId: string | number) {
   const chave = interpretarChaveCotacao(empresaId, cotacaoId);
 
@@ -401,6 +408,8 @@ export async function prepararEnvioMassa(empresaId: number, cotacoesIds: Array<s
   if (!cotacoesIds.length) {
     return [];
   }
+
+  await garantirColunasTransportadoraEnvio();
 
   return consultar(
     `SELECT

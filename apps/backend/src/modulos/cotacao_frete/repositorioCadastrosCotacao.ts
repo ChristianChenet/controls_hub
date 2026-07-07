@@ -18,6 +18,7 @@ export type TransportadoraCadastro = {
   exige_prazo_resposta?: boolean;
   prazo_resposta_obrigatorio?: boolean;
   solicita_numero_cotacao?: boolean;
+  escolher_automaticamente_se_pedido?: boolean;
   apresenta_lista_produtos?: boolean;
   observacoes?: string | null;
   ativa?: boolean;
@@ -39,6 +40,12 @@ export type EtapaKanbanCadastro = {
 };
 
 export async function listarTransportadoras() {
+  await consultar(
+    `ALTER TABLE transportadoras
+      ADD COLUMN IF NOT EXISTS solicita_numero_cotacao BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS escolher_automaticamente_se_pedido BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+
   return consultar(
     `SELECT
       t.id,
@@ -59,6 +66,7 @@ export async function listarTransportadoras() {
       t.exige_prazo_resposta,
       t.prazo_resposta_obrigatorio,
       t.solicita_numero_cotacao,
+      t.escolher_automaticamente_se_pedido,
       t.apresenta_lista_produtos,
       t.ativa,
       COUNT(te.empresa_id) AS empresas_vinculadas
@@ -72,6 +80,11 @@ export async function listarTransportadoras() {
 }
 
 export async function salvarTransportadora(dados: TransportadoraCadastro, usuarioId: number) {
+  await consultar(
+    `ALTER TABLE transportadoras
+      ADD COLUMN IF NOT EXISTS escolher_automaticamente_se_pedido BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+
   const transportadora = await consultarUm<{ id: number }>(
     `INSERT INTO transportadoras (
       codigo_interno,
@@ -91,12 +104,13 @@ export async function salvarTransportadora(dados: TransportadoraCadastro, usuari
       exige_prazo_resposta,
       prazo_resposta_obrigatorio,
       solicita_numero_cotacao,
+      escolher_automaticamente_se_pedido,
       apresenta_lista_produtos,
       observacoes,
       ativa,
       criado_por_usuario_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, TRUE), COALESCE($9, TRUE), COALESCE($10, TRUE), COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, 24), COALESCE($14, TRUE), COALESCE($15, FALSE), COALESCE($16, FALSE), COALESCE($17, FALSE), COALESCE($18, TRUE), $19, COALESCE($20, TRUE), $21)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, TRUE), COALESCE($9, TRUE), COALESCE($10, TRUE), COALESCE($11, TRUE), COALESCE($12, TRUE), COALESCE($13, 24), COALESCE($14, TRUE), COALESCE($15, FALSE), COALESCE($16, FALSE), COALESCE($17, FALSE), COALESCE($18, FALSE), COALESCE($19, TRUE), $20, COALESCE($21, TRUE), $22)
     ON CONFLICT (codigo_interno) DO UPDATE SET
       razao_social = EXCLUDED.razao_social,
       nome_fantasia = EXCLUDED.nome_fantasia,
@@ -114,11 +128,12 @@ export async function salvarTransportadora(dados: TransportadoraCadastro, usuari
       exige_prazo_resposta = EXCLUDED.exige_prazo_resposta,
       prazo_resposta_obrigatorio = EXCLUDED.prazo_resposta_obrigatorio,
       solicita_numero_cotacao = EXCLUDED.solicita_numero_cotacao,
+      escolher_automaticamente_se_pedido = EXCLUDED.escolher_automaticamente_se_pedido,
       apresenta_lista_produtos = EXCLUDED.apresenta_lista_produtos,
       observacoes = EXCLUDED.observacoes,
       ativa = EXCLUDED.ativa,
       alterado_em = NOW(),
-      alterado_por_usuario_id = $21
+      alterado_por_usuario_id = $22
     RETURNING id`,
     [
       dados.codigo_interno,
@@ -138,6 +153,7 @@ export async function salvarTransportadora(dados: TransportadoraCadastro, usuari
       dados.exige_prazo_resposta ?? false,
       dados.prazo_resposta_obrigatorio ?? false,
       dados.solicita_numero_cotacao ?? false,
+      dados.escolher_automaticamente_se_pedido ?? false,
       dados.apresenta_lista_produtos ?? true,
       dados.observacoes ?? null,
       dados.ativa ?? true,

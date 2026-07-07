@@ -1,5 +1,7 @@
 ﻿import { consultar, consultarUm } from '../../banco/conexao.js';
 
+import sqlServer from 'mssql';
+
 export type ProdutoCadastro = {
   id?: number;
   codigo_interno?: string;
@@ -44,6 +46,20 @@ export type ProdutoCadastro = {
   componentes?: Record<string, unknown>[];
   atributos?: Record<string, unknown>[];
   usuario_responsavel_id?: number | null;
+};
+
+type ConexaoSqlServerPim = {
+  id: number;
+  empresa_id: number;
+  nome: string;
+  host: string;
+  porta: number;
+  banco: string;
+  usuario: string;
+  senha?: string | null;
+  ambiente: string;
+  ativo: boolean;
+  opcoes?: Record<string, unknown>;
 };
 
 const camposObrigatoriosMestre = [
@@ -885,7 +901,7 @@ export async function salvarAtributo(empresaId: number, dados: Record<string, un
     RETURNING *`,
     [
       empresaId,
-      dados.atributo_grupo_id ? Number(dados.atributo_grupo_id) : null,
+      dados.atributo_grupo_id || dados.attribute_group_id ? Number(dados.atributo_grupo_id ?? dados.attribute_group_id) : null,
       String(dados.nome_interno ?? dados.codigo ?? '').toLowerCase(),
       String(dados.nome_exibido ?? dados.nome_interno ?? 'Atributo'),
       String(dados.codigo ?? '').toUpperCase(),
@@ -903,6 +919,123 @@ export async function salvarAtributo(empresaId: number, dados: Record<string, un
       dados.ajuda_tooltip ?? null,
       dados.ativo !== false
     ]
+  );
+}
+
+export async function excluirAtributo(empresaId: number, id: number) {
+  return consultarUm(
+    `UPDATE atributos
+    SET ativo = FALSE, editavel = FALSE, visivel = FALSE
+    WHERE id = $1
+      AND empresa_id = $2
+    RETURNING *`,
+    [id, empresaId]
+  );
+}
+
+export async function listarMapeamentosAtributosCanais(empresaId: number) {
+  return consultar(
+    `SELECT
+      cam.id,
+      cam.canal_id,
+      cam.atributo_id,
+      cam.canal_atributo_id,
+      cam.regra_transformacao,
+      cam.ativo,
+      c.codigo AS canal_codigo,
+      c.nome AS canal_nome,
+      c.tipo_canal,
+      a.codigo AS atributo_codigo,
+      a.nome_exibido AS atributo_nome,
+      a.escopo,
+      ca.codigo AS atributo_canal_codigo,
+      ca.nome AS atributo_canal_nome,
+      ca.obrigatorio,
+      ca.ordem,
+      ca.validacao
+    FROM canais_atributos_mapeamentos cam
+    INNER JOIN canais c ON c.id = cam.canal_id
+    INNER JOIN atributos a ON a.id = cam.atributo_id
+    LEFT JOIN canais_atributos ca ON ca.id = cam.canal_atributo_id
+    WHERE c.empresa_id = $1
+      AND a.empresa_id = $1
+    ORDER BY c.nome ASC, ca.ordem ASC NULLS LAST, a.ordem_exibicao ASC, a.nome_exibido ASC`,
+    [empresaId]
+  );
+}
+
+export async function salvarMapeamentoAtributoCanal(empresaId: number, dados: Record<string, unknown>) {
+  const canalIds = Array.isArray(dados.canal_ids) && dados.canal_ids.length
+    ? dados.canal_ids.map((id) => Number(id)).filter(Boolean)
+    : [Number(dados.canal_id)].filter(Boolean);
+  const atributoId = Number(dados.atributo_id);
+  const resultados = [];
+
+  for (const canalId of canalIds) {
+    const canal = await consultarUm<{ id: number }>(
+      `SELECT id FROM canais WHERE id = $1 AND empresa_id = $2`,
+      [canalId, empresaId]
+    );
+    const atributo = await consultarUm<{ id: number; codigo: string; nome_exibido: string }>(
+      `SELECT id, codigo, nome_exibido FROM atributos WHERE id = $1 AND empresa_id = $2`,
+      [atributoId, empresaId]
+    );
+
+    if (!canal || !atributo) continue;
+
+    const atributoCanal = await consultarUm<{ id: number }>(
+      `INSERT INTO canais_atributos (canal_id, codigo, nome, obrigatorio, ordem, validacao, ativo)
+      VALUES ($1, $2, $3, COALESCE($4, FALSE), COALESCE($5, 0), $6, COALESCE($7, TRUE))
+      ON CONFLICT (canal_id, codigo) DO UPDATE SET
+        nome = EXCLUDED.nome,
+        obrigatorio = EXCLUDED.obrigatorio,
+        ordem = EXCLUDED.ordem,
+        validacao = EXCLUDED.validacao,
+        ativo = EXCLUDED.ativo
+      RETURNING id`,
+      [
+        canalId,
+        String(dados.atributo_canal_codigo ?? dados.codigo_canal ?? atributo.codigo).toUpperCase(),
+        String(dados.atributo_canal_nome ?? dados.nome_canal ?? atributo.nome_exibido),
+        Boolean(dados.obrigatorio),
+        dados.ordem ? Number(dados.ordem) : 0,
+        dados.validacao ?? null,
+        dados.ativo !== false
+      ]
+    );
+
+    const mapeamento = await consultarUm(
+      `INSERT INTO canais_atributos_mapeamentos (canal_id, atributo_id, canal_atributo_id, regra_transformacao, ativo)
+      VALUES ($1, $2, $3, COALESCE($4, '{}'::JSONB), COALESCE($5, TRUE))
+      ON CONFLICT (canal_id, atributo_id) DO UPDATE SET
+        canal_atributo_id = EXCLUDED.canal_atributo_id,
+        regra_transformacao = EXCLUDED.regra_transformacao,
+        ativo = EXCLUDED.ativo
+      RETURNING *`,
+      [
+        canalId,
+        atributoId,
+        atributoCanal?.id ?? null,
+        JSON.stringify(dados.regra_transformacao ?? {}),
+        dados.ativo !== false
+      ]
+    );
+    resultados.push(mapeamento);
+  }
+
+  return resultados;
+}
+
+export async function excluirMapeamentoAtributoCanal(empresaId: number, id: number) {
+  return consultarUm(
+    `UPDATE canais_atributos_mapeamentos cam
+    SET ativo = FALSE
+    FROM canais c
+    WHERE cam.id = $1
+      AND cam.canal_id = c.id
+      AND c.empresa_id = $2
+    RETURNING cam.*`,
+    [id, empresaId]
   );
 }
 
@@ -1016,9 +1149,22 @@ export async function listarImportacoes(empresaId: number) {
 }
 
 export async function registrarImportacao(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
-  return consultarUm(
-    `INSERT INTO importacoes (empresa_id, nome_arquivo, tipo_arquivo, modo_importacao, status, total_linhas, relatorio, criado_por_usuario_id)
-    VALUES ($1, $2, $3, COALESCE($4, 'APENAS_VALIDAR'), 'RASCUNHO', COALESCE($5, 0), COALESCE($6, '{}'::JSONB), $7)
+  const importacao = await consultarUm(
+    `INSERT INTO importacoes (
+      empresa_id,
+      nome_arquivo,
+      tipo_arquivo,
+      modo_importacao,
+      status,
+      total_linhas,
+      relatorio,
+      colunas_detectadas,
+      mapeamento,
+      previa,
+      logs,
+      criado_por_usuario_id
+    )
+    VALUES ($1, $2, $3, COALESCE($4, 'APENAS_VALIDAR'), 'RASCUNHO', COALESCE($5, 0), COALESCE($6, '{}'::JSONB), COALESCE($7, '[]'::JSONB), COALESCE($8, '{}'::JSONB), COALESCE($9, '[]'::JSONB), COALESCE($10, '[]'::JSONB), $11)
     RETURNING *`,
     [
       empresaId,
@@ -1026,10 +1172,35 @@ export async function registrarImportacao(empresaId: number, dados: Record<strin
       String(dados.tipo_arquivo ?? 'CSV'),
       dados.modo_importacao ?? 'APENAS_VALIDAR',
       dados.total_linhas ? Number(dados.total_linhas) : 0,
-      JSON.stringify(dados.relatorio ?? { observacao: 'Estrutura preparada. Importacao real entrara como rascunho.' }),
+      JSON.stringify(dados.relatorio ?? { observacao: 'Importacao registrada como rascunho.' }),
+      JSON.stringify(dados.colunas_detectadas ?? []),
+      JSON.stringify(dados.mapeamento ?? {}),
+      JSON.stringify(dados.previa ?? []),
+      JSON.stringify(dados.logs ?? []),
       usuarioId
     ]
   );
+
+  if (dados.salvar_layout && dados.nome_layout) {
+    await consultarUm(
+      `INSERT INTO importacoes_layouts (empresa_id, nome, descricao, mapeamento, ativo, criado_por_usuario_id)
+      VALUES ($1, $2, $3, COALESCE($4, '{}'::JSONB), TRUE, $5)
+      ON CONFLICT (empresa_id, nome) DO UPDATE SET
+        descricao = EXCLUDED.descricao,
+        mapeamento = EXCLUDED.mapeamento,
+        ativo = TRUE
+      RETURNING *`,
+      [
+        empresaId,
+        String(dados.nome_layout),
+        dados.descricao_layout ?? null,
+        JSON.stringify(dados.mapeamento ?? {}),
+        usuarioId
+      ]
+    );
+  }
+
+  return importacao;
 }
 
 export async function listarWorkflowAprovacoes(empresaId: number) {
@@ -1137,6 +1308,470 @@ export async function listarAuditoriaPim(empresaId: number) {
       AND (a.modulo_codigo = 'CADASTRO_PRODUTO_CENTRAL' OR a.tabela_afetada IN ('produtos', 'atributos', 'canais', 'ativos_digitais', 'importacoes', 'fluxos_trabalho'))
     ORDER BY a.criado_em DESC
     LIMIT 200`,
+    [empresaId]
+  );
+}
+
+function validarConsultaSqlServerLeitura(consultaSql: string) {
+  const sql = consultaSql.trim().replace(/;+\s*$/g, '');
+  if (!/^(SELECT|WITH)\s/i.test(sql)) {
+    throw new Error('A consulta SQL Server deve ser somente leitura e iniciar com SELECT ou WITH.');
+  }
+  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|MERGE|EXEC|EXECUTE|CREATE|GRANT|REVOKE)\b/i.test(sql)) {
+    throw new Error('A consulta SQL Server contem comando nao permitido para carga manual.');
+  }
+  return sql;
+}
+
+async function buscarConexaoSqlServer(empresaId: number, id: number) {
+  return consultarUm<ConexaoSqlServerPim>(
+    `SELECT *
+    FROM pim_conexoes_sqlserver
+    WHERE id = $1
+      AND empresa_id = $2
+      AND ativo = TRUE`,
+    [id, empresaId]
+  );
+}
+
+async function executarConsultaSqlServer(conexao: ConexaoSqlServerPim, consultaSql: string, limite = 500) {
+  const pool = new sqlServer.ConnectionPool({
+    server: conexao.host,
+    port: Number(conexao.porta || 1433),
+    database: conexao.banco,
+    user: conexao.usuario,
+    password: String(conexao.senha ?? ''),
+    options: {
+      encrypt: Boolean(conexao.opcoes?.encrypt ?? false),
+      trustServerCertificate: conexao.opcoes?.trustServerCertificate !== false
+    },
+    requestTimeout: Number(conexao.opcoes?.requestTimeout ?? 60000),
+    connectionTimeout: Number(conexao.opcoes?.connectionTimeout ?? 15000)
+  });
+
+  await pool.connect();
+  try {
+    const resultado = await pool.request().query(validarConsultaSqlServerLeitura(consultaSql));
+    const linhas = (resultado.recordset ?? []).slice(0, limite);
+    const colunas = Object.keys(linhas[0] ?? {});
+    return { colunas, linhas, total: resultado.recordset?.length ?? 0 };
+  } finally {
+    await pool.close();
+  }
+}
+
+export async function listarConexoesSqlServerPim(empresaId: number) {
+  return consultar(
+    `SELECT id, nome, host, porta, banco, usuario, ambiente, ativo, ultima_validacao_em, ultima_mensagem, criado_em
+    FROM pim_conexoes_sqlserver
+    WHERE empresa_id = $1
+    ORDER BY nome ASC`,
+    [empresaId]
+  );
+}
+
+export async function salvarConexaoSqlServerPim(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  return consultarUm(
+    `INSERT INTO pim_conexoes_sqlserver (empresa_id, nome, host, porta, banco, usuario, senha, ambiente, ativo, opcoes, alterado_em, criado_por_usuario_id)
+    VALUES ($1, $2, $3, COALESCE($4, 1433), $5, $6, NULLIF($7, ''), COALESCE($8, 'PRODUCAO'), COALESCE($9, TRUE), COALESCE($10, '{}'::JSONB), NOW(), $11)
+    ON CONFLICT (empresa_id, nome) DO UPDATE SET
+      host = EXCLUDED.host,
+      porta = EXCLUDED.porta,
+      banco = EXCLUDED.banco,
+      usuario = EXCLUDED.usuario,
+      senha = COALESCE(EXCLUDED.senha, pim_conexoes_sqlserver.senha),
+      ambiente = EXCLUDED.ambiente,
+      ativo = EXCLUDED.ativo,
+      opcoes = EXCLUDED.opcoes,
+      alterado_em = NOW()
+    RETURNING id, nome, host, porta, banco, usuario, ambiente, ativo, ultima_validacao_em, ultima_mensagem`,
+    [
+      empresaId,
+      String(dados.nome ?? 'Banco oficial'),
+      String(dados.host ?? ''),
+      dados.porta ? Number(dados.porta) : 1433,
+      String(dados.banco ?? ''),
+      String(dados.usuario ?? ''),
+      dados.senha ?? null,
+      dados.ambiente ?? 'PRODUCAO',
+      dados.ativo !== false,
+      JSON.stringify(dados.opcoes ?? {}),
+      usuarioId
+    ]
+  );
+}
+
+export async function testarConexaoSqlServerPim(empresaId: number, id: number) {
+  const conexao = await buscarConexaoSqlServer(empresaId, id);
+  if (!conexao) throw new Error('Conexao SQL Server nao encontrada.');
+  try {
+    await executarConsultaSqlServer(conexao, 'SELECT 1 AS teste', 1);
+    return consultarUm(
+      `UPDATE pim_conexoes_sqlserver
+      SET ultima_validacao_em = NOW(), ultima_mensagem = 'Conexao validada com sucesso.'
+      WHERE id = $1
+      RETURNING id, nome, ultima_validacao_em, ultima_mensagem`,
+      [id]
+    );
+  } catch (error) {
+    const mensagem = error instanceof Error ? error.message : 'Falha ao validar conexao SQL Server.';
+    await consultar(
+      `UPDATE pim_conexoes_sqlserver
+      SET ultima_validacao_em = NOW(), ultima_mensagem = $2
+      WHERE id = $1`,
+      [id, mensagem]
+    );
+    throw error;
+  }
+}
+
+export async function consultarSqlServerPim(empresaId: number, dados: Record<string, unknown>) {
+  const conexao = await buscarConexaoSqlServer(empresaId, Number(dados.conexao_id));
+  if (!conexao) throw new Error('Conexao SQL Server nao encontrada.');
+  const resultado = await executarConsultaSqlServer(conexao, String(dados.consulta_sql ?? ''), Number(dados.limite ?? 100));
+  return {
+    colunas: resultado.colunas,
+    previa: resultado.linhas.slice(0, 20),
+    total_linhas: resultado.total
+  };
+}
+
+function mapearLinhaSqlServerParaProduto(linha: Record<string, unknown>, mapeamento: Record<string, unknown>) {
+  return Object.entries(mapeamento).reduce<ProdutoCadastro>((acc, [colunaOrigem, campoDestino]) => {
+    if (!campoDestino) return acc;
+    const campo = String(campoDestino);
+    const valor = linha[colunaOrigem];
+    if (valor === undefined || valor === null || valor === '') return acc;
+    return { ...acc, [campo]: valor } as ProdutoCadastro;
+  }, {});
+}
+
+async function localizarProdutoExistente(empresaId: number, produto: ProdutoCadastro) {
+  return consultarUm<{ id: number }>(
+    `SELECT id
+    FROM produtos
+    WHERE empresa_id = $1
+      AND excluido = FALSE
+      AND (
+        ($2::TEXT IS NOT NULL AND sku_interno = $2)
+        OR ($3::TEXT IS NOT NULL AND codigo_erp_decis = $3)
+        OR ($4::TEXT IS NOT NULL AND ean_gtin = $4)
+        OR ($5::TEXT IS NOT NULL AND codigo_fabricante = $5)
+        OR ($6::TEXT IS NOT NULL AND modelo = $6)
+      )
+    ORDER BY alterado_em DESC NULLS LAST, criado_em DESC
+    LIMIT 1`,
+    [
+      empresaId,
+      produto.sku_interno ?? null,
+      produto.codigo_erp_decis ?? null,
+      produto.ean_gtin ?? produto.ean ?? produto.gtin ?? null,
+      produto.codigo_fabricante ?? null,
+      produto.modelo ?? null
+    ]
+  );
+}
+
+async function localizarProdutoPorCodigo(empresaId: number, codigo?: unknown) {
+  if (!codigo) return null;
+  return consultarUm<{ id: number }>(
+    `SELECT id
+    FROM produtos
+    WHERE empresa_id = $1
+      AND excluido = FALSE
+      AND (codigo_interno = $2 OR sku_interno = $2 OR codigo_erp_decis = $2 OR modelo = $2)
+    ORDER BY alterado_em DESC NULLS LAST, criado_em DESC
+    LIMIT 1`,
+    [empresaId, String(codigo)]
+  );
+}
+
+async function processarLinhaSkuSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>) {
+  const produto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.produto_codigo ?? linhaMapeada.codigo_interno ?? linhaMapeada.sku_interno);
+  if (!produto) throw new Error('Produto nao encontrado para vincular SKU.');
+  await consultar(
+    `INSERT INTO produtos_skus (produto_id, sku, tipo, status, dados, sku_erp, sku_fornecedor, sku_marketplace, ean, codigo_fabricante, principal, variacoes)
+    VALUES ($1, $2, COALESCE($3, 'INTERNO'), COALESCE($4, 'ATIVO'), COALESCE($5, '{}'::JSONB), $6, $7, $8, $9, $10, COALESCE($11, FALSE), COALESCE($12, '{}'::JSONB))
+    ON CONFLICT (produto_id, sku, tipo) DO UPDATE SET
+      status = EXCLUDED.status,
+      dados = EXCLUDED.dados,
+      sku_erp = EXCLUDED.sku_erp,
+      sku_fornecedor = EXCLUDED.sku_fornecedor,
+      sku_marketplace = EXCLUDED.sku_marketplace,
+      ean = EXCLUDED.ean,
+      codigo_fabricante = EXCLUDED.codigo_fabricante,
+      principal = EXCLUDED.principal,
+      variacoes = EXCLUDED.variacoes`,
+    [
+      produto.id,
+      String(linhaMapeada.sku ?? linhaMapeada.sku_interno ?? ''),
+      linhaMapeada.tipo ?? 'INTERNO',
+      linhaMapeada.status ?? 'ATIVO',
+      JSON.stringify(linhaMapeada.dados ?? {}),
+      linhaMapeada.sku_erp ?? null,
+      linhaMapeada.sku_fornecedor ?? null,
+      linhaMapeada.sku_marketplace ?? null,
+      linhaMapeada.ean ?? null,
+      linhaMapeada.codigo_fabricante ?? null,
+      Boolean(linhaMapeada.principal),
+      JSON.stringify(linhaMapeada.variacoes ?? {})
+    ]
+  );
+}
+
+async function processarLinhaComposicaoSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>, usuarioId: number) {
+  const conjunto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.conjunto_codigo);
+  if (!conjunto) throw new Error('Conjunto nao encontrado.');
+  const componenteProduto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.componente_codigo);
+  let produtoComponenteId: number | null = null;
+
+  if (!componenteProduto) {
+    const componente = await consultarUm<{ id: number }>(
+      `INSERT INTO produtos_componentes (empresa_id, codigo, nome, tipo_componente, status, atributos, criado_por_usuario_id)
+      VALUES ($1, $2, $3, COALESCE($4, 'OUTRO'), 'ATIVO', '{}'::JSONB, $5)
+      ON CONFLICT (empresa_id, codigo) DO UPDATE SET
+        nome = EXCLUDED.nome,
+        tipo_componente = EXCLUDED.tipo_componente
+      RETURNING id`,
+      [
+        empresaId,
+        String(linhaMapeada.componente_codigo ?? `COMP-${Date.now()}`),
+        String(linhaMapeada.componente_nome ?? linhaMapeada.componente_codigo ?? 'Componente'),
+        linhaMapeada.tipo_relacao ?? 'COMPONENTE',
+        usuarioId
+      ]
+    );
+    produtoComponenteId = componente?.id ?? null;
+  }
+
+  await consultar(
+    `INSERT INTO produtos_componentes_vinculos (conjunto_produto_id, componente_produto_id, produto_componente_id, quantidade, tipo_relacao, ordem, obrigatorio, observacao)
+    VALUES ($1, $2, $3, COALESCE($4, 1), COALESCE($5, 'COMPONENTE'), COALESCE($6, 0), COALESCE($7, TRUE), $8)
+    ON CONFLICT DO NOTHING`,
+    [
+      conjunto.id,
+      componenteProduto?.id ?? null,
+      produtoComponenteId,
+      linhaMapeada.quantidade ? Number(linhaMapeada.quantidade) : 1,
+      linhaMapeada.tipo_relacao ?? 'COMPONENTE',
+      linhaMapeada.ordem ? Number(linhaMapeada.ordem) : 0,
+      linhaMapeada.obrigatorio === undefined ? true : Boolean(linhaMapeada.obrigatorio),
+      linhaMapeada.observacao ?? null
+    ]
+  );
+}
+
+async function processarLinhaAtributoMarketplaceSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>) {
+  const canal = await consultarUm<{ id: number }>(
+    `INSERT INTO canais (empresa_id, codigo, nome, tipo_canal, score_minimo_publicacao, ativo)
+    VALUES ($1, $2, $3, 'MARKETPLACE', 80, TRUE)
+    ON CONFLICT (empresa_id, codigo) DO UPDATE SET nome = EXCLUDED.nome
+    RETURNING id`,
+    [empresaId, String(linhaMapeada.canal_codigo ?? linhaMapeada.canal_nome ?? 'CANAL').toUpperCase(), String(linhaMapeada.canal_nome ?? linhaMapeada.canal_codigo ?? 'Canal')]
+  );
+  const atributo = await consultarUm<{ id: number }>(
+    `INSERT INTO atributos (empresa_id, nome_interno, nome_exibido, codigo, tipo_campo, escopo, obrigatorio, ativo)
+    VALUES ($1, $2, $3, $4, COALESCE($5, 'TEXTO'), COALESCE($6, 'CANAL'), COALESCE($7, FALSE), TRUE)
+    ON CONFLICT (empresa_id, codigo) DO UPDATE SET
+      nome_exibido = EXCLUDED.nome_exibido,
+      escopo = EXCLUDED.escopo,
+      obrigatorio = EXCLUDED.obrigatorio
+    RETURNING id`,
+    [
+      empresaId,
+      String(linhaMapeada.atributo_codigo ?? linhaMapeada.atributo_nome ?? 'atributo').toLowerCase(),
+      String(linhaMapeada.atributo_nome ?? linhaMapeada.atributo_codigo ?? 'Atributo'),
+      String(linhaMapeada.atributo_codigo ?? linhaMapeada.atributo_nome ?? 'ATRIBUTO').toUpperCase(),
+      linhaMapeada.tipo_campo ?? 'TEXTO',
+      linhaMapeada.escopo ?? 'CANAL',
+      Boolean(linhaMapeada.obrigatorio)
+    ]
+  );
+  await salvarMapeamentoAtributoCanal(empresaId, {
+    canal_id: canal?.id,
+    atributo_id: atributo?.id,
+    atributo_canal_codigo: linhaMapeada.atributo_canal_codigo ?? linhaMapeada.atributo_codigo,
+    atributo_canal_nome: linhaMapeada.atributo_canal_nome ?? linhaMapeada.atributo_nome,
+    obrigatorio: Boolean(linhaMapeada.obrigatorio),
+    ordem: linhaMapeada.ordem ?? 0,
+    validacao: linhaMapeada.validacao ?? null,
+    ativo: true
+  });
+}
+
+async function obterOuCriarAtributoCarga(empresaId: number, linhaMapeada: Record<string, unknown>, escopoPadrao: string) {
+  return consultarUm<{ id: number }>(
+    `INSERT INTO atributos (empresa_id, nome_interno, nome_exibido, codigo, tipo_campo, escopo, unidade_medida, obrigatorio, ordem_exibicao, ativo)
+    VALUES ($1, $2, $3, $4, COALESCE($5, 'TEXTO'), COALESCE($6, $7), $8, COALESCE($9, FALSE), COALESCE($10, 0), TRUE)
+    ON CONFLICT (empresa_id, codigo) DO UPDATE SET
+      nome_exibido = EXCLUDED.nome_exibido,
+      tipo_campo = EXCLUDED.tipo_campo,
+      escopo = EXCLUDED.escopo,
+      unidade_medida = EXCLUDED.unidade_medida,
+      obrigatorio = EXCLUDED.obrigatorio,
+      ordem_exibicao = EXCLUDED.ordem_exibicao
+    RETURNING id`,
+    [
+      empresaId,
+      String(linhaMapeada.atributo_codigo ?? linhaMapeada.atributo_nome ?? 'atributo').toLowerCase(),
+      String(linhaMapeada.atributo_nome ?? linhaMapeada.atributo_codigo ?? 'Atributo'),
+      String(linhaMapeada.atributo_codigo ?? linhaMapeada.atributo_nome ?? 'ATRIBUTO').toUpperCase(),
+      linhaMapeada.tipo_campo ?? 'TEXTO',
+      linhaMapeada.escopo ?? escopoPadrao,
+      escopoPadrao,
+      linhaMapeada.unidade_medida ?? null,
+      Boolean(linhaMapeada.obrigatorio),
+      linhaMapeada.ordem ? Number(linhaMapeada.ordem) : 0
+    ]
+  );
+}
+
+async function gravarValorAtributoProduto(produtoId: number, atributoId: number, linhaMapeada: Record<string, unknown>) {
+  await consultar(
+    `INSERT INTO atributos_valores (produto_id, atributo_id, valor_texto, valor_numero, valor_booleano, valor_json, alterado_em)
+    VALUES ($1, $2, $3, $4, $5, '{}'::JSONB, NOW())
+    ON CONFLICT DO NOTHING`,
+    [
+      produtoId,
+      atributoId,
+      linhaMapeada.valor_texto ?? linhaMapeada.valor ?? null,
+      linhaMapeada.valor_numero !== undefined && linhaMapeada.valor_numero !== null && linhaMapeada.valor_numero !== '' ? Number(linhaMapeada.valor_numero) : null,
+      linhaMapeada.valor_booleano === undefined ? null : Boolean(linhaMapeada.valor_booleano)
+    ]
+  );
+}
+
+async function processarLinhaCaracteristicaConjuntoSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>) {
+  const conjunto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.conjunto_codigo);
+  if (!conjunto) throw new Error('Conjunto nao encontrado para gravar caracteristica.');
+  const atributo = await obterOuCriarAtributoCarga(empresaId, linhaMapeada, 'CONJUNTO');
+  if (!atributo) throw new Error('Atributo nao criado.');
+  await gravarValorAtributoProduto(conjunto.id, atributo.id, linhaMapeada);
+}
+
+async function processarLinhaCaracteristicaItemSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>, usuarioId: number) {
+  await processarLinhaComposicaoSqlServer(empresaId, {
+    conjunto_codigo: linhaMapeada.conjunto_codigo,
+    componente_codigo: linhaMapeada.item_codigo,
+    componente_nome: linhaMapeada.item_nome ?? linhaMapeada.item_codigo,
+    tipo_relacao: linhaMapeada.tipo_relacao ?? 'MATERIA_PRIMA',
+    quantidade: linhaMapeada.quantidade ?? 1,
+    ordem: linhaMapeada.ordem ?? 0,
+    obrigatorio: linhaMapeada.obrigatorio ?? true
+  }, usuarioId);
+
+  const itemProduto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.item_codigo);
+  const atributo = await obterOuCriarAtributoCarga(empresaId, linhaMapeada, 'COMPONENTE');
+  if (itemProduto && atributo) {
+    await gravarValorAtributoProduto(itemProduto.id, atributo.id, linhaMapeada);
+  }
+}
+
+export async function executarCargaSqlServerPim(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const conexao = await buscarConexaoSqlServer(empresaId, Number(dados.conexao_id));
+  if (!conexao) throw new Error('Conexao SQL Server nao encontrada.');
+
+  const consultaSql = validarConsultaSqlServerLeitura(String(dados.consulta_sql ?? ''));
+  const modo = String(dados.modo_carga ?? 'APENAS_VALIDAR');
+  const tipoCarga = String(dados.tipo_carga ?? 'PRODUTO_MESTRE');
+  const resultado = await executarConsultaSqlServer(conexao, consultaSql, Number(dados.limite ?? 500));
+  const mapeamento = (dados.mapeamento ?? {}) as Record<string, unknown>;
+  let produtosProcessados = 0;
+  let produtosInseridos = 0;
+  let produtosAtualizados = 0;
+  let produtosComErro = 0;
+  const logs: string[] = [];
+
+  for (const linha of resultado.linhas) {
+    const linhaMapeada = mapearLinhaSqlServerParaProduto(linha, mapeamento) as Record<string, unknown>;
+    const produto = linhaMapeada as ProdutoCadastro;
+    produto.status = 'RASCUNHO';
+    produto.origem = 'SQL_SERVER_OFICIAL';
+    produtosProcessados += 1;
+
+    const existente = tipoCarga === 'PRODUTO_MESTRE' ? await localizarProdutoExistente(empresaId, produto) : null;
+    if (modo === 'APENAS_VALIDAR') {
+      logs.push(`${produto.sku_interno ?? produto.codigo_interno ?? produto.modelo ?? 'Produto'}: validado${existente ? ' com cadastro existente' : ' como novo cadastro'}.`);
+      continue;
+    }
+
+    if (modo === 'CRIAR_NOVOS' && existente) {
+      logs.push(`${produto.sku_interno ?? produto.codigo_interno ?? produto.modelo ?? 'Produto'}: ignorado, ja existe.`);
+      continue;
+    }
+
+    if (modo === 'ATUALIZAR_EXISTENTES' && !existente) {
+      logs.push(`${produto.sku_interno ?? produto.codigo_interno ?? produto.modelo ?? 'Produto'}: ignorado, nao encontrado para atualizacao.`);
+      continue;
+    }
+
+    try {
+      if (tipoCarga === 'SKU') {
+        await processarLinhaSkuSqlServer(empresaId, linhaMapeada);
+        produtosAtualizados += 1;
+      } else if (tipoCarga === 'COMPOSICAO' || tipoCarga === 'PRODUTOS_CONJUNTO') {
+        await processarLinhaComposicaoSqlServer(empresaId, linhaMapeada, usuarioId);
+        produtosAtualizados += 1;
+      } else if (tipoCarga === 'PRODUTOS_CJ_CARACTERISTICAS') {
+        await processarLinhaCaracteristicaConjuntoSqlServer(empresaId, linhaMapeada);
+        produtosAtualizados += 1;
+      } else if (tipoCarga === 'PRODUTOS_ITEM_CARACTERISTICAS') {
+        await processarLinhaCaracteristicaItemSqlServer(empresaId, linhaMapeada, usuarioId);
+        produtosAtualizados += 1;
+      } else if (tipoCarga === 'ATRIBUTOS_MARKETPLACE') {
+        await processarLinhaAtributoMarketplaceSqlServer(empresaId, linhaMapeada);
+        produtosAtualizados += 1;
+      } else if (existente && modo === 'ATUALIZAR_EXISTENTES') {
+        produto.id = existente.id;
+        await salvarProduto(empresaId, produto, usuarioId);
+        produtosAtualizados += 1;
+      } else {
+        await salvarProduto(empresaId, produto, usuarioId);
+        produtosInseridos += 1;
+      }
+    } catch (error) {
+      produtosComErro += 1;
+      logs.push(`${produto.sku_interno ?? produto.codigo_interno ?? produto.modelo ?? 'Produto'}: ${error instanceof Error ? error.message : 'erro ao salvar'}.`);
+    }
+  }
+
+  return consultarUm(
+    `INSERT INTO pim_cargas_sqlserver (
+      empresa_id, conexao_id, nome, tipo_carga, consulta_sql, modo_carga, status, colunas_detectadas, mapeamento, previa,
+      total_linhas, produtos_processados, produtos_inseridos, produtos_atualizados, produtos_com_erro, logs,
+      executado_em, criado_por_usuario_id
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, 'CONCLUIDA', $7::JSONB, $8::JSONB, $9::JSONB, $10, $11, $12, $13, $14, $15::JSONB, NOW(), $16)
+    RETURNING *`,
+    [
+      empresaId,
+      conexao.id,
+      String(dados.nome ?? `Carga SQL Server ${new Date().toISOString()}`),
+      tipoCarga,
+      consultaSql,
+      modo,
+      JSON.stringify(resultado.colunas),
+      JSON.stringify(mapeamento),
+      JSON.stringify(resultado.linhas.slice(0, 20)),
+      resultado.total,
+      produtosProcessados,
+      produtosInseridos,
+      produtosAtualizados,
+      produtosComErro,
+      JSON.stringify(logs),
+      usuarioId
+    ]
+  );
+}
+
+export async function listarCargasSqlServerPim(empresaId: number) {
+  return consultar(
+    `SELECT cs.*, c.nome AS conexao_nome
+    FROM pim_cargas_sqlserver cs
+    LEFT JOIN pim_conexoes_sqlserver c ON c.id = cs.conexao_id
+    WHERE cs.empresa_id = $1
+    ORDER BY cs.criado_em DESC
+    LIMIT 100`,
     [empresaId]
   );
 }

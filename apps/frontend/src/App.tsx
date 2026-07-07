@@ -62,6 +62,7 @@ import {
   listarEtapas,
   listarKanbanCotacoes,
   listarMotivosEscolhaTransportadora,
+  listarMotivosPrejuizoLogistico,
   listarOrigensComerciaisCotacao,
   listarPedidosEnvioMassa,
   listarParametrosSistema,
@@ -82,6 +83,8 @@ import {
   salvarPermissoesPerfil,
   salvarPreferenciasInterface,
   salvarMotivoEscolhaTransportadora,
+  salvarMotivoPrejuizoCotacao,
+  salvarMotivoPrejuizoLogistico,
   salvarParametrosSistema,
   salvarTransportadora,
   salvarUsuario,
@@ -92,8 +95,10 @@ import {
   UsuarioLogado
 } from './servicos/api';
 import {
+  AtributosPim,
   ConfiguracoesPim,
   DashboardPim,
+  ImportacaoPim,
   LogoProdutoCentral,
   PainelPimGenerico,
   ProdutosPim
@@ -389,6 +394,7 @@ function ModalConfirmacaoEscolha({
   transportadora,
   titulo = 'Confirmar escolha da transportadora',
   mensagem,
+  checklist,
   erro,
   aoConfirmar,
   aoCancelar
@@ -397,6 +403,7 @@ function ModalConfirmacaoEscolha({
   transportadora?: RegistroGenerico | null;
   titulo?: string;
   mensagem?: string;
+  checklist?: string;
   erro?: string;
   aoConfirmar: () => void;
   aoCancelar: () => void;
@@ -422,6 +429,12 @@ function ModalConfirmacaoEscolha({
           <small>Prazo</small>
           <strong>{String(transportadora.prazo_dias ?? 0)} dia(s)</strong>
         </section>
+        {checklist?.trim() && (
+          <section className="checklistTrocaTransportadora">
+            <strong>Checklist após a alteração</strong>
+            <p>{checklist}</p>
+          </section>
+        )}
         {erro && <div className="alerta alertaModal">{erro}</div>}
         <footer>
           <button className="ghost" type="button" onClick={aoCancelar}>Cancelar</button>
@@ -762,6 +775,20 @@ function Dashboard() {
   const [somenteDivergenciaPrazo, setSomenteDivergenciaPrazo] = useState(false);
   const [limiteAlertaPercentual, setLimiteAlertaPercentual] = useState('5');
   const [paginaAnalisePedido, setPaginaAnalisePedido] = useState(1);
+  const [abaDashboard, setAbaDashboard] = useState<'GERAL' | 'GANHO_LOGISTICO'>('GERAL');
+  const [diaGanhoSelecionado, setDiaGanhoSelecionado] = useState('');
+  const [somentePrejuizoLogistico, setSomentePrejuizoLogistico] = useState(false);
+  const [motivoPrejuizoSelecionado, setMotivoPrejuizoSelecionado] = useState('');
+  const [transportadoraGanhoSelecionada, setTransportadoraGanhoSelecionada] = useState('');
+  const [motivosPrejuizoLogistico, setMotivosPrejuizoLogistico] = useState<RegistroGenerico[]>([]);
+  const [detalheDashboard, setDetalheDashboard] = useState<DetalheCotacaoNormalizado | null>(null);
+  const [motivosGanhoLogistico, setMotivosGanhoLogistico] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('controlSHubMotivosGanhoLogistico') ?? '{}');
+    } catch {
+      return {};
+    }
+  });
 
   async function carregarDashboard() {
     setCarregando(true);
@@ -792,6 +819,10 @@ function Dashboard() {
 
   useEffect(() => {
     carregarDashboard();
+  }, []);
+
+  useEffect(() => {
+    listarMotivosPrejuizoLogistico().then(setMotivosPrejuizoLogistico).catch(() => setMotivosPrejuizoLogistico([]));
   }, []);
 
   const pedidos = useMemo(() => Array.isArray(indicadores.itens) ? indicadores.itens : [], [indicadores]);
@@ -894,7 +925,7 @@ function Dashboard() {
 
     const evolucaoMensalMapa = new Map<string, number>();
     pedidos.forEach((item: RegistroGenerico) => {
-      const data = String(item.data_pedido ?? '').slice(0, 7);
+      const data = String(item.data_cotacao ?? item.data_pedido ?? '').slice(0, 7);
       if (!data) {
         return;
       }
@@ -988,6 +1019,186 @@ function Dashboard() {
     URL.revokeObjectURL(url);
   }
 
+  const ganhoLogistico = useMemo(() => {
+    const linhas = pedidos
+      .map((item: RegistroGenerico) => {
+        const valorAutomatico = Number(item.valor_cotacao_automatica ?? 0);
+        const valorEscolhido = Number(item.valor_transportadora_escolhida ?? 0);
+        const ganho = valorAutomatico > 0 && valorEscolhido > 0 ? valorAutomatico - valorEscolhido : 0;
+        const dataBase = String(item.data_cotacao ?? item.data_pedido ?? '').slice(0, 10) || 'Sem data';
+
+        return {
+          ...item,
+          data_ganho: dataBase,
+          ganho_logistico: ganho,
+          tipo_ganho_logistico: ganho > 0 ? 'GANHO' : ganho < 0 ? 'PREJUIZO' : 'NEUTRO'
+        };
+      })
+      .filter((item: RegistroGenerico) => Number(item.valor_cotacao_automatica ?? 0) > 0 && Number(item.valor_transportadora_escolhida ?? 0) > 0)
+      .filter((item: RegistroGenerico) => !somentePrejuizoLogistico || Number(item.ganho_logistico ?? 0) < 0);
+
+    const totalGanho = linhas.filter((item: RegistroGenerico) => Number(item.ganho_logistico) > 0).reduce((total: number, item: RegistroGenerico) => total + Number(item.ganho_logistico), 0);
+    const totalPrejuizo = linhas.filter((item: RegistroGenerico) => Number(item.ganho_logistico) < 0).reduce((total: number, item: RegistroGenerico) => total + Math.abs(Number(item.ganho_logistico)), 0);
+    const totalComparado = totalGanho + totalPrejuizo;
+    const percentualGanho = totalComparado > 0 ? (totalGanho / totalComparado) * 100 : 0;
+    const percentualPrejuizo = totalComparado > 0 ? (totalPrejuizo / totalComparado) * 100 : 0;
+
+    const diasMapa = new Map<string, { dia: string; ganho: number; prejuizo: number; saldo: number; total: number; pedidos: RegistroGenerico[] }>();
+    linhas.forEach((item: RegistroGenerico) => {
+      const dia = String(item.data_ganho);
+      const atual = diasMapa.get(dia) ?? { dia, ganho: 0, prejuizo: 0, saldo: 0, total: 0, pedidos: [] };
+      const valor = Number(item.ganho_logistico ?? 0);
+      if (valor > 0) {
+        atual.ganho += valor;
+      }
+      if (valor < 0) {
+        atual.prejuizo += Math.abs(valor);
+      }
+      atual.saldo += valor;
+      atual.total += 1;
+      atual.pedidos.push(item);
+      diasMapa.set(dia, atual);
+    });
+
+    const transportadorasMapa = new Map<string, { nome: string; ganho: number; prejuizo: number; saldo: number; total: number }>();
+    linhas.forEach((item: RegistroGenerico) => {
+      const nome = String(item.transportadora_escolhida ?? 'Sem transportadora');
+      const atual = transportadorasMapa.get(nome) ?? { nome, ganho: 0, prejuizo: 0, saldo: 0, total: 0 };
+      const valor = Number(item.ganho_logistico ?? 0);
+      if (valor > 0) {
+        atual.ganho += valor;
+      }
+      if (valor < 0) {
+        atual.prejuizo += Math.abs(valor);
+      }
+      atual.saldo += valor;
+      atual.total += 1;
+      transportadorasMapa.set(nome, atual);
+    });
+
+    const motivosMapa = new Map<string, { motivo: string; valor: number; total: number; pedidos: RegistroGenerico[] }>();
+    linhas
+      .filter((item: RegistroGenerico) => Number(item.ganho_logistico ?? 0) < 0)
+      .forEach((item: RegistroGenerico) => {
+        const motivo = String(item.motivo_prejuizo_logistico ?? '').trim() || 'Sem motivo informado';
+        const atual = motivosMapa.get(motivo) ?? { motivo, valor: 0, total: 0, pedidos: [] };
+        atual.valor += Math.abs(Number(item.ganho_logistico ?? 0));
+        atual.total += 1;
+        atual.pedidos.push(item);
+        motivosMapa.set(motivo, atual);
+      });
+
+    const dias = [...diasMapa.values()].sort((a, b) => b.dia.localeCompare(a.dia));
+    const transportadoras = [...transportadorasMapa.values()].sort((a, b) => b.saldo - a.saldo);
+    const motivosPrejuizo = [...motivosMapa.values()].sort((a, b) => b.valor - a.valor);
+    const diaSelecionado = diaGanhoSelecionado || dias[0]?.dia || '';
+    let tipoDetalhe: 'DIA' | 'MOTIVO' | 'TRANSPORTADORA' = 'DIA';
+    let rotuloDetalhe = diaSelecionado;
+    let detalhesDia: RegistroGenerico[] = dias.find((item) => item.dia === diaSelecionado)?.pedidos ?? [];
+
+    if (motivoPrejuizoSelecionado) {
+      tipoDetalhe = 'MOTIVO';
+      rotuloDetalhe = motivoPrejuizoSelecionado;
+      detalhesDia = linhas.filter((item: RegistroGenerico) =>
+        Number(item.ganho_logistico ?? 0) < 0
+        && (String(item.motivo_prejuizo_logistico ?? '').trim() || 'Sem motivo informado') === motivoPrejuizoSelecionado
+      );
+    } else if (transportadoraGanhoSelecionada) {
+      tipoDetalhe = 'TRANSPORTADORA';
+      rotuloDetalhe = transportadoraGanhoSelecionada;
+      detalhesDia = linhas.filter((item: RegistroGenerico) =>
+        String(item.transportadora_escolhida ?? 'Sem transportadora') === transportadoraGanhoSelecionada
+      );
+    }
+
+    return {
+      linhas,
+      totalGanho,
+      totalPrejuizo,
+      saldo: totalGanho - totalPrejuizo,
+      percentualGanho,
+      percentualPrejuizo,
+      dias,
+      transportadoras,
+      motivosPrejuizo,
+      diaSelecionado,
+      tipoDetalhe,
+      rotuloDetalhe,
+      detalhesDia
+    };
+  }, [pedidos, diaGanhoSelecionado, somentePrejuizoLogistico, motivoPrejuizoSelecionado, transportadoraGanhoSelecionada]);
+
+  async function abrirDetalheDashboard(cotacaoId: string) {
+    const detalhe = await obterCotacao(cotacaoId);
+    setDetalheDashboard(normalizarDetalheCotacao(detalhe));
+  }
+
+  async function salvarMotivoGanhoLogistico(cotacaoId: string, motivoId: string) {
+    const motivoSelecionado = motivosPrejuizoLogistico.find((item) => String(item.id) === String(motivoId));
+    await salvarMotivoPrejuizoCotacao(cotacaoId, {
+      motivo_id: motivoId ? Number(motivoId) : null,
+      motivo_descricao: motivoSelecionado?.descricao ?? ''
+    });
+
+    setIndicadores((atual: Record<string, any>) => ({
+      ...atual,
+      itens: Array.isArray(atual.itens)
+        ? atual.itens.map((item: RegistroGenerico) => String(item.cotacao_id) === cotacaoId
+          ? {
+              ...item,
+              motivo_prejuizo_logistico_id: motivoId ? Number(motivoId) : null,
+              motivo_prejuizo_logistico: motivoSelecionado?.descricao ?? ''
+            }
+          : item)
+        : []
+    }));
+
+    const proximo = { ...motivosGanhoLogistico, [cotacaoId]: motivoId };
+    setMotivosGanhoLogistico(proximo);
+    localStorage.setItem('controlSHubMotivosGanhoLogistico', JSON.stringify(proximo));
+  }
+
+  function exportarCsvGanhoLogistico() {
+    const linhas = [
+      [
+        'Pedido',
+        'Chave',
+        'Cliente',
+        'Destino',
+        'Data cotacao',
+        'Automatica',
+        'Escolhida',
+        'Transportadora',
+        'Ganho/Perda',
+        '% Ganho/Perda',
+        'Observacao transportadora',
+        'Motivo da perda'
+      ].join(';'),
+      ...ganhoLogistico.linhas.map((item: RegistroGenerico) => [
+        item.numero_pedido,
+        item.codigo_chave,
+        item.cliente,
+        `${String(item.cep_destino ?? '')} ${String(item.cidade ?? '')}/${String(item.uf ?? '')}`.trim(),
+        item.data_cotacao,
+        Number(item.valor_cotacao_automatica ?? 0).toFixed(2).replace('.', ','),
+        Number(item.valor_transportadora_escolhida ?? 0).toFixed(2).replace('.', ','),
+        item.transportadora_escolhida,
+        Number(item.ganho_logistico ?? 0).toFixed(2).replace('.', ','),
+        (Number(item.valor_cotacao_automatica ?? 0) > 0 ? (Number(item.ganho_logistico ?? 0) / Number(item.valor_cotacao_automatica ?? 0)) * 100 : 0).toFixed(2).replace('.', ','),
+        String(item.observacao_transportadora ?? item.observacao ?? '').replace(/[\r\n;]+/g, ' '),
+        String(item.motivo_prejuizo_logistico ?? '').replace(/[\r\n;]+/g, ' ')
+      ].join(';'))
+    ].join('\n');
+
+    const blob = new Blob([linhas], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dashboard_ganho_logistico_${obterDataIso(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section>
       <div className="barraAcoesTela">
@@ -1021,6 +1232,12 @@ function Dashboard() {
         <label className="toggleLinha"><input type="checkbox" checked={somenteDivergenciaValor} onChange={(evento) => setSomenteDivergenciaValor(evento.target.checked)} />Divergência de valor</label>
         <label className="toggleLinha"><input type="checkbox" checked={somenteDivergenciaPrazo} onChange={(evento) => setSomenteDivergenciaPrazo(evento.target.checked)} />Divergência de prazo</label>
       </div>
+      <nav className="abasCotacao abasDashboard">
+        <button className={abaDashboard === 'GERAL' ? 'active' : ''} onClick={() => setAbaDashboard('GERAL')}>Visão Geral</button>
+        <button className={abaDashboard === 'GANHO_LOGISTICO' ? 'active' : ''} onClick={() => setAbaDashboard('GANHO_LOGISTICO')}>Análise de Ganho Logístico</button>
+      </nav>
+      {abaDashboard === 'GERAL' && (
+        <>
       <div className="metrics metricsDashboardExecutivo">
         <article><span>Total de pedidos cotados</span><strong>{formatarNumero(dashboard.totalPedidos)}</strong></article>
         <article><span>Valor total dos pedidos</span><strong>{formatarMoeda(dashboard.valorTotalPedidos)}</strong></article>
@@ -1189,6 +1406,253 @@ function Dashboard() {
           <button className="ghost" disabled={paginaAnaliseCorrigida >= totalPaginasAnalisePedido} onClick={() => setPaginaAnalisePedido((atual) => Math.min(totalPaginasAnalisePedido, atual + 1))}>Próxima</button>
         </div>
       </div>
+        </>
+      )}
+      {abaDashboard === 'GANHO_LOGISTICO' && (
+        <section className="ganhoLogisticoPainel">
+          <div className="linhaFiltroGanhoLogistico">
+            <label className="toggleLinha">
+              <input
+                type="checkbox"
+                checked={somentePrejuizoLogistico}
+                onChange={(evento) => setSomentePrejuizoLogistico(evento.target.checked)}
+              />
+              Somente com prejuízo
+            </label>
+            <button className="ghost" onClick={exportarCsvGanhoLogistico}>Exportar Excel</button>
+          </div>
+          <div className="metrics metricsDashboardExecutivo">
+            <article><span>Total comparado</span><strong>{formatarNumero(ganhoLogistico.linhas.length)}</strong></article>
+            <article><span>Ganho logístico</span><strong className="economiaPositiva">{formatarMoeda(ganhoLogistico.totalGanho)}</strong></article>
+            <article><span>Perda logística</span><strong className="economiaNegativa">{formatarMoeda(ganhoLogistico.totalPrejuizo)}</strong></article>
+            <article><span>Saldo logístico</span><strong className={ganhoLogistico.saldo >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>{formatarMoeda(ganhoLogistico.saldo)}</strong></article>
+          </div>
+          <div className="dashboardExecutivoGrid">
+            <div className="rankingPainel dashboardPainel">
+              <span>Distribuição ganho x perda</span>
+              <div
+                className="graficoPizzaLogistico"
+                style={{
+                  background: `conic-gradient(#22c55e 0 ${ganhoLogistico.percentualGanho}%, #ef4444 ${ganhoLogistico.percentualGanho}% 100%)`
+                }}
+              >
+                <strong>{formatarPercentual(ganhoLogistico.percentualGanho)}</strong>
+                <small>ganho</small>
+              </div>
+              <p><strong className="economiaPositiva">{formatarPercentual(ganhoLogistico.percentualGanho)}</strong> de ganho e <strong className="economiaNegativa">{formatarPercentual(ganhoLogistico.percentualPrejuizo)}</strong> de perda sobre os pedidos comparados.</p>
+            </div>
+            <div className="rankingPainel dashboardPainel">
+              <span>Ganho por dia</span>
+              {ganhoLogistico.dias.length === 0 && <p>Nenhum pedido com automática e transportadora escolhida nos filtros atuais.</p>}
+              {ganhoLogistico.dias.map((item) => (
+                <button
+                  type="button"
+                  className={!motivoPrejuizoSelecionado && !transportadoraGanhoSelecionada && ganhoLogistico.diaSelecionado === item.dia ? 'linhaGanhoDia ativo' : 'linhaGanhoDia'}
+                  key={item.dia}
+                  onClick={() => {
+                    setDiaGanhoSelecionado(item.dia);
+                    setMotivoPrejuizoSelecionado('');
+                    setTransportadoraGanhoSelecionada('');
+                  }}
+                >
+                  <span>{formatarDataBrasileira(item.dia)}</span>
+                  <strong className={item.saldo >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>{formatarMoeda(item.saldo)}</strong>
+                  <small>{item.total} pedido(s)</small>
+                </button>
+              ))}
+            </div>
+            <div className="rankingPainel dashboardPainel">
+              <div className="cabecalhoMotivosPrejuizo">
+                <span>Ganho por transportadora</span>
+                <button
+                  type="button"
+                  className={transportadoraGanhoSelecionada ? 'botaoMini' : 'botaoMini ativo'}
+                  onClick={() => setTransportadoraGanhoSelecionada('')}
+                >
+                  Todos
+                </button>
+              </div>
+              {ganhoLogistico.transportadoras.length === 0 && <p>Nenhuma transportadora comparada no período.</p>}
+              {ganhoLogistico.transportadoras.slice(0, 10).map((item) => {
+                const maiorSaldo = Math.max(1, ...ganhoLogistico.transportadoras.map((linha) => Math.abs(linha.saldo)));
+                const ativo = transportadoraGanhoSelecionada === item.nome;
+                return (
+                  <button
+                    type="button"
+                    className={ativo ? 'barraDashboard ganhoTransportadora ativo' : 'barraDashboard ganhoTransportadora'}
+                    key={item.nome}
+                    onClick={() => {
+                      setTransportadoraGanhoSelecionada(ativo ? '' : item.nome);
+                      setMotivoPrejuizoSelecionado('');
+                      if (!ativo) {
+                        setDiaGanhoSelecionado('');
+                      }
+                    }}
+                    title="Clique para ver os pedidos desta transportadora"
+                  >
+                    <strong>{item.nome}</strong>
+                    <span style={{ width: `${Math.max(8, (Math.abs(item.saldo) / maiorSaldo) * 100)}%` }} />
+                    <small className={item.saldo >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>{formatarMoeda(item.saldo)} · {item.total} pedido(s)</small>
+                    <small className="resumoGanhoTransportadora">
+                      <b className="economiaPositiva">Ganho {formatarMoeda(item.ganho)}</b>
+                      <b className="economiaNegativa">Perda {formatarMoeda(item.prejuizo)}</b>
+                    </small>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="rankingPainel dashboardPainel painelMotivosPrejuizo">
+              <div className="cabecalhoMotivosPrejuizo">
+                <span>Prejuízo por motivo</span>
+                <button
+                  type="button"
+                  className={motivoPrejuizoSelecionado || transportadoraGanhoSelecionada ? 'botaoMini' : 'botaoMini ativo'}
+                  onClick={() => {
+                    setMotivoPrejuizoSelecionado('');
+                    setTransportadoraGanhoSelecionada('');
+                  }}
+                >
+                  Todos
+                </button>
+              </div>
+              {ganhoLogistico.motivosPrejuizo.length === 0 && <p>Nenhum prejuízo com motivo nos filtros atuais.</p>}
+              {ganhoLogistico.motivosPrejuizo.map((item) => {
+                const maiorValor = Math.max(1, ...ganhoLogistico.motivosPrejuizo.map((linha) => Number(linha.valor ?? 0)));
+                const ativo = motivoPrejuizoSelecionado === item.motivo;
+                return (
+                  <button
+                    type="button"
+                    className={ativo ? 'linhaMotivoPrejuizo ativo' : 'linhaMotivoPrejuizo'}
+                    key={item.motivo}
+                    onClick={() => {
+                      setMotivoPrejuizoSelecionado(ativo ? '' : item.motivo);
+                      setTransportadoraGanhoSelecionada('');
+                      if (!ativo) {
+                        setDiaGanhoSelecionado('');
+                      }
+                    }}
+                    title="Clique para filtrar os pedidos por este motivo"
+                  >
+                    <div>
+                      <strong>{item.motivo}</strong>
+                      <small>{item.total} pedido(s)</small>
+                    </div>
+                    <span>
+                      <i style={{ width: `${Math.max(5, (Number(item.valor ?? 0) / maiorValor) * 100)}%` }} />
+                    </span>
+                    <b>{formatarMoeda(item.valor)}</b>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="rankingPainel dashboardPainel dashboardPainelLargo">
+            <div className="cabecalhoTabelaDashboard">
+              <span>
+                {ganhoLogistico.tipoDetalhe === 'MOTIVO'
+                  ? `Pedidos com motivo: ${ganhoLogistico.rotuloDetalhe}`
+                  : ganhoLogistico.tipoDetalhe === 'TRANSPORTADORA'
+                    ? `Pedidos da transportadora: ${ganhoLogistico.rotuloDetalhe}`
+                    : `Detalhe do dia ${ganhoLogistico.diaSelecionado ? formatarDataBrasileira(ganhoLogistico.diaSelecionado) : '-'}`}
+              </span>
+              <small>
+                {ganhoLogistico.detalhesDia.length} pedido(s)
+                {ganhoLogistico.tipoDetalhe === 'MOTIVO' ? ' · motivo selecionado' : ''}
+                {ganhoLogistico.tipoDetalhe === 'TRANSPORTADORA' ? ' · transportadora selecionada' : ''}
+              </small>
+            </div>
+            <div className="tabelaWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Pedido</th>
+                    <th>Chave</th>
+                    <th>Ação</th>
+                    <th>Data cotação</th>
+                    <th>Cliente</th>
+                    <th>Destino</th>
+                    <th>Automática</th>
+                    <th>Escolhida</th>
+                    <th>Transportadora</th>
+                    <th>Ganho/Perda</th>
+                    <th>% Ganho/Perda</th>
+                    <th>Observação transportadora</th>
+                    <th>Motivo da perda</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ganhoLogistico.detalhesDia.map((item: RegistroGenerico) => {
+                    const ganho = Number(item.ganho_logistico ?? 0);
+                    const percentualGanho = Number(item.valor_cotacao_automatica ?? 0) > 0
+                      ? (ganho / Number(item.valor_cotacao_automatica ?? 0)) * 100
+                      : 0;
+                    const cotacaoId = String(item.cotacao_id ?? `${item.numero_pedido}-${item.codigo_chave}`);
+                    const motivoSelecionado = String(item.motivo_prejuizo_logistico_id ?? motivosGanhoLogistico[cotacaoId] ?? '');
+                    return (
+                      <tr key={cotacaoId}>
+                        <td>{String(item.numero_pedido ?? '-')}</td>
+                        <td
+                          className="celulaChaveClicavel"
+                          title="Duplo clique para abrir o detalhe"
+                          onDoubleClick={() => abrirDetalheDashboard(cotacaoId)}
+                        >
+                          {String(item.codigo_chave ?? item.chave ?? '-')}
+                        </td>
+                        <td><button className="botaoMini" onClick={() => abrirDetalheDashboard(cotacaoId)}>Detalhe</button></td>
+                        <td>{formatarDataHoraBrasileira(item.data_cotacao)}</td>
+                        <td>{String(item.cliente ?? '-')}</td>
+                        <td>
+                          <strong>{String(item.cep_destino ?? '-')}</strong>
+                          <small className="destinoTabelaGanho">{String(item.cidade ?? '-')}/{String(item.uf ?? '-')}</small>
+                        </td>
+                        <td>{formatarMoeda(item.valor_cotacao_automatica)}</td>
+                        <td>{formatarMoeda(item.valor_transportadora_escolhida)}</td>
+                        <td>{String(item.transportadora_escolhida ?? '-')}</td>
+                        <td className={ganho >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>{formatarMoeda(ganho)}</td>
+                        <td className={ganho >= 0 ? 'economiaPositiva' : 'economiaNegativa'}>{formatarPercentual(percentualGanho)}</td>
+                        <td>{String(item.observacao_transportadora ?? item.observacao ?? '-')}</td>
+                        <td>
+                          {ganho < 0 ? (
+                            <select
+                              className="inputMotivoGanho"
+                              value={motivoSelecionado}
+                              onChange={(evento) => salvarMotivoGanhoLogistico(cotacaoId, evento.target.value)}
+                            >
+                              <option value="">{item.motivo_prejuizo_logistico ? String(item.motivo_prejuizo_logistico) : 'Selecionar motivo'}</option>
+                              {motivosPrejuizoLogistico.filter((motivo) => motivo.ativo !== false).map((motivo) => (
+                                <option key={String(motivo.id)} value={String(motivo.id)}>{String(motivo.descricao)}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="pillDivergencia ok">Ganho</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {ganhoLogistico.detalhesDia.length === 0 && (
+                    <tr><td colSpan={13}>Nenhum pedido encontrado para o filtro selecionado.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+      <PainelContextual
+        aberto={Boolean(detalheDashboard)}
+        titulo={detalheDashboard ? `${String(detalheDashboard.cotacao.tipo_documento ?? 'PEDIDO')} ${String(detalheDashboard.cotacao.numero_documento ?? '')}` : 'Detalhe da cotação'}
+        subtitulo={detalheDashboard ? `Chave ${String(detalheDashboard.cotacao.codigo_chave ?? '-')} · ${String(detalheDashboard.cotacao.nome_destinatario ?? '-')}` : undefined}
+        largura="amplo"
+        aoFechar={() => setDetalheDashboard(null)}
+      >
+        {detalheDashboard && <DetalheCotacaoConteudo detalhe={detalheDashboard} usuario={null} aoAtualizar={async () => {
+          const cotacaoId = String((detalheDashboard.cotacao as any).cotacao_id ?? `${String(detalheDashboard.cotacao.empresa_id)}|${String(detalheDashboard.cotacao.tipo_documento)}|${String(detalheDashboard.cotacao.numero_documento)}|${String(detalheDashboard.cotacao.codigo_chave)}`);
+          const detalheAtualizado = await obterCotacao(cotacaoId);
+          setDetalheDashboard(normalizarDetalheCotacao(detalheAtualizado));
+          await carregarDashboard();
+        }} />}
+      </PainelContextual>
       <PainelContextual
         aberto={documentacaoAberta}
         titulo="Documentação do Dashboard"
@@ -1265,6 +1729,7 @@ function KanbanCotacoes({
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
   const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
+  const [cteDiferenteEscolhidoFiltro, setCteDiferenteEscolhidoFiltro] = useState(false);
   const [somentePendentes, setSomentePendentes] = useState(true);
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     const salvas = localStorage.getItem('controlSHubKanbanEtapas');
@@ -1277,7 +1742,14 @@ function KanbanCotacoes({
   });
 
   async function carregarKanban() {
-    await listarKanbanCotacoes({ data_inicial: dataInicial, data_final: dataFinal, faturado: faturadoFiltro || undefined, multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined, fluxo_logistico: fluxoLogisticoFiltro || undefined })
+    await listarKanbanCotacoes({
+      data_inicial: dataInicial,
+      data_final: dataFinal,
+      faturado: faturadoFiltro || undefined,
+      multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
+      fluxo_logistico: fluxoLogisticoFiltro || undefined,
+      cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined
+    })
       .then(setLinhas)
       .catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.'));
   }
@@ -1433,15 +1905,19 @@ function KanbanCotacoes({
           <input type="checkbox" checked={multiplasCotacoesFiltro} onChange={(evento) => setMultiplasCotacoesFiltro(evento.target.checked)} />
           Mais de uma cotação
         </label>
+        <label className="toggleLinha compacto" title="Mostra somente cotações com valor escolhido maior que zero e valor CT-e diferente do valor escolhido.">
+          <input type="checkbox" checked={cteDiferenteEscolhidoFiltro} onChange={(evento) => setCteDiferenteEscolhidoFiltro(evento.target.checked)} />
+          CT-e difere
+        </label>
         <select value={fluxoLogisticoFiltro} onChange={(evento) => setFluxoLogisticoFiltro(evento.target.value)} title="Filtra cotações conforme o lote de fluxo logístico do pedido.">
           <option value="">Fluxo: todos</option>
           <option value="SOMENTE">Somente com fluxo</option>
           <option value="SEM_PEDIDO">Pedidos sem fluxo</option>
         </select>
-        <select value={faturadoFiltro} onChange={(evento) => setFaturadoFiltro(evento.target.value)}>
-          <option value="">Faturamento: todos</option>
-          <option value="SOMENTE">Somente faturados</option>
-          <option value="EXCETO">Exceto faturados</option>
+        <select className="selectFiltroCompacto" value={faturadoFiltro} onChange={(evento) => setFaturadoFiltro(evento.target.value)} title="Filtra o Kanban por cotações faturadas ou não faturadas.">
+          <option value="">Todos</option>
+          <option value="SOMENTE">Faturados</option>
+          <option value="EXCETO">Não faturados</option>
         </select>
         <button className="ghost" onClick={carregarKanban}>Filtrar</button>
       </div>
@@ -1513,7 +1989,16 @@ function KanbanCotacoes({
               <small>Pedido: {formatarMoeda(card.valor_frete_pedido ?? card.valor_frete_venda ?? 0)} · Prazo pedido: {String(card.prazo_pedido_dias ?? card.prazo_informado_venda_dias ?? 0)} dias</small>
               <b>{String(card.transportadora_vencedora_nome ?? 'Sem vencedora')}</b>
               <small>Menor frete {formatarMoeda(card.menor_frete ?? 0)}</small>
-              <small>Respostas {String(card.total_respostas ?? 0)}/{String(card.total_transportadoras ?? 0)} · SLA vencido {String(card.total_sla_vencido ?? 0)}</small>
+              {Number(card.total_transportadoras ?? 0) > 0 && (
+                <div
+                  className="statusRespostasKanban"
+                  title={`Respondidas: ${String(card.total_respostas ?? 0)}. Pendentes no SLA: ${String(card.total_pendentes_sla ?? 0)}. Fora do SLA: ${String(card.total_sla_vencido ?? 0)}.`}
+                >
+                  {Array.from({ length: Number(card.total_respostas ?? 0) }).map((_, indice) => <span className="respondida" key={`r-${indice}`} />)}
+                  {Array.from({ length: Number(card.total_pendentes_sla ?? 0) }).map((_, indice) => <span className="pendente" key={`p-${indice}`} />)}
+                  {Array.from({ length: Number(card.total_sla_vencido ?? 0) }).map((_, indice) => <span className="vencida" key={`v-${indice}`} />)}
+                </div>
+              )}
               {Number(card.total_transportadoras ?? 0) > Number(card.total_respostas ?? 0) && <em>Pendência externa</em>}
               {String(card.etapa_codigo) === 'EM_ANALISE' && <em>Ação interna: definir vencedor</em>}
               {(card.numeros_nfe || card.numero_nfe_faturada || Number(card.total_nfes ?? 0) > 0 || card.faturado_em) && <em className="tagFaturadoKanban">Faturado</em>}
@@ -2791,6 +3276,7 @@ function AbaCampos({ titulo, cotacao, campos }: { titulo: string; cotacao: Regis
 function AbaTransportadoras({
   titulo,
   cotacao,
+  itens,
   transportadoras,
   pode,
   copiarLink,
@@ -2803,17 +3289,22 @@ function AbaTransportadoras({
 }: {
   titulo: string;
   cotacao: RegistroGenerico;
+  itens?: RegistroGenerico[];
   transportadoras: RegistroGenerico[];
   pode: (codigo: string) => boolean;
   copiarLink: (link?: unknown) => Promise<void>;
   acao: (tipo: 'escolher' | 'link', transportadora: RegistroGenerico) => Promise<void>;
-  editarValorManual: (transportadora: RegistroGenerico) => Promise<void>;
+  editarValorManual: (transportadora: RegistroGenerico, valorManual?: number, prazoManual?: number | null, observacaoManual?: string | null) => Promise<void>;
   registrarObservacaoTimeline: (transportadoraId?: number) => Promise<void>;
   removerTransportadora?: (transportadora: RegistroGenerico) => Promise<void>;
   bloqueioEscolha?: (transportadora: RegistroGenerico) => string | null;
   escolhaBloqueada?: boolean;
 }) {
   const [verTodas, setVerTodas] = useState(false);
+  const [linkLocal, setLinkLocal] = useState<RegistroGenerico | null>(null);
+  const [valorLinkLocal, setValorLinkLocal] = useState('');
+  const [prazoLinkLocal, setPrazoLinkLocal] = useState('');
+  const [observacaoLinkLocal, setObservacaoLinkLocal] = useState('');
   const ordenadas = [...transportadoras].sort(compararValorFreteRanking);
   const exibidas = verTodas ? ordenadas : ordenadas.slice(0, 3);
   const valorPedidoBase = cotacao.valor_frete_pedido ?? cotacao.valor_frete_venda ?? cotacao.valor_solicitado;
@@ -2844,13 +3335,25 @@ function AbaTransportadoras({
               {indice === 0 && Number(transportadora.valor_frete ?? 0) > 0 && <small className="pillDivergencia ok">Melhor oferta</small>}
               {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
               <div className="metadadosRetornoTransportadora">
+                {transportadora.numero_cotacao_transportadora && <small className="numeroCotacaoTransportadora">Nº cotação transportadora: {String(transportadora.numero_cotacao_transportadora)}</small>}
+                {transportadora.observacao && <small className="observacaoTransportadoraDestaque" title={String(transportadora.observacao)}>Observação: {String(transportadora.observacao)}</small>}
                 {transportadora.url_publica && <small className="linkQuebra">Link: {String(transportadora.url_publica)}</small>}
-                {transportadora.numero_cotacao_transportadora && <small>Nº cotação transportadora: {String(transportadora.numero_cotacao_transportadora)}</small>}
-                {transportadora.observacao && <small title={String(transportadora.observacao)}>Observação: {String(transportadora.observacao)}</small>}
               </div>
               <div>
                 {transportadora.url_publica && pode('COPIAR_LINK_COTACAO') && <button className="ghost" onClick={() => copiarLink(transportadora.url_publica)}>Copiar link</button>}
-                {transportadora.url_publica && <button className="ghost" onClick={() => window.open(String(transportadora.url_publica), '_blank')}>Visualizar link</button>}
+                {transportadora.url_publica && (
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setLinkLocal(transportadora);
+                      setValorLinkLocal(String(transportadora.valor_frete ?? '').replace('.', ','));
+                      setPrazoLinkLocal(String(transportadora.prazo_dias ?? ''));
+                      setObservacaoLinkLocal(String(transportadora.observacao ?? ''));
+                    }}
+                  >
+                    Visualizar link
+                  </button>
+                )}
                 {pode('GERAR_TOKEN_COTACAO_FRETE') && <button className="ghost" onClick={() => acao('link', transportadora)}>Gerar novo link</button>}
                 {pode('ALTERAR_COTACAO_MANUAL') && ehCotacaoTransportadora(transportadora) && (
                   <button className="ghost" onClick={() => editarValorManual(transportadora)}>Alterar valor</button>
@@ -2865,6 +3368,118 @@ function AbaTransportadoras({
           );
         })}
       </div>
+      {linkLocal && (
+        <div className="painelContextualOverlay confirmacaoOverlay" role="dialog" aria-modal="true" aria-label="Visualização local do link">
+          <button className="painelContextualFundo" type="button" aria-label="Fechar visualização" onClick={() => setLinkLocal(null)} />
+          <aside className="modalConfirmacao modalLinkLocal">
+            <section className="fichaLinkPrint">
+              <header>
+                <img src={String(cotacao.empresa_logo ?? cotacao.caminho_logo ?? '/brand/logo-s-novo.jpg')} alt="Empresa" />
+                <strong>{String(cotacao.empresa_nome_exibido ?? cotacao.empresa_nome ?? cotacao.emitente ?? cotacao.razao_social ?? 'Empresa')}</strong>
+                <span>Cotação de frete</span>
+              </header>
+              <div className="fichaLinkTitulo">
+                <small>COTAÇÃO DE FRETE</small>
+                <h2>{String(linkLocal.nome_fantasia ?? linkLocal.razao_social ?? 'Transportadora')}</h2>
+                <p>Documento {String(cotacao.numero_documento ?? '-')} · Chave {String(cotacao.codigo_chave ?? '-')}</p>
+              </div>
+              <article className="fichaTransportadoraBox">
+                <strong>{String(linkLocal.nome_fantasia ?? linkLocal.razao_social ?? 'Transportadora')}</strong>
+                <span>{String(cotacao.nome_destinatario ?? '-')} · {String(cotacao.cidade_destino ?? '-')}/{String(cotacao.uf_destino ?? '-')}</span>
+              </article>
+              <div className="fichaLinkGrid">
+                {[
+                  ['Tipo do Documento', cotacao.tipo_documento],
+                  ['Documento', cotacao.numero_documento],
+                  ['Cotação', cotacao.codigo_chave],
+                  ['Emitente', cotacao.emitente ?? cotacao.empresa_nome_exibido ?? cotacao.empresa_nome ?? cotacao.razao_social ?? 'Empresa'],
+                  ['CNPJ Emitente', cotacao.cnpj_emitente ?? cotacao.cnpj_remetente ?? 'Não informado'],
+                  ['Endereço Coleta', cotacao.endereco_coleta ?? 'Não informado'],
+                  ['CEP', cotacao.cep_coleta ?? 'Não informado'],
+                  ['Cidade Coleta', cotacao.cidade_coleta ?? cotacao.loja_destino ?? cotacao.loja_origem ?? 'Não informado'],
+                  ['UF Coleta', cotacao.uf_coleta ?? 'Não informado'],
+                  ['Destinatário', cotacao.nome_destinatario ?? 'Não informado'],
+                  ['CNPJ Destinatário', cotacao.documento_destinatario ?? 'Não informado'],
+                  ['Endereço Destinatário', cotacao.endereco_destinatario ?? 'Não informado'],
+                  ['CEP Destinatário', cotacao.cep_destino ?? 'Não informado'],
+                  ['Cidade Destinatário', cotacao.cidade_destino ?? 'Não informado'],
+                  ['UF', cotacao.uf_destino ?? 'Não informado'],
+                  ['Dest. Pessoa Física', cotacao.destinatario_pessoa_fisica ? 'Sim' : 'Não'],
+                  ['Valor da Mercadoria', formatarMoeda(cotacao.valor_mercadoria ?? 0)],
+                  ['Peso Real', formatarNumero(cotacao.peso_real ?? 0)],
+                  ['Volumes Total', formatarNumero(cotacao.volumes_total ?? 0)],
+                  ['Cubagem Total', formatarNumero(cotacao.cubagem_total ?? 0)],
+                  ['Total do Frete', formatarMoeda(linkLocal.valor_frete ?? 0)],
+                  ['Prazo informado na venda', `${formatarNumero(cotacao.prazo_informado_venda_dias ?? cotacao.prazo_pedido_dias ?? 0)} dias`],
+                  ['Prazo tabela', `${formatarNumero(linkLocal.prazo_dias ?? 0)} dias`],
+                  ['Tomador do Frete', cotacao.tomador_frete ?? cotacao.nome_destinatario ?? 'Não informado']
+                ].map(([rotulo, valor]) => (
+                  <div key={String(rotulo)}>
+                    <small>{String(rotulo)}</small>
+                    <strong>{String(valor ?? 'Não informado')}</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="fichaItensTabela">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Descrição</th>
+                      <th>Quantidade</th>
+                      <th>Cubagem</th>
+                      <th>Largura</th>
+                      <th>Altura</th>
+                      <th>Comprimento</th>
+                      <th>Peso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(itens ?? []).slice(0, 12).map((item, indice) => (
+                      <tr key={`${String(item.codigo_item ?? item.codigo ?? indice)}-${indice}`}>
+                        <td>{String(item.codigo_item ?? item.codigo ?? indice + 1)}</td>
+                        <td>{String(item.descricao_item ?? item.descricao ?? 'Material não informado')}</td>
+                        <td>{formatarNumero(item.quantidade ?? 0)}</td>
+                        <td>{formatarNumero(item.cubagem_por_item ?? item.cubagem ?? 0)}</td>
+                        <td>{formatarNumero(item.largura ?? 0)}</td>
+                        <td>{formatarNumero(item.altura ?? 0)}</td>
+                        <td>{formatarNumero(item.comprimento ?? 0)}</td>
+                        <td>{formatarNumero(item.peso_por_item ?? item.peso ?? 0)}</td>
+                      </tr>
+                    ))}
+                    {(itens ?? []).length === 0 && <tr><td colSpan={8}>Nenhum item encontrado na cotação.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <div className="rodapeLinkLocal">
+              <div className="formCadastro formLinkLocal">
+                <label>Valor manual<input value={valorLinkLocal} onChange={(evento) => setValorLinkLocal(evento.target.value)} placeholder="0,00" /></label>
+                <label>Prazo em dias<input type="number" value={prazoLinkLocal} onChange={(evento) => setPrazoLinkLocal(evento.target.value)} /></label>
+                <label className="campoLargo">Observação<input value={observacaoLinkLocal} onChange={(evento) => setObservacaoLinkLocal(evento.target.value)} /></label>
+              </div>
+              <footer>
+                <button className="ghost" type="button" onClick={() => copiarLink(linkLocal.url_publica)}>Copiar link</button>
+                <button className="ghost" type="button" onClick={() => setLinkLocal(null)}>Fechar</button>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={async () => {
+                    const valor = Number(valorLinkLocal.replace(/\./g, '').replace(',', '.'));
+                    if (!valor || valor <= 0) {
+                      return;
+                    }
+                    await editarValorManual(linkLocal, valor, prazoLinkLocal ? Number(prazoLinkLocal) : null, observacaoLinkLocal || 'Valor informado manualmente pela visualização local do link.');
+                    setLinkLocal(null);
+                  }}
+                >
+                  Atualizar valor manual
+                </button>
+              </footer>
+            </div>
+          </aside>
+        </div>
+      )}
     </section>
   );
 }
@@ -3191,15 +3806,28 @@ function DetalheCotacaoConteudo({
     }
   }
 
-  async function editarValorManualDetalhe(transportadora: RegistroGenerico) {
-    const valor = window.prompt('Informe o novo valor do frete:', String(transportadora.valor_frete ?? ''));
-    if (!valor) {
+  async function editarValorManualDetalhe(transportadora: RegistroGenerico, valorManual?: number, prazoManual?: number | null, observacaoManual?: string | null) {
+    let valorNumero = valorManual;
+    let prazoNumero = prazoManual;
+    let observacao = observacaoManual;
+
+    if (valorNumero === undefined) {
+      const valor = window.prompt('Informe o novo valor do frete:', String(transportadora.valor_frete ?? ''));
+      if (!valor) {
+        return;
+      }
+      valorNumero = Number(valor.replace(/\./g, '').replace(',', '.'));
+      const prazo = window.prompt('Informe o prazo em dias, se houver:', String(transportadora.prazo_dias ?? '')) ?? '';
+      prazoNumero = prazo ? Number(prazo) : null;
+      observacao = window.prompt('Observação da alteração manual:', 'Ajuste manual pelo usuário') ?? '';
+    }
+
+    if (!valorNumero || valorNumero <= 0) {
+      setErroLink('Informe um valor válido para atualizar manualmente.');
       return;
     }
-    const prazo = window.prompt('Informe o prazo em dias, se houver:', String(transportadora.prazo_dias ?? '')) ?? '';
-    const observacao = window.prompt('Observação da alteração manual:', 'Ajuste manual pelo usuário') ?? '';
 
-    await alterarValorFreteManual(String(transportadora.id), Number(valor.replace(',', '.')), observacao, prazo ? Number(prazo) : null);
+    await alterarValorFreteManual(String(transportadora.id), valorNumero, observacao || 'Ajuste manual pelo usuário', prazoNumero ?? null);
     setMensagemLink('Valor/prazo alterado manualmente com rastreabilidade.');
     await aoAtualizar();
   }
@@ -3241,6 +3869,10 @@ function DetalheCotacaoConteudo({
     await aoAtualizar();
   }
 
+  const cotacaoJaEscolhida = Boolean(detalhe.cotacao.transportadora_escolhida_id || detalhe.cotacao.transportadora_escolhida || String(detalhe.cotacao.status ?? '').toUpperCase() === 'TRANSPORTADORA_ESCOLHIDA');
+  const cotacaoFaturada = Boolean(detalhe.cotacao.numeros_nfe || detalhe.cotacao.numero_nfe_faturada || Number(detalhe.cotacao.total_nfes ?? 0) > 0 || detalhe.cotacao.faturado_em);
+  const checklistTrocaTransportadora = cotacaoJaEscolhida && cotacaoFaturada ? String(parametrosEscolha.CHECKLIST_TROCA_TRANSPORTADORA_FATURADA ?? '').trim() : '';
+
   return (
     <section className="detalheCotacao detalheCotacaoContextual">
       <header>
@@ -3278,13 +3910,13 @@ function DetalheCotacaoConteudo({
         ].map((item) => <button key={item.id} className={aba === item.id ? 'active' : ''} onClick={() => setAba(item.id)}>{item.nome}</button>)}
       </nav>
       {aba === 'VENDAS' && <AbaCampos titulo="Vendas" cotacao={detalhe.cotacao} campos={['origem_comercial', 'vendedor_nome', 'data_documento', 'transportadora_pedido_nome', 'valor_frete_pedido', 'prazo_pedido_dias', 'valor_mercadoria', 'nome_destinatario', 'cidade_destino', 'uf_destino']} />}
-      {aba === 'AUTOMATICA' && <AbaTransportadoras titulo="Cotação Automática" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoAutomatica(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} removerTransportadora={removerTransportadoraDetalhe} bloqueioEscolha={obterBloqueioEscolha} escolhaBloqueada={String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO'} />}
+      {aba === 'AUTOMATICA' && <AbaTransportadoras titulo="Cotação Automática" cotacao={detalhe.cotacao} itens={detalhe.itens ?? []} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoAutomatica(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={async () => undefined} registrarObservacaoTimeline={async () => undefined} removerTransportadora={removerTransportadoraDetalhe} bloqueioEscolha={obterBloqueioEscolha} escolhaBloqueada={String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO'} />}
       {aba === 'TRANSPORTADORA' && (
         <>
           <div className="abaAcaoInline">
             <button className="ghost" onClick={() => setSeletorTransportadoraAberto(true)}>+ Vincular transportadora</button>
           </div>
-          <AbaTransportadoras titulo="Cotação Transportadora" cotacao={detalhe.cotacao} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoTransportadora(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={editarValorManualDetalhe} registrarObservacaoTimeline={registrarObservacaoTimelineDetalhe} removerTransportadora={removerTransportadoraDetalhe} bloqueioEscolha={obterBloqueioEscolha} escolhaBloqueada={String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO'} />
+          <AbaTransportadoras titulo="Cotação Transportadora" cotacao={detalhe.cotacao} itens={detalhe.itens ?? []} transportadoras={detalhe.transportadoras.filter((item: any) => ehCotacaoTransportadora(item))} pode={pode} copiarLink={copiarLink} acao={acaoTransportadora} editarValorManual={editarValorManualDetalhe} registrarObservacaoTimeline={registrarObservacaoTimelineDetalhe} removerTransportadora={removerTransportadoraDetalhe} bloqueioEscolha={obterBloqueioEscolha} escolhaBloqueada={String(detalhe.cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO' || String(detalhe.cotacao.etapa_codigo ?? '').toUpperCase() === 'CTE_EMITIDO'} />
         </>
       )}
       {aba === 'APROVADA' && <AbaCampos titulo="Transportadora Escolhida" cotacao={detalhe.cotacao} campos={['transportadora_escolhida', 'valor_frete_final', 'prazo_final_dias', 'motivo_escolha_transportadora_descricao', 'escolhido_em', 'observacao_analista']} />}
@@ -3306,6 +3938,8 @@ function DetalheCotacaoConteudo({
       <ModalConfirmacaoEscolha
         aberto={Boolean(transportadoraConfirmacao)}
         transportadora={transportadoraConfirmacao}
+        mensagem={checklistTrocaTransportadora ? 'Esta cotação já possui transportadora escolhida e faturamento. Confirme somente após revisar o checklist operacional.' : undefined}
+        checklist={checklistTrocaTransportadora}
         erro={erroEscolhaModal}
         aoCancelar={() => {
           setTransportadoraConfirmacao(null);
@@ -3722,6 +4356,27 @@ const colunasPadraoEnvioCotacao: ColunaEnvioCotacao[] = [
   { chave: 'sugestao_cotacao', titulo: 'Sugestão', largura: 96, visivel: true }
 ];
 
+function compararValorOrdenacaoEnvio(valorA: unknown, valorB: unknown, direcao: 'ASC' | 'DESC') {
+  const multiplicador = direcao === 'ASC' ? 1 : -1;
+  const textoA = String(valorA ?? '').trim();
+  const textoB = String(valorB ?? '').trim();
+  const dataA = Date.parse(textoA);
+  const dataB = Date.parse(textoB);
+
+  if (textoA && textoB && Number.isFinite(dataA) && Number.isFinite(dataB)) {
+    return (dataA - dataB) * multiplicador;
+  }
+
+  const numeroA = Number(String(valorA ?? '').replace(/\./g, '').replace(',', '.'));
+  const numeroB = Number(String(valorB ?? '').replace(/\./g, '').replace(',', '.'));
+
+  if (Number.isFinite(numeroA) && Number.isFinite(numeroB) && (textoA !== '' || textoB !== '')) {
+    return (numeroA - numeroB) * multiplicador;
+  }
+
+  return textoA.localeCompare(textoB, 'pt-BR', { numeric: true, sensitivity: 'base' }) * multiplicador;
+}
+
 function EnvioMassaCotacoes() {
   const [pedidos, setPedidos] = useState<RegistroGenerico[]>([]);
   const [selecionados, setSelecionados] = useState<Array<string | number>>([]);
@@ -3748,6 +4403,7 @@ function EnvioMassaCotacoes() {
   const [pagina, setPagina] = useState(1);
   const [limite, setLimite] = useState(15);
   const [colunaArrastadaEnvio, setColunaArrastadaEnvio] = useState('');
+  const [ordenacaoEnvio, setOrdenacaoEnvio] = useState<{ chave: string; direcao: 'ASC' | 'DESC' }>({ chave: 'criado_em', direcao: 'ASC' });
   const [colunasEnvio, setColunasEnvio] = useState<ColunaEnvioCotacao[]>(() => {
     const salvas = localStorage.getItem('controlSHubEnvioColunas');
     if (!salvas) {
@@ -3785,9 +4441,10 @@ function EnvioMassaCotacoes() {
     }
     return true;
   });
-  const totalPaginas = Math.max(1, Math.ceil(pedidosFiltrados.length / limite));
+  const pedidosOrdenados = [...pedidosFiltrados].sort((a: any, b: any) => compararValorOrdenacaoEnvio(a[ordenacaoEnvio.chave], b[ordenacaoEnvio.chave], ordenacaoEnvio.direcao));
+  const totalPaginas = Math.max(1, Math.ceil(pedidosOrdenados.length / limite));
   const paginaCorrigida = Math.min(pagina, totalPaginas);
-  const pedidosPagina = pedidosFiltrados.slice((paginaCorrigida - 1) * limite, paginaCorrigida * limite);
+  const pedidosPagina = pedidosOrdenados.slice((paginaCorrigida - 1) * limite, paginaCorrigida * limite);
   const pedidoSemOfertaBloqueante = (pedido: RegistroGenerico) => Boolean(pedido.sem_oferta_disponivel) && Number(pedido.fornecedores_vinculados ?? 0) <= 0;
 
   useEffect(() => {
@@ -3845,9 +4502,17 @@ function EnvioMassaCotacoes() {
     setColunaArrastadaEnvio('');
   }
 
+  function alternarOrdenacaoEnvio(chave: string) {
+    setOrdenacaoEnvio((atual) => ({
+      chave,
+      direcao: atual.chave === chave && atual.direcao === 'ASC' ? 'DESC' : 'ASC'
+    }));
+    setPagina(1);
+  }
+
   function exportarCsvEnvio() {
     const cabecalho = colunasVisiveis.map((coluna) => coluna.titulo).join(';');
-    const linhas = pedidosFiltrados.map((pedido: any) => colunasVisiveis.map((coluna) => {
+    const linhas = pedidosOrdenados.map((pedido: any) => colunasVisiveis.map((coluna) => {
       const valor = pedido[coluna.chave];
       if (typeof valor === 'boolean') {
         return valor ? 'Sim' : 'Nao';
@@ -3904,9 +4569,28 @@ function EnvioMassaCotacoes() {
     }
     const retorno = await prepararEnvioMassa(selecionados);
     const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
+    const dadosFiltradosPorEnvio = dados.filter((item: any) => {
+      if (envio === 'NAO_ENVIADOS') {
+        return !item.ja_enviado;
+      }
+      if (envio === 'JA_ENVIADOS') {
+        return Boolean(item.ja_enviado);
+      }
+      return true;
+    });
     const filtrados = somenteTop3
-      ? dados.filter((item: any) => Number(item.ranking_frete ?? item.posicao_cotacao ?? 999) <= 3)
-      : dados;
+      ? dadosFiltradosPorEnvio.filter((item: any) => Number(item.ranking_frete ?? item.posicao_cotacao ?? 999) <= 3)
+      : dadosFiltradosPorEnvio;
+    if (!filtrados.length) {
+      setPreparacao([]);
+      setEmailsPorTransportadora({});
+      setErro(envio === 'NAO_ENVIADOS'
+        ? 'Nenhum item inédito encontrado para as cotações selecionadas.'
+        : envio === 'JA_ENVIADOS'
+          ? 'Nenhum item já enviado encontrado para as cotações selecionadas.'
+          : 'Nenhum item encontrado para envio nas cotações selecionadas.');
+      return;
+    }
     setPreparacao(filtrados);
     setEmailsPorTransportadora(criarEmailsPadraoPorTransportadora(filtrados));
   }
@@ -4268,7 +4952,18 @@ function EnvioMassaCotacoes() {
           <thead>
             <tr>
               <th className="colunaSelecao"></th>
-              {colunasVisiveis.map((coluna) => <th key={coluna.chave} style={{ minWidth: coluna.largura, width: coluna.largura }}>{coluna.titulo}</th>)}
+              {colunasVisiveis.map((coluna) => (
+                <th
+                  className="cabecalhoOrdenavel"
+                  key={coluna.chave}
+                  style={{ minWidth: coluna.largura, width: coluna.largura }}
+                  onClick={() => alternarOrdenacaoEnvio(coluna.chave)}
+                  title="Clique para ordenar esta coluna."
+                >
+                  <span>{coluna.titulo}</span>
+                  {ordenacaoEnvio.chave === coluna.chave && <b>{ordenacaoEnvio.direcao === 'ASC' ? '▲' : '▼'}</b>}
+                </th>
+              ))}
               <th className="colunaAcoes">Ação</th>
             </tr>
           </thead>
@@ -4609,7 +5304,7 @@ function TransportadorasOperacional() {
         titulo="Transportadoras"
         subtitulo="Transportadoras disponíveis para cotação automática e retorno público por link."
         carregar={carregar}
-        colunas={['codigo_interno', 'nome_fantasia', 'documento', 'email', 'aceita_cotacao_externa', 'ativa']}
+        colunas={['codigo_interno', 'nome_fantasia', 'documento', 'email', 'aceita_cotacao_externa', 'escolher_automaticamente_se_pedido', 'ativa']}
         salvar={salvarTransportadora}
         excluir={excluirTransportadora}
         camposFormulario={[
@@ -4621,6 +5316,7 @@ function TransportadorasOperacional() {
           { nome: 'telefone', rotulo: 'Telefone' },
           { nome: 'responsavel', rotulo: 'Responsável' },
           { nome: 'aceita_cotacao_externa', rotulo: 'Aceita cotação externa', tipo: 'checkbox' },
+          { nome: 'escolher_automaticamente_se_pedido', rotulo: 'Escolher automaticamente se estiver no pedido', tipo: 'checkbox' },
           { nome: 'apresenta_menor_cotacao', rotulo: 'Mostrar menor cotação', tipo: 'checkbox' },
           { nome: 'apresenta_cubagem', rotulo: 'Mostrar cubagem', tipo: 'checkbox' },
           { nome: 'apresenta_peso', rotulo: 'Mostrar peso', tipo: 'checkbox' },
@@ -4785,7 +5481,9 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
   const [parametros, setParametros] = useState<Record<string, string>>({});
   const [origensCotacao, setOrigensCotacao] = useState<RegistroGenerico[]>([]);
   const [motivosEscolha, setMotivosEscolha] = useState<RegistroGenerico[]>([]);
+  const [motivosPrejuizo, setMotivosPrejuizo] = useState<RegistroGenerico[]>([]);
   const [novoMotivo, setNovoMotivo] = useState('');
+  const [novoMotivoPrejuizo, setNovoMotivoPrejuizo] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
 
@@ -4814,6 +5512,7 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
       .catch(() => setParametros({}));
     listarOrigensComerciaisCotacao().then(setOrigensCotacao).catch(() => setOrigensCotacao([]));
     listarMotivosEscolhaTransportadora().then(setMotivosEscolha).catch(() => setMotivosEscolha([]));
+    listarMotivosPrejuizoLogistico().then(setMotivosPrejuizo).catch(() => setMotivosPrejuizo([]));
   }, []);
 
   function alternarOrigemObrigatoria(origem: string) {
@@ -4836,6 +5535,19 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
     setNovoMotivo('');
     setMotivosEscolha(await listarMotivosEscolhaTransportadora());
     setMensagem('Motivo cadastrado com sucesso.');
+  }
+
+  async function cadastrarMotivoPrejuizo() {
+    if (!novoMotivoPrejuizo.trim()) {
+      return;
+    }
+    await salvarMotivoPrejuizoLogistico({
+      descricao: novoMotivoPrejuizo.trim(),
+      ativo: true
+    });
+    setNovoMotivoPrejuizo('');
+    setMotivosPrejuizo(await listarMotivosPrejuizoLogistico());
+    setMensagem('Motivo de prejuízo logístico cadastrado com sucesso.');
   }
 
   function carregarImagem(campo: 'caminho_logo' | 'caminho_imagem_fundo', arquivo?: File) {
@@ -4869,7 +5581,8 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         { chave: 'HORA_CORTE_DIARIA_COTACAO', valor: parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00' },
         { chave: 'DIAS_EXPEDIENTE_COTACAO', valor: parametros.DIAS_EXPEDIENTE_COTACAO ?? 'SEG,TER,QUA,QUI,SEX,SAB' },
         { chave: 'ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO', valor: parametros.ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO ?? '' },
-        { chave: 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID', valor: parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? '' }
+        { chave: 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID', valor: parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? '' },
+        { chave: 'CHECKLIST_TROCA_TRANSPORTADORA_FATURADA', valor: parametros.CHECKLIST_TROCA_TRANSPORTADORA_FATURADA ?? '' }
       ]);
       setMensagem('Configurações salvas com sucesso.');
     } catch (error) {
@@ -4966,6 +5679,15 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
             {motivosEscolha.filter((item) => item.ativo !== false).map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.descricao)}</option>)}
           </select>
         </label>
+        <label className="campoLargo">
+          Checklist ao trocar transportadora escolhida faturada
+          <small>Texto exibido quando o pedido já tem transportadora escolhida e faturamento. Pode usar emoji.</small>
+          <textarea
+            value={parametros.CHECKLIST_TROCA_TRANSPORTADORA_FATURADA ?? ''}
+            onChange={(evento) => setParametros({ ...parametros, CHECKLIST_TROCA_TRANSPORTADORA_FATURADA: evento.target.value })}
+            placeholder="Ex.: ✅ Avisar faturamento&#10;✅ Revisar ERP&#10;✅ Conferir CT-e e logística"
+          />
+        </label>
         <button className="primary">Salvar configuracoes</button>
       </form>
       <section className="painelSecundarioCadastro">
@@ -4983,6 +5705,23 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         <div className="chipsSelecao">
           {motivosEscolha.map((item) => <span className={item.ativo === false ? 'chipLeitura inativo' : 'chipLeitura'} key={String(item.id)}>{String(item.descricao)}</span>)}
           {motivosEscolha.length === 0 && <span className="chipLeitura inativo">Nenhum motivo cadastrado</span>}
+        </div>
+      </section>
+      <section className="painelSecundarioCadastro">
+        <header>
+          <div>
+            <span>Cadastro auxiliar</span>
+            <h3>Motivos de prejuízo logístico</h3>
+            <p>Use quando a transportadora escolhida ficar mais cara que a cotação automática.</p>
+          </div>
+        </header>
+        <div className="linhaCadastroRapido">
+          <input placeholder="Novo motivo de prejuízo" value={novoMotivoPrejuizo} onChange={(evento) => setNovoMotivoPrejuizo(evento.target.value)} />
+          <button type="button" className="ghost" onClick={cadastrarMotivoPrejuizo}>Cadastrar motivo</button>
+        </div>
+        <div className="chipsSelecao">
+          {motivosPrejuizo.map((item) => <span className={item.ativo === false ? 'chipLeitura inativo' : 'chipLeitura'} key={String(item.id)}>{String(item.descricao)}</span>)}
+          {motivosPrejuizo.length === 0 && <span className="chipLeitura inativo">Nenhum motivo cadastrado</span>}
         </div>
       </section>
     </section>
@@ -5283,9 +6022,9 @@ export function App() {
         {tela === 'pimConjuntos' && <ProdutosPim modo="conjuntos" />}
         {tela === 'pimSkus' && <ProdutosPim modo="skus" />}
         {tela === 'pimComponentes' && <PainelPimGenerico tela={tela} titulo="Componentes" subtitulo="Cadastre evaporadoras, condensadoras, controles, kits e acessórios reutilizáveis." />}
-        {tela === 'pimAtributos' && <PainelPimGenerico tela={tela} titulo="Atributos" subtitulo="Motor de atributos dinâmicos por escopo, grupo, tipo e validação." />}
+        {tela === 'pimAtributos' && <AtributosPim />}
         {tela === 'pimCanais' && <PainelPimGenerico tela={tela} titulo="Canais / Marketplaces" subtitulo="Categorias, regras, mapeamentos e score mínimo por canal." />}
-        {tela === 'pimImportacao' && <PainelPimGenerico tela={tela} titulo="Importação" subtitulo="Upload, de-para, pré-validação, logs e entrada como rascunho." />}
+        {tela === 'pimImportacao' && <ImportacaoPim />}
         {tela === 'pimAssets' && <PainelPimGenerico tela={tela} titulo="Imagens e Documentos" subtitulo="Biblioteca de imagens, manuais, fichas técnicas, vídeos e URLs." />}
         {tela === 'pimWorkflows' && <PainelPimGenerico tela={tela} titulo="Workflows" subtitulo="Fluxos de revisão, aprovação, publicação e arquivamento." />}
         {tela === 'pimAprovacoes' && <PainelPimGenerico tela={tela} titulo="Aprovações" subtitulo="Pendências de aprovação, comparação e histórico de decisão." />}

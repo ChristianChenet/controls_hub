@@ -20,6 +20,7 @@ import {
   listarPermissoesPerfil,
   listarParametrosSistema,
   listarMotivosEscolhaTransportadora,
+  listarMotivosPrejuizoLogistico,
   listarOrigensComerciaisCotacao,
   listarTelasFonte,
   listarUsuariosAdministracao,
@@ -29,6 +30,8 @@ import {
   salvarEmpresa,
   salvarParametroSistema,
   salvarMotivoEscolhaTransportadora,
+  salvarMotivoPrejuizoCotacao,
+  salvarMotivoPrejuizoLogistico,
   salvarPerfil,
   salvarPreferenciasInterfaceUsuario,
   salvarPermissoesPerfil,
@@ -87,17 +90,24 @@ import {
 } from './modulos/cotacao_frete/repositorioEnvioMassa.js';
 import {
   alterarStatusProduto,
+  consultarSqlServerPim,
   duplicarProduto,
+  executarCargaSqlServerPim,
+  excluirAtributo,
+  excluirMapeamentoAtributoCanal,
   excluirProduto,
   exportarProdutos,
+  listarCargasSqlServerPim,
   listarAssets,
   listarAtributos,
   listarAuditoriaPim,
   listarCanais,
   listarComponentes,
   listarConfiguracoesModulo,
+  listarConexoesSqlServerPim,
   listarGruposAtributos,
   listarImportacoes,
+  listarMapeamentosAtributosCanais,
   listarProdutos,
   listarScoreCanais,
   listarWorkflowAprovacoes,
@@ -110,7 +120,10 @@ import {
   salvarCanal,
   salvarComponente,
   salvarConfiguracoesModulo,
-  salvarProduto
+  salvarConexaoSqlServerPim,
+  salvarMapeamentoAtributoCanal,
+  salvarProduto,
+  testarConexaoSqlServerPim
 } from './modulos/cadastro_produto_central/repositorioCadastroProdutoCentral.js';
 import { exigirSuperadmin, obterUsuarioSessao } from './seguranca/sessao.js';
 import { enviarEmail, testarConfiguracaoEmail } from './servicos/email.js';
@@ -225,9 +238,22 @@ export async function criarApp() {
       return reply.status(401).send(falha('CREDENCIAIS_INVALIDAS', 'E-mail ou senha invalidos.'));
     }
 
-    const empresas = await listarEmpresasDoUsuario(usuario.id);
+    let empresas: any[] = [];
+    let permissoes: string[] = [];
+    try {
+      empresas = await listarEmpresasDoUsuario(usuario.id);
+    } catch (error) {
+      request.log.error({ error }, 'Falha ao listar empresas do usuario no login.');
+      return reply.status(500).send(falha('EMPRESAS_USUARIO_INDISPONIVEIS', 'Nao foi possivel carregar as empresas do usuario. Verifique a estrutura do banco.'));
+    }
+
     const empresaPadrao = empresas.find((empresa: any) => empresa.padrao) ?? empresas[0];
-    const permissoes = empresaPadrao?.id ? await listarCodigosPermissaoUsuario(usuario.id, empresaPadrao.id) : [];
+    try {
+      permissoes = empresaPadrao?.id ? await listarCodigosPermissaoUsuario(usuario.id, empresaPadrao.id) : [];
+    } catch (error) {
+      request.log.error({ error }, 'Falha ao listar permissoes do usuario no login.');
+      permissoes = [];
+    }
     const token = app.jwt.sign({
       id: usuario.id,
       nome: usuario.nome,
@@ -691,6 +717,70 @@ export async function criarApp() {
     return sucesso(motivo);
   });
 
+  app.get('/api/admin/motivos-prejuizo-logistico', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      return reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+    }
+
+    return sucesso(await listarMotivosPrejuizoLogistico());
+  });
+
+  app.post('/api/admin/motivos-prejuizo-logistico', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      return reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+    }
+
+    const corpo = request.body as any;
+    if (!String(corpo?.descricao ?? '').trim()) {
+      return reply.status(400).send(falha('MOTIVO_OBRIGATORIO', 'Informe a descricao do motivo.'));
+    }
+
+    const motivo = await salvarMotivoPrejuizoLogistico(corpo);
+    await registrarAuditoria({
+      empresaId: usuario.empresaAtivaId,
+      usuarioId: usuario.id,
+      moduloCodigo: 'ADMINISTRACAO',
+      telaCodigo: 'CONFIGURACOES',
+      tipoEvento: 'SALVAR_MOTIVO_PREJUIZO_LOGISTICO',
+      tabelaAfetada: 'motivos_prejuizo_logistico',
+      registroId: Number((motivo as any).id),
+      descricao: `Motivo de prejuizo logistico salvo: ${String((motivo as any).descricao)}`
+    });
+
+    return sucesso(motivo);
+  });
+
+  app.post<{ Params: { id: string }; Body: { motivo_id?: number | null; motivo_descricao?: string | null } }>('/api/cotacao-frete/cotacoes/:id/motivo-prejuizo-logistico', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = obterUsuarioSessao(request);
+    if (!usuario) {
+      return reply.status(401).send(falha('NAO_AUTENTICADO', 'Sessao invalida ou expirada.'));
+    }
+
+    const resultado = await salvarMotivoPrejuizoCotacao({
+      empresaId: usuario.empresaAtivaId!,
+      cotacaoId: obterChaveCotacaoParametro(request.params.id),
+      motivoId: request.body.motivo_id ?? null,
+      motivoDescricao: request.body.motivo_descricao ?? null,
+      usuarioId: usuario.id
+    });
+
+    await registrarAuditoria({
+      empresaId: usuario.empresaAtivaId,
+      usuarioId: usuario.id,
+      moduloCodigo: 'COTACAO_FRETE',
+      telaCodigo: 'DASHBOARD',
+      tipoEvento: 'SALVAR_MOTIVO_PREJUIZO_LOGISTICO_COTACAO',
+      tabelaAfetada: 'cotacoes_frete_motivos_prejuizo_logistico',
+      registroId: 0,
+      descricao: 'Motivo de prejuizo logistico vinculado a cotacao.',
+      dadosNovos: resultado
+    });
+
+    return sucesso(resultado);
+  });
+
   app.get('/api/telas/fonte', { preHandler: (app as any).autenticar }, async (request, reply) => {
     if (!exigirSuperadmin(request)) {
       return reply.status(403).send(falha('ACESSO_NEGADO', 'Recurso disponivel apenas para superadmin.'));
@@ -808,6 +898,30 @@ export async function criarApp() {
     return sucesso(await salvarAtributo(usuario.empresaAtivaId!, request.body as any));
   });
 
+  app.delete<{ Params: { id: string } }>('/api/cadastro-produto-central/atributos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'CONFIGURAR_ATRIBUTOS_PIM'], 'Usuario sem permissao para excluir atributos.');
+    if (!usuario) return;
+    return sucesso(await excluirAtributo(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.get('/api/cadastro-produto-central/atributos-canais-mapeamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_ATRIBUTOS', 'PIM_VISUALIZAR_PUBLICACAO', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar atributos por canal.');
+    if (!usuario) return;
+    return sucesso(await listarMapeamentosAtributosCanais(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/atributos-canais-mapeamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'CONFIGURAR_ATRIBUTOS_PIM', 'CONFIGURAR_CANAIS_PIM'], 'Usuario sem permissao para configurar atributos por canal.');
+    if (!usuario) return;
+    return sucesso(await salvarMapeamentoAtributoCanal(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/cadastro-produto-central/atributos-canais-mapeamentos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'CONFIGURAR_ATRIBUTOS_PIM', 'CONFIGURAR_CANAIS_PIM'], 'Usuario sem permissao para excluir mapeamento de atributo por canal.');
+    if (!usuario) return;
+    return sucesso(await excluirMapeamentoAtributoCanal(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
   app.get('/api/cadastro-produto-central/canais', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_INTEGRACOES', 'PIM_VISUALIZAR_PUBLICACAO', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar canais.');
     if (!usuario) return;
@@ -848,6 +962,42 @@ export async function criarApp() {
     const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para importar planilhas.');
     if (!usuario) return;
     return sucesso(await registrarImportacao(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get('/api/cadastro-produto-central/sqlserver/conexoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'GERENCIAR_INTEGRACOES_PIM'], 'Usuario sem permissao para visualizar conexoes SQL Server.');
+    if (!usuario) return;
+    return sucesso(await listarConexoesSqlServerPim(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/sqlserver/conexoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'GERENCIAR_INTEGRACOES_PIM'], 'Usuario sem permissao para configurar conexao SQL Server.');
+    if (!usuario) return;
+    return sucesso(await salvarConexaoSqlServerPim(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cadastro-produto-central/sqlserver/conexoes/:id/testar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'GERENCIAR_INTEGRACOES_PIM'], 'Usuario sem permissao para testar conexao SQL Server.');
+    if (!usuario) return;
+    return sucesso(await testarConexaoSqlServerPim(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post('/api/cadastro-produto-central/sqlserver/consultar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para consultar SQL Server.');
+    if (!usuario) return;
+    return sucesso(await consultarSqlServerPim(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.post('/api/cadastro-produto-central/sqlserver/cargas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para executar carga SQL Server.');
+    if (!usuario) return;
+    return sucesso(await executarCargaSqlServerPim(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get('/api/cadastro-produto-central/sqlserver/cargas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR'], 'Usuario sem permissao para visualizar cargas SQL Server.');
+    if (!usuario) return;
+    return sucesso(await listarCargasSqlServerPim(usuario.empresaAtivaId!));
   });
 
   app.get('/api/cadastro-produto-central/workflows', { preHandler: (app as any).autenticar }, async (request, reply) => {
@@ -915,7 +1065,7 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -925,7 +1075,8 @@ export async function criarApp() {
       etapaCodigo: request.query.etapa_codigo,
       faturado: request.query.faturado,
       multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
-      fluxoLogistico: request.query.fluxo_logistico
+      fluxoLogistico: request.query.fluxo_logistico,
+      cteDiferenteEscolhido: request.query.cte_diferente_escolhido === 'true'
     }));
   });
 
@@ -1832,14 +1983,17 @@ export async function criarApp() {
       return reply.status(400).send(falha('PRAZO_OBRIGATORIO', 'Informe o prazo de entrega para responder esta cotacao.'));
     }
 
+    const numeroCotacaoTransportadora = request.body.numero_cotacao_transportadora?.trim() || null;
+    const observacaoTransportadora = request.body.observacao?.trim() || null;
+
     await registrarRespostaTransportadora({
       tokenHash: tokenResolvido!.tokenHash,
       cotacaoId: `${String((resumo as any).empresa_id ?? '')}|${String((resumo as any).tipo_documento ?? '')}|${String((resumo as any).numero_documento ?? '')}|${String((resumo as any).codigo_chave ?? '')}`,
       transportadoraId: (resumo as any).transportadora_id,
       valorFrete,
       prazoDias,
-      numeroCotacaoTransportadora: request.body.numero_cotacao_transportadora?.trim() || null,
-      observacao: request.body.observacao,
+      numeroCotacaoTransportadora,
+      observacao: observacaoTransportadora,
       ip: request.ip,
       agenteUsuario: request.headers['user-agent']
     });
@@ -1865,10 +2019,10 @@ export async function criarApp() {
                 <tr><td><strong>Cliente</strong></td><td>${String((resumo as any).nome_destinatario ?? '')}</td></tr>
                 <tr><td><strong>Destino</strong></td><td>${String((resumo as any).cidade_destino ?? '')}/${String((resumo as any).uf_destino ?? '')}</td></tr>
                 <tr><td><strong>Valor informado</strong></td><td>R$ ${valorFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
-                ${request.body.numero_cotacao_transportadora ? `<tr><td><strong>Numero da cotacao da transportadora</strong></td><td>${String(request.body.numero_cotacao_transportadora)}</td></tr>` : ''}
+                ${numeroCotacaoTransportadora ? `<tr><td><strong>Numero da cotacao da transportadora</strong></td><td>${String(numeroCotacaoTransportadora)}</td></tr>` : ''}
                 <tr><td><strong>% frete sobre o total</strong></td><td>${percentualFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</td></tr>
                 <tr><td><strong>Prazo informado</strong></td><td>${Number(prazoDias ?? 0)} dia(s)</td></tr>
-                <tr><td><strong>Observacao</strong></td><td>${String(request.body.observacao ?? '-')}</td></tr>
+                <tr><td><strong>Observacao</strong></td><td>${String(observacaoTransportadora ?? '-')}</td></tr>
               </tbody>
             </table>
             <p style="margin-top:12px">Este e-mail confirma o registro da cotacao no Control S Hub.</p>
@@ -1877,9 +2031,9 @@ export async function criarApp() {
 
         await enviarEmail(configuracaoEmail, {
           para: emailTransportadora,
-          assunto: `Cotacao registrada${request.body.numero_cotacao_transportadora ? ` ${String(request.body.numero_cotacao_transportadora)}` : ''} - ${String((resumo as any).numero_documento ?? '')}`,
+          assunto: `Cotacao registrada${numeroCotacaoTransportadora ? ` ${String(numeroCotacaoTransportadora)}` : ''} - ${String((resumo as any).numero_documento ?? '')}`,
           html: htmlComprovante,
-          texto: `Cotacao registrada. Documento ${String((resumo as any).numero_documento ?? '')}. ${request.body.numero_cotacao_transportadora ? `Numero da cotacao ${String(request.body.numero_cotacao_transportadora)}. ` : ''}Valor R$ ${valorFrete}. Prazo ${Number(prazoDias ?? 0)} dia(s).`
+          texto: `Cotacao registrada. Documento ${String((resumo as any).numero_documento ?? '')}. ${numeroCotacaoTransportadora ? `Numero da cotacao ${String(numeroCotacaoTransportadora)}. ` : ''}Valor R$ ${valorFrete}. Prazo ${Number(prazoDias ?? 0)} dia(s).`
         });
       }
     } catch (erroEmailConfirmacao) {
