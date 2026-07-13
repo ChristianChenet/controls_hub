@@ -5,6 +5,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import { ambiente } from './configuracao/ambiente.js';
+import { consultarUm } from './banco/conexao.js';
 import { falha, sucesso } from './http/respostas.js';
 import {
   buscarUsuarioPorEmail,
@@ -218,6 +219,70 @@ export async function criarApp() {
       status: 'OPERACIONAL'
     })
   );
+
+  app.get('/api/integracoes/n8n/status', { preHandler: (app as any).autenticar }, async (request) => {
+    const urlMonitor = (await obterValorParametroSistema('URL_MONITOR_N8N', 'http://192.168.1.70:5678/')).trim();
+    const intervaloMinutos = Number(await obterValorParametroSistema('INTERVALO_MONITOR_N8N_MINUTOS', '15')) || 15;
+    const limiteSemIntegracaoMinutos = Number(await obterValorParametroSistema('LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS', '30')) || 30;
+    const consultaEm = new Date();
+    let n8nOnline = false;
+    let detalheTecnico = '';
+
+    if (urlMonitor) {
+      const controlador = new AbortController();
+      const timeout = setTimeout(() => controlador.abort(), 5000);
+      try {
+        const resposta = await fetch(urlMonitor, {
+          method: 'GET',
+          signal: controlador.signal
+        });
+        n8nOnline = resposta.status < 500;
+        detalheTecnico = `HTTP ${resposta.status}`;
+      } catch (error) {
+        detalheTecnico = error instanceof Error ? error.message : String(error);
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    const ultimaIntegracao = await consultarUm<{ ultima_integracao_em: Date | string | null }>(`
+      SELECT MAX(COALESCE(alterado_em, criadoem, data_documento)) AS ultima_integracao_em
+      FROM cotacoes_frete
+      WHERE COALESCE(excluido, FALSE) = FALSE
+    `);
+    const ultimaIntegracaoEm = ultimaIntegracao?.ultima_integracao_em ? new Date(ultimaIntegracao.ultima_integracao_em) : null;
+    const minutosSemIntegracao = ultimaIntegracaoEm
+      ? Math.floor((consultaEm.getTime() - ultimaIntegracaoEm.getTime()) / 60000)
+      : null;
+    const semIntegracao = minutosSemIntegracao === null || minutosSemIntegracao > limiteSemIntegracaoMinutos;
+    const cor = !n8nOnline ? 'VERMELHO' : semIntegracao ? 'AMARELO' : 'VERDE';
+    const mensagem = !n8nOnline
+      ? 'n8n offline ou inacessível.'
+      : semIntegracao
+        ? `n8n online, mas sem atualização de cotação de frete há mais de ${limiteSemIntegracaoMinutos} minuto(s).`
+        : 'n8n online e integração de cotação recente.';
+
+    request.log.info({
+      urlMonitor,
+      cor,
+      n8nOnline,
+      ultimaIntegracaoEm,
+      minutosSemIntegracao
+    }, 'Monitor n8n consultado.');
+
+    return sucesso({
+      cor,
+      n8n_online: n8nOnline,
+      url_monitor: urlMonitor,
+      ultima_consulta_em: consultaEm.toISOString(),
+      ultima_integracao_em: ultimaIntegracaoEm?.toISOString() ?? null,
+      minutos_sem_integracao: minutosSemIntegracao,
+      limite_sem_integracao_minutos: limiteSemIntegracaoMinutos,
+      intervalo_monitor_minutos: intervaloMinutos,
+      mensagem,
+      detalhe_tecnico: detalheTecnico
+    });
+  });
 
   app.post<{ Body: { email?: string; senha?: string } }>('/api/auth/login', async (request, reply) => {
     const email = request.body.email?.trim().toLowerCase();

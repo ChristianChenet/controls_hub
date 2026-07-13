@@ -4371,3 +4371,51 @@ h2 {
   white-space: nowrap !important;
 }
 
+
+
+.linhaMonitorHub {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.semaforoN8n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .08);
+  vertical-align: middle;
+}
+
+.semaforoN8n i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, .16);
+}
+
+.semaforoN8n.verde i {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .18), 0 0 12px rgba(34, 197, 94, .36);
+}
+
+.semaforoN8n.amarelo i {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, .2), 0 0 12px rgba(245, 158, 11, .36);
+}
+
+.semaforoN8n.vermelho i {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, .18), 0 0 12px rgba(239, 68, 68, .36);
+}
+
+.gradeConfiguracaoInterna {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(130px, 180px) minmax(170px, 220px);
+  gap: 10px;
+  margin-top: 10px;
+}

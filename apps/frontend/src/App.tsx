@@ -1,4 +1,4 @@
-﻿import {
+import {
   Building2,
   Columns3,
   FileCode2,
@@ -72,6 +72,7 @@ import {
   listarUsuarios,
   obterCotacao,
   obterMinhaConfiguracaoEmail,
+  obterStatusN8n,
   prepararEnvioMassa,
   RegistroGenerico,
   registrarTimelineCotacao,
@@ -2834,6 +2835,62 @@ function SemaforoSlaCotacao({ cotacao, parametros, compacto = false }: { cotacao
     <span className={`semaforoSla ${semaforo.cor}${compacto ? ' compacto' : ''}`} title={semaforo.titulo}>
       <i />
       {!compacto && <small>{semaforo.cor === 'vermelho' ? 'SLA vencido' : semaforo.cor === 'amarelo' ? 'SLA próximo' : semaforo.cor === 'verde' ? 'SLA ok' : 'SLA'}</small>}
+    </span>
+  );
+}
+
+
+function SemaforoN8n() {
+  const [status, setStatus] = useState<RegistroGenerico | null>(null);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    let cancelado = false;
+    let timeoutId: number | undefined;
+
+    async function consultar() {
+      try {
+        const retorno = await obterStatusN8n();
+        if (cancelado) {
+          return;
+        }
+        setStatus(retorno);
+        setErro('');
+        const intervalo = Math.max(1, Number(retorno.intervalo_monitor_minutos ?? 15) || 15);
+        timeoutId = window.setTimeout(consultar, intervalo * 60000);
+      } catch (error) {
+        if (cancelado) {
+          return;
+        }
+        setErro(error instanceof Error ? error.message : 'Falha ao consultar o monitor n8n.');
+        timeoutId = window.setTimeout(consultar, 15 * 60000);
+      }
+    }
+
+    consultar();
+    return () => {
+      cancelado = true;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
+  const cor = erro ? 'vermelho' : String(status?.cor ?? 'CINZA').toLowerCase();
+  const titulo = erro
+    ? `Monitor n8n: falha na consulta. ${erro}`
+    : [
+        `Monitor n8n: ${status?.mensagem ?? 'consultando...'}`,
+        `URL: ${status?.url_monitor ?? '-'}`,
+        `Ultima consulta: ${formatarDataHoraBrasileira(status?.ultima_consulta_em)}`,
+        `Ultima integracao cotacao frete: ${status?.ultima_integracao_em ? formatarDataHoraBrasileira(status.ultima_integracao_em) : 'sem registro'}`,
+        `Minutos sem integracao: ${status?.minutos_sem_integracao ?? '-'}`,
+        `Detalhe: ${status?.detalhe_tecnico ?? '-'}`
+      ].join('\n');
+
+  return (
+    <span className={`semaforoN8n ${cor}`} title={titulo} aria-label="Monitor n8n">
+      <i />
     </span>
   );
 }
@@ -5608,6 +5665,9 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         { chave: 'HORA_FINAL_EXPEDIENTE_COTACAO', valor: parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30' },
         { chave: 'HORA_CORTE_DIARIA_COTACAO', valor: parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00' },
         { chave: 'DIAS_EXPEDIENTE_COTACAO', valor: parametros.DIAS_EXPEDIENTE_COTACAO ?? 'SEG,TER,QUA,QUI,SEX,SAB' },
+        { chave: 'URL_MONITOR_N8N', valor: parametros.URL_MONITOR_N8N ?? 'http://192.168.1.70:5678/' },
+        { chave: 'INTERVALO_MONITOR_N8N_MINUTOS', valor: parametros.INTERVALO_MONITOR_N8N_MINUTOS ?? '15' },
+        { chave: 'LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS', valor: parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30' },
         { chave: 'ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO', valor: parametros.ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO ?? '' },
         { chave: 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID', valor: parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? '' },
         { chave: 'CHECKLIST_TROCA_TRANSPORTADORA_FATURADA', valor: parametros.CHECKLIST_TROCA_TRANSPORTADORA_FATURADA ?? '' }
@@ -6022,7 +6082,7 @@ export function App() {
           <div className="topbarTitulo">
             <img src="/brand/logo-s-novo.jpg" alt="Control S Hub" />
             <div>
-              <span className="eyebrow">Control S Hub</span>
+              <span className="eyebrow linhaMonitorHub">Control S Hub <SemaforoN8n /></span>
               <h1>{titulo}</h1>
             </div>
           </div>

@@ -90,6 +90,10 @@ export async function obterSessaoAtual() {
   }>('/api/auth/sessao');
 }
 
+export async function obterStatusN8n() {
+  return requisitar<RegistroGenerico>('/api/integracoes/n8n/status');
+}
+
 export async function trocarEmpresa(empresa_id: number) {
   return requisitar<{ token: string; empresa: EmpresaUsuario; permissoes: string[] }>('/api/auth/trocar-empresa', {
     method: 'POST',
