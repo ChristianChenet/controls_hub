@@ -4429,3 +4429,22 @@ h2 {
   gap: 10px;
   margin-top: 10px;
 }
+
+
+.linhaAcoesMonitor {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.linhaAcoesMonitor span {
+  background: rgba(15, 23, 42, .06);
+  border: 1px solid rgba(148, 163, 184, .28);
+  border-radius: 8px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+}

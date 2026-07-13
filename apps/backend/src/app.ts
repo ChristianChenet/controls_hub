@@ -4,6 +4,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
+import { Socket } from 'node:net';
 import { ambiente } from './configuracao/ambiente.js';
 import { consultarUm } from './banco/conexao.js';
 import { falha, sucesso } from './http/respostas.js';
@@ -129,6 +130,33 @@ import {
 import { exigirSuperadmin, obterUsuarioSessao } from './seguranca/sessao.js';
 import { enviarEmail, testarConfiguracaoEmail } from './servicos/email.js';
 
+function testarPortaTcp(urlMonitor: string, timeoutMs = 3000) {
+  return new Promise<boolean>((resolve) => {
+    try {
+      const url = new URL(urlMonitor);
+      const porta = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
+      const socket = new Socket();
+      let finalizado = false;
+      const concluir = (resultado: boolean) => {
+        if (finalizado) {
+          return;
+        }
+        finalizado = true;
+        socket.destroy();
+        resolve(resultado);
+      };
+
+      socket.setTimeout(timeoutMs);
+      socket.once('connect', () => concluir(true));
+      socket.once('timeout', () => concluir(false));
+      socket.once('error', () => concluir(false));
+      socket.connect(porta, url.hostname);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 export async function criarApp() {
   const app = Fastify({ logger: true });
 
@@ -221,7 +249,10 @@ export async function criarApp() {
   );
 
   app.get('/api/integracoes/n8n/status', { preHandler: (app as any).autenticar }, async (request) => {
-    const urlMonitor = (await obterValorParametroSistema('URL_MONITOR_N8N', 'http://192.168.1.70:5678/')).trim();
+    const urlMonitorConfigurada = (await obterValorParametroSistema('URL_MONITOR_N8N', 'http://192.168.1.70:5678/')).trim();
+    const urlMonitor = urlMonitorConfigurada && !/^https?:\/\//i.test(urlMonitorConfigurada)
+      ? `http://${urlMonitorConfigurada}`
+      : urlMonitorConfigurada;
     const intervaloMinutos = Number(await obterValorParametroSistema('INTERVALO_MONITOR_N8N_MINUTOS', '15')) || 15;
     const limiteSemIntegracaoMinutos = Number(await obterValorParametroSistema('LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS', '30')) || 30;
     const consultaEm = new Date();
@@ -242,6 +273,16 @@ export async function criarApp() {
         detalheTecnico = error instanceof Error ? error.message : String(error);
       } finally {
         clearTimeout(timeout);
+      }
+
+      if (!n8nOnline) {
+        const portaAberta = await testarPortaTcp(urlMonitor);
+        if (portaAberta) {
+          n8nOnline = true;
+          detalheTecnico = detalheTecnico
+            ? `${detalheTecnico}; porta TCP respondendo`
+            : 'Porta TCP respondendo';
+        }
       }
     }
 

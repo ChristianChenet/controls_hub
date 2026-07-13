@@ -5571,6 +5571,7 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
   const [novoMotivoPrejuizo, setNovoMotivoPrejuizo] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
+  const [resultadoTesteN8n, setResultadoTesteN8n] = useState('');
 
   useEffect(() => {
     setEmpresa({
@@ -5635,6 +5636,34 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
     setMensagem('Motivo de prejuízo logístico cadastrado com sucesso.');
   }
 
+  async function testarMonitorN8n() {
+    setMensagem('');
+    setErro('');
+    setResultadoTesteN8n('Consultando monitor n8n...');
+
+    try {
+      await salvarParametrosSistema([
+        { chave: 'URL_MONITOR_N8N', valor: parametros.URL_MONITOR_N8N ?? 'http://192.168.1.70:5678/' },
+        { chave: 'INTERVALO_MONITOR_N8N_MINUTOS', valor: parametros.INTERVALO_MONITOR_N8N_MINUTOS ?? '15' },
+        { chave: 'LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS', valor: parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30' }
+      ]);
+      const status = await obterStatusN8n();
+      const texto = [
+        `Status: ${status.cor ?? '-'}`,
+        status.mensagem ? `Mensagem: ${status.mensagem}` : '',
+        `URL: ${status.url_monitor ?? '-'}`,
+        `Ultima consulta: ${formatarDataHoraBrasileira(status.ultima_consulta_em)}`,
+        `Ultima integracao: ${status.ultima_integracao_em ? formatarDataHoraBrasileira(status.ultima_integracao_em) : 'sem registro'}`,
+        `Detalhe: ${status.detalhe_tecnico ?? '-'}`
+      ].filter(Boolean).join(' | ');
+      setResultadoTesteN8n(texto);
+      setMensagem('Teste do monitor n8n concluido.');
+    } catch (error) {
+      setResultadoTesteN8n('');
+      setErro(error instanceof Error ? error.message : 'Nao foi possivel testar o monitor n8n.');
+    }
+  }
+
   function carregarImagem(campo: 'caminho_logo' | 'caminho_imagem_fundo', arquivo?: File) {
     if (!arquivo) {
       return;
@@ -5697,6 +5726,10 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
             <label>URL do n8n<input value={parametros.URL_MONITOR_N8N ?? 'http://192.168.1.70:5678/'} onChange={(evento) => setParametros({ ...parametros, URL_MONITOR_N8N: evento.target.value })} /></label>
             <label>Atualizar a cada (min)<input value={parametros.INTERVALO_MONITOR_N8N_MINUTOS ?? '15'} onChange={(evento) => setParametros({ ...parametros, INTERVALO_MONITOR_N8N_MINUTOS: evento.target.value })} /></label>
             <label>Alerta sem integracao (min)<input value={parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30'} onChange={(evento) => setParametros({ ...parametros, LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS: evento.target.value })} /></label>
+          </div>
+          <div className="linhaAcoesMonitor">
+            <button type="button" className="ghost" onClick={testarMonitorN8n}>Testar n8n agora</button>
+            {resultadoTesteN8n && <span>{resultadoTesteN8n}</span>}
           </div>
         </fieldset>
         <label>Nome exibido no topo<input value={String(empresa.nome_exibido ?? '')} onChange={(evento) => setEmpresa({ ...empresa, nome_exibido: evento.target.value })} /></label>
