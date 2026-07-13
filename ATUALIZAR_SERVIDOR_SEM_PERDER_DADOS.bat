@@ -103,6 +103,9 @@ if /I "%APLICAR_SQL%"=="S" (
   call :log "Aplicando migration 026_transportadora_escolhida_plataforma_sequencia.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\026_transportadora_escolhida_plataforma_sequencia.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 030_parametros_monitor_n8n.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\030_parametros_monitor_n8n.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."
 )

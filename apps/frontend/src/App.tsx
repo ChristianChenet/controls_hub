@@ -5690,6 +5690,15 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
       {mensagem && <div className="sucesso">{mensagem}</div>}
       {erro && <div className="alerta">{erro}</div>}
       <form className="formCadastro" onSubmit={salvar}>
+        <fieldset className="campoLargo grupoConfiguracao grupoMonitorN8n">
+          <legend>Monitor n8n / Integracao</legend>
+          <small>Controla o semaforo exibido no cabecalho enquanto o usuario esta logado.</small>
+          <div className="gradeConfiguracaoInterna">
+            <label>URL do n8n<input value={parametros.URL_MONITOR_N8N ?? 'http://192.168.1.70:5678/'} onChange={(evento) => setParametros({ ...parametros, URL_MONITOR_N8N: evento.target.value })} /></label>
+            <label>Atualizar a cada (min)<input value={parametros.INTERVALO_MONITOR_N8N_MINUTOS ?? '15'} onChange={(evento) => setParametros({ ...parametros, INTERVALO_MONITOR_N8N_MINUTOS: evento.target.value })} /></label>
+            <label>Alerta sem integracao (min)<input value={parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30'} onChange={(evento) => setParametros({ ...parametros, LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS: evento.target.value })} /></label>
+          </div>
+        </fieldset>
         <label>Nome exibido no topo<input value={String(empresa.nome_exibido ?? '')} onChange={(evento) => setEmpresa({ ...empresa, nome_exibido: evento.target.value })} /></label>
         <label>Descricao curta<input value={String(empresa.nome_fantasia ?? '')} onChange={(evento) => setEmpresa({ ...empresa, nome_fantasia: evento.target.value })} /></label>
         <label>Razao social<input value={String(empresa.razao_social ?? '')} onChange={(evento) => setEmpresa({ ...empresa, razao_social: evento.target.value })} /></label>
