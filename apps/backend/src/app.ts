@@ -260,30 +260,8 @@ export async function criarApp() {
     let detalheTecnico = '';
 
     if (urlMonitor) {
-      const controlador = new AbortController();
-      const timeout = setTimeout(() => controlador.abort(), 5000);
-      try {
-        const resposta = await fetch(urlMonitor, {
-          method: 'GET',
-          signal: controlador.signal
-        });
-        n8nOnline = resposta.status < 500;
-        detalheTecnico = `HTTP ${resposta.status}`;
-      } catch (error) {
-        detalheTecnico = error instanceof Error ? error.message : String(error);
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      if (!n8nOnline) {
-        const portaAberta = await testarPortaTcp(urlMonitor);
-        if (portaAberta) {
-          n8nOnline = true;
-          detalheTecnico = detalheTecnico
-            ? `${detalheTecnico}; porta TCP respondendo`
-            : 'Porta TCP respondendo';
-        }
-      }
+      n8nOnline = await testarPortaTcp(urlMonitor);
+      detalheTecnico = n8nOnline ? 'Porta TCP respondendo' : 'Porta TCP sem resposta';
     }
 
     const ultimaIntegracao = await consultarUm<{ ultima_integracao_em: Date | string | null }>(`
