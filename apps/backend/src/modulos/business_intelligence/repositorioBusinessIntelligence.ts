@@ -428,7 +428,14 @@ export async function executarConsultaBi(empresaId: number, consultaOuDados: Reg
 
 export async function executarWidgetBi(empresaId: number, widgetId: number, filtros: RegistroBi, usuarioId: number) {
   const widget = await consultarUm<RegistroBi>(`
-    SELECT w.*, c.sql_consulta, c.tempo_cache_segundos, c.id AS consulta_id
+    SELECT
+      w.*,
+      c.sql_consulta,
+      c.tempo_cache_segundos,
+      c.fonte_dados_tipo,
+      c.conexao_sqlserver_id,
+      c.permitir_procedure,
+      c.id AS consulta_id
     FROM bi_dashboard_widgets w
     JOIN bi_dashboards d ON d.id = w.dashboard_id AND d.empresa_id = $1
     LEFT JOIN bi_consultas c ON c.id = w.consulta_id
