@@ -6258,6 +6258,35 @@ body:has(.biModoTv) {
   width: min(1680px, 98vw);
 }
 
+.biModalTelaCheia {
+  height: 96vh;
+  max-height: 96vh;
+  max-width: 98vw;
+  width: 98vw;
+}
+
+.biModalCompacto {
+  height: auto;
+  max-height: 88vh;
+  max-width: min(1180px, 94vw);
+  width: min(1180px, 94vw);
+}
+
+.biModalTelaCheia > header,
+.biModalCompacto > header {
+  flex-shrink: 0;
+}
+
+.biModalTelaCheia .biConsultaModalForm,
+.biModalTelaCheia .biFormGrid {
+  overflow: auto;
+}
+
+.biModalControles {
+  display: inline-flex;
+  gap: 8px;
+}
+
 .biPreviewModal {
   max-height: 94vh;
 }

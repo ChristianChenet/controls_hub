@@ -322,9 +322,14 @@ export async function listarConsultasBi(empresaId: number) {
 
 export async function salvarConsultaBi(empresaId: number, dados: RegistroBi, usuarioId: number) {
   const fonteSelecionada = String(dados.fonte_dados_id ?? '');
-  const fonteTipo = fonteSelecionada.startsWith('SQLSERVER_PIM:') ? 'SQLSERVER' : 'POSTGRESQL';
-  const conexaoSqlServerId = fonteSelecionada.startsWith('SQLSERVER_PIM:') ? Number(fonteSelecionada.replace('SQLSERVER_PIM:', '')) : null;
-  const fonteDadosId = fonteSelecionada && !fonteSelecionada.startsWith('SQLSERVER_PIM:') ? Number(fonteSelecionada) : null;
+  const fonteInformadaSqlServer = String(dados.fonte_dados_tipo ?? '').toUpperCase() === 'SQLSERVER' || Boolean(dados.conexao_sqlserver_id);
+  const fonteTipo = fonteSelecionada.startsWith('SQLSERVER_PIM:') || fonteInformadaSqlServer ? 'SQLSERVER' : 'POSTGRESQL';
+  const conexaoSqlServerId = fonteSelecionada.startsWith('SQLSERVER_PIM:')
+    ? Number(fonteSelecionada.replace('SQLSERVER_PIM:', ''))
+    : dados.conexao_sqlserver_id
+      ? Number(dados.conexao_sqlserver_id)
+      : null;
+  const fonteDadosId = fonteTipo === 'POSTGRESQL' && fonteSelecionada ? Number(fonteSelecionada) : null;
   const permitirTsql = fonteTipo === 'SQLSERVER' || String(dados.fonte_dados_tipo ?? '').toUpperCase() === 'SQLSERVER';
   if (!permitirTsql && consultaTemSintaxeSqlServer(String(dados.sql_consulta ?? ''))) {
     throw new Error('Esta consulta usa sintaxe de SQL Server. Selecione uma conexao SQL Server em Fonte de dados antes de salvar ou testar.');

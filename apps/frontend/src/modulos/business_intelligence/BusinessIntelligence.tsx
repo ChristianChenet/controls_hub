@@ -440,6 +440,7 @@ export function BusinessIntelligenceDashboards({ usuario, empresaAtiva }: { usua
   const [formPermissao, setFormPermissao] = useState<RegistroGenerico>({ tipo: 'USUARIO', usuario_id: '', perfil_id: '', pode_visualizar: true, pode_editar: false, pode_excluir: false, pode_publicar: false, pode_modo_tv: true });
   const [previewWidget, setPreviewWidget] = useState<RegistroGenerico | null>(null);
   const [modalWidgetAberto, setModalWidgetAberto] = useState(false);
+  const [modalWidgetCompacto, setModalWidgetCompacto] = useState(false);
   const [modalPreviewWidgetAberto, setModalPreviewWidgetAberto] = useState(false);
   const [promptIaAberto, setPromptIaAberto] = useState(false);
   const [mensagem, setMensagem] = useState('');
@@ -493,21 +494,30 @@ export function BusinessIntelligenceDashboards({ usuario, empresaAtiva }: { usua
     return `${window.location.origin}/Business_Intelligence/Dashboards/${id}/TV`;
   }
 
+  async function copiarTextoParaAreaTransferencia(texto: string) {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    }
+    const campo = document.createElement('textarea');
+    campo.value = texto;
+    campo.setAttribute('readonly', 'true');
+    campo.style.position = 'fixed';
+    campo.style.left = '-9999px';
+    campo.style.top = '0';
+    document.body.appendChild(campo);
+    campo.focus();
+    campo.select();
+    campo.setSelectionRange(0, campo.value.length);
+    const copiado = document.execCommand('copy');
+    document.body.removeChild(campo);
+    return copiado;
+  }
+
   async function copiarLinkTv(id: number) {
     const link = obterLinkTv(id);
-    try {
-      await navigator.clipboard?.writeText(link);
-    } catch {
-      const campo = document.createElement('textarea');
-      campo.value = link;
-      campo.style.position = 'fixed';
-      campo.style.opacity = '0';
-      document.body.appendChild(campo);
-      campo.select();
-      document.execCommand('copy');
-      document.body.removeChild(campo);
-    }
-    setMensagem(`Link TV copiado: ${link}`);
+    const copiado = await copiarTextoParaAreaTransferencia(link);
+    setMensagem(copiado ? `Link TV copiado. Use Ctrl + V para colar: ${link}` : `Nao foi possivel copiar automaticamente. Link TV: ${link}`);
   }
 
   function abrirModoTv(id: number) {
@@ -873,14 +883,17 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
                 </div>
                 {modalWidgetAberto && (
                   <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Editar widget">
-                    <section className="biDetalheModal biWidgetEditorModal">
+                    <section className={`biDetalheModal biWidgetEditorModal ${modalWidgetCompacto ? 'biModalCompacto' : 'biModalTelaCheia'}`}>
                       <header>
                         <div>
                           <span>Widget</span>
                           <h3>{String(formWidget.id ? 'Editar widget' : 'Novo widget')}</h3>
                           <p>Altere apenas este widget. A lista do dashboard permanece no fundo para facilitar a manutencao.</p>
                         </div>
-                        <button type="button" onClick={() => setModalWidgetAberto(false)} title="Fechar"><X size={18} /></button>
+                        <div className="biModalControles">
+                          <button type="button" onClick={() => setModalWidgetCompacto((atual) => !atual)} title={modalWidgetCompacto ? 'Expandir tela' : 'Reduzir tela'}>{modalWidgetCompacto ? <Maximize2 size={18} /> : <PanelsTopLeft size={18} />}</button>
+                          <button type="button" onClick={() => setModalWidgetAberto(false)} title="Fechar"><X size={18} /></button>
+                        </div>
                       </header>
                       <form className="biFormGrid" onSubmit={adicionarWidget}>
                 <BiCampo rotulo="Titulo"><input value={String(formWidget.titulo ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, titulo: evento.target.value })} /></BiCampo>
@@ -1020,6 +1033,7 @@ export function BiConsultasEditor() {
   const [formulario, setFormulario] = useState<RegistroGenerico>({ nome: '', descricao: '', sql_consulta: 'SELECT 1 AS valor', tempo_cache_segundos: 60, ativo: true });
   const [filtro, setFiltro] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
+  const [modalConsultaCompacto, setModalConsultaCompacto] = useState(false);
   const [limitePrevia, setLimitePrevia] = useState(5);
   const [preview, setPreview] = useState<RegistroGenerico | null>(null);
   const [modalPreviewConsultaAberto, setModalPreviewConsultaAberto] = useState(false);
@@ -1170,14 +1184,17 @@ export function BiConsultasEditor() {
       </div>
       {modalAberto && (
         <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Editar consulta SQL">
-          <section className="biDetalheModal biConsultaModal">
+          <section className={`biDetalheModal biConsultaModal ${modalConsultaCompacto ? 'biModalCompacto' : 'biModalTelaCheia'}`}>
             <header>
               <div>
                 <span>Consulta SQL</span>
                 <h3>{formulario.id ? 'Editar consulta' : 'Nova consulta'}</h3>
                 <p>Teste a consulta e confira a prévia antes de salvar.</p>
               </div>
-              <button type="button" onClick={() => setModalAberto(false)} title="Fechar"><X size={18} /></button>
+              <div className="biModalControles">
+                <button type="button" onClick={() => setModalConsultaCompacto((atual) => !atual)} title={modalConsultaCompacto ? 'Expandir tela' : 'Reduzir tela'}>{modalConsultaCompacto ? <Maximize2 size={18} /> : <PanelsTopLeft size={18} />}</button>
+                <button type="button" onClick={() => setModalAberto(false)} title="Fechar"><X size={18} /></button>
+              </div>
             </header>
             {erro && <div className="alerta">{erro}</div>}
             {mensagem && <div className="sucesso">{mensagem}</div>}
