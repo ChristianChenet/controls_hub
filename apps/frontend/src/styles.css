@@ -5084,8 +5084,8 @@ h2 {
 }
 
 .biConsultaModal {
-  max-height: 92vh;
-  width: min(1320px, 96vw);
+  max-height: 96vh;
+  width: min(1680px, 98vw);
 }
 
 .biConsultaModalForm {
@@ -5106,7 +5106,7 @@ h2 {
   border-radius: 12px;
   color: #dbeafe;
   font: 13px/1.55 Consolas, "Courier New", monospace;
-  min-height: 360px;
+  min-height: 440px;
   padding: 14px;
   resize: vertical;
   tab-size: 2;
@@ -6254,11 +6254,12 @@ body:has(.biModoTv) {
 
 .biWidgetEditorModal,
 .biPreviewModal {
-  max-width: min(1120px, 94vw);
+  max-width: min(1680px, 98vw);
+  width: min(1680px, 98vw);
 }
 
 .biPreviewModal {
-  max-height: 88vh;
+  max-height: 94vh;
 }
 
 .biPreviewModal pre {

@@ -1523,8 +1523,8 @@ export async function listarAuditoriaPim(empresaId: number) {
 
 function validarConsultaSqlServerLeitura(consultaSql: string) {
   const sql = consultaSql.trim().replace(/;+\s*$/g, '');
-  if (!/^(SELECT|WITH|EXEC|EXECUTE)\s/i.test(sql)) {
-    throw new Error('A consulta SQL Server deve iniciar com SELECT, WITH, EXEC ou EXECUTE.');
+  if (!/^(DECLARE|SELECT|WITH|EXEC|EXECUTE|CALL)\s/i.test(sql)) {
+    throw new Error('A consulta SQL Server deve iniciar com DECLARE, SELECT, WITH, EXEC, EXECUTE ou CALL.');
   }
   if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|MERGE|CREATE|GRANT|REVOKE)\b/i.test(sql)) {
     throw new Error('A consulta SQL Server contem comando nao permitido para carga manual.');

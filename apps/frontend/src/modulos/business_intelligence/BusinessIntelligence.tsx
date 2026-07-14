@@ -358,7 +358,7 @@ function BiDashboardVisualizador({ dashboardId, empresaAtiva, usuario, modoTvIni
   const dashboard = dados.dashboard;
   const nomeDashboard = String(dashboard.nome ?? '');
   const tituloDashboard = nomeDashboard.toLocaleLowerCase('pt-BR').includes('acompanhamento logistico')
-    ? `ðŸšš ${nomeDashboard}`
+    ? `🚚 ${nomeDashboard}`
     : nomeDashboard;
   const paginas = dados.paginas.length ? dados.paginas : [{ id: 0, nome: 'Visao Geral' }];
   const pagina = paginas[paginaAtual] ?? paginas[0];
@@ -388,8 +388,8 @@ function BiDashboardVisualizador({ dashboardId, empresaAtiva, usuario, modoTvIni
         </div>
         <div className="biHeaderStatus">
           <div className="biAtualizacaoTv">
-            <span>Ãšltima AtualizaÃ§Ã£o:</span>
-            <strong>{ultimaAtualizacao ? ultimaAtualizacao.toLocaleString('pt-BR') : 'Aguardando atualizaÃ§Ã£o'}</strong>
+            <span>Última Atualização:</span>
+            <strong>{ultimaAtualizacao ? ultimaAtualizacao.toLocaleString('pt-BR') : 'Aguardando atualização'}</strong>
           </div>
           {!modoTv && <button className="ghost" type="button" onClick={aoVoltar} title="Voltar"><ArrowLeft size={15} /></button>}
           {!modoTv && <button className="ghost" type="button" onClick={carregarDashboard} title="Atualizar dashboard agora"><RefreshCw size={15} /></button>}
@@ -669,7 +669,7 @@ Contrato de importacao:
 - O layout usa 15 colunas. KPI de topo normalmente usa largura 3. Tres quadros por linha usam largura 5. Dois quadros usam largura 7 ou 8.
 - Use sempre textos em portugues do Brasil.
 - Use SQL somente SELECT ou WITH. Nunca use DROP, DELETE, UPDATE, INSERT, ALTER, TRUNCATE, CREATE, EXEC, CALL, DO, GRANT ou REVOKE.
-- Use parametros seguros no padrao :empresa_id, :data_inicial, :data_final, :filial_id, :cliente_id, :vendedor_id quando fizer sentido.
+- Use parametros seguros no padrão :empresa_id, :data_inicial, :data_final, :filial_id, :cliente_id, :vendedor_id quando fizer sentido.
 - Use tabelas/views ficticias profissionais, por exemplo vw_bi_pedidos_logisticos, vw_bi_faturamento, vw_bi_separacao, vw_bi_entregas. O usuario troca depois pela view real.
 - Nao altere os nomes dos campos entre a consulta simulada e o widget. Exemplo: se a tabela usa colunas_visiveis_json ["pedido","cliente","valor"], a consulta deve retornar pedido, cliente e valor.
 
@@ -741,7 +741,7 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
         {podeEditar && (
           <div className="biAcoes">
             <label className="ghost biBotaoArquivo"><Upload size={16} />Importar<input type="file" accept="application/json" onChange={importarDashboard} /></label>
-            <button className="ghost biBotaoIa" type="button" onClick={() => setPromptIaAberto(true)}><Sparkles size={16} />ðŸ¤– Prompt IA</button>
+            <button className="ghost biBotaoIa" type="button" onClick={() => setPromptIaAberto(true)}><Sparkles size={16} />🤖 Prompt IA</button>
             <button className="primary" type="button" onClick={novoDashboard}><Plus size={16} />Novo dashboard</button>
           </div>
         )}
@@ -753,7 +753,7 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
               <div>
                 <span>Salvia IA da Control S Hub</span>
                 <h3>Prompt IA para gerar JSON importavel</h3>
-                <p>Cole este prompt em uma IA, peÃ§a o dashboard desejado e importe aqui o JSON que ela devolver.</p>
+                <p>Cole este prompt em uma IA, peça o dashboard desejado e importe aqui o JSON que ela devolver.</p>
               </div>
               <button type="button" onClick={() => setPromptIaAberto(false)} title="Fechar"><X size={18} /></button>
             </header>
@@ -869,7 +869,7 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
                       <button type="button" onClick={() => removerWidget(widget)}>Remover</button>
                     </div>
                   ))}
-                  {(detalhe?.widgets ?? []).length === 0 && <p>Nenhum widget cadastrado. Clique em Novo widget para comeÃ§ar a montar o dashboard.</p>}
+                  {(detalhe?.widgets ?? []).length === 0 && <p>Nenhum widget cadastrado. Clique em Novo widget para começar a montar o dashboard.</p>}
                 </div>
                 {modalWidgetAberto && (
                   <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Editar widget">
@@ -909,11 +909,11 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
                   </div>
                 )}
                 {modalPreviewWidgetAberto && (
-                  <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Previa do widget">
+                  <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Prévia do widget">
                     <section className="biDetalheModal biPreviewModal">
                       <header>
                         <div>
-                          <span>Previa rapida</span>
+                          <span>Prévia rápida</span>
                           <h3>{String(previewWidget?.titulo ?? 'Widget')}</h3>
                           <p>Resultado da consulta usada por este widget.</p>
                         </div>
@@ -1004,7 +1004,7 @@ export function BiFontesDados() {
         <div>
           <span>Business Intelligence</span>
           <h2>Fontes de Dados</h2>
-          <p>O BI usa automaticamente o PostgreSQL padrao do Control S Hub e reaproveita as conexoes SQL Server cadastradas no Cadastro Central de Produtos.</p>
+          <p>O BI usa automaticamente o PostgreSQL padrão do Control S Hub e reaproveita as conexoes SQL Server cadastradas no Cadastro Central de Produtos.</p>
         </div>
       </header>
       {erro && <div className="alerta">{erro}</div>}
@@ -1034,6 +1034,22 @@ export function BiConsultasEditor() {
   useEffect(() => {
     carregar().catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao carregar consultas.'));
   }, []);
+
+  function obterValorFonteConsulta(consulta: RegistroGenerico) {
+    if (consulta.conexao_sqlserver_id) return `SQLSERVER_PIM:${consulta.conexao_sqlserver_id}`;
+    return String(consulta.fonte_dados_id ?? '');
+  }
+
+  function normalizarConsultaParaEnvio(consulta: RegistroGenerico) {
+    const fonteSelecionada = String(consulta.fonte_dados_id ?? '');
+    if (fonteSelecionada.startsWith('SQLSERVER_PIM:')) {
+      return { ...consulta, fonte_dados_tipo: 'SQLSERVER', conexao_sqlserver_id: Number(fonteSelecionada.replace('SQLSERVER_PIM:', '')) };
+    }
+    if (!fonteSelecionada) {
+      return { ...consulta, fonte_dados_tipo: 'POSTGRESQL', conexao_sqlserver_id: null, fonte_dados_id: '' };
+    }
+    return { ...consulta, fonte_dados_tipo: 'POSTGRESQL', conexao_sqlserver_id: null };
+  }
 
   function formatarSqlControlS(sql: string) {
     const palavrasQuebram = ['SELECT', 'FROM', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT'];
@@ -1072,7 +1088,7 @@ export function BiConsultasEditor() {
   }
 
   function editarConsulta(consulta: RegistroGenerico) {
-    setFormulario(consulta);
+    setFormulario({ ...consulta, fonte_dados_id: obterValorFonteConsulta(consulta) });
     setPreview(null);
     setErro('');
     setMensagem('');
@@ -1083,10 +1099,10 @@ export function BiConsultasEditor() {
     setErro('');
     setMensagem('');
     try {
-      const resultado = await testarConsultaBi(formulario, {}, limitePrevia);
+      const resultado = await testarConsultaBi(normalizarConsultaParaEnvio(formulario), {}, limitePrevia);
       setPreview(resultado);
       setModalPreviewConsultaAberto(true);
-      setMensagem(`Consulta testada com sucesso. Previa limitada a ${limitePrevia} registro(s).`);
+      setMensagem(`Consulta testada com sucesso. Prévia limitada a ${limitePrevia} registro(s).`);
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao testar consulta.');
     }
@@ -1096,7 +1112,7 @@ export function BiConsultasEditor() {
     evento.preventDefault();
     try {
       setErro('');
-      await salvarConsultaBi(formulario);
+      await salvarConsultaBi(normalizarConsultaParaEnvio(formulario));
       setMensagem('Consulta salva com sucesso.');
       setModalAberto(false);
       setFormulario({ nome: '', descricao: '', sql_consulta: 'SELECT 1 AS valor', tempo_cache_segundos: 60, ativo: true });
@@ -1130,7 +1146,7 @@ export function BiConsultasEditor() {
           <Info size={18} />
           <div>
             <strong>Como usar parametros</strong>
-            <p>Escreva filtros como <code>WHERE T1.ID = :ID</code>. O backend substitui os parametros com seguranÃ§a. Dashboards aceitam apenas comandos de leitura: <code>SELECT</code> ou <code>WITH</code>.</p>
+            <p>Escreva filtros como <code>WHERE T1.ID = :ID</code>. O backend substitui os parametros com segurança. Dashboards aceitam apenas comandos de leitura: <code>SELECT</code> ou <code>WITH</code>.</p>
           </div>
         </div>
         {erro && !modalAberto && <div className="alerta">{erro}</div>}
@@ -1146,7 +1162,7 @@ export function BiConsultasEditor() {
           acoes={(consulta) => (
             <>
               <button className="ghost" type="button" onClick={() => editarConsulta(consulta)}>Editar</button>
-              <button className="ghost" type="button" onClick={() => { editarConsulta(consulta); testarConsultaBi(consulta, {}, 5).then((resultado) => { setPreview(resultado); setModalPreviewConsultaAberto(true); }).catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao testar consulta.')); }}>Testar</button>
+              <button className="ghost" type="button" onClick={() => { const consultaTeste = { ...consulta, fonte_dados_id: obterValorFonteConsulta(consulta) }; editarConsulta(consulta); testarConsultaBi(normalizarConsultaParaEnvio(consultaTeste), {}, 5).then((resultado) => { setPreview(resultado); setModalPreviewConsultaAberto(true); }).catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao testar consulta.')); }}>Testar</button>
               <button className="ghost danger" type="button" onClick={() => excluirConsultaBi(Number(consulta.id)).then(carregar)}>Excluir</button>
             </>
           )}
@@ -1159,7 +1175,7 @@ export function BiConsultasEditor() {
               <div>
                 <span>Consulta SQL</span>
                 <h3>{formulario.id ? 'Editar consulta' : 'Nova consulta'}</h3>
-                <p>Teste a consulta e confira a prÃ©via antes de salvar.</p>
+                <p>Teste a consulta e confira a prévia antes de salvar.</p>
               </div>
               <button type="button" onClick={() => setModalAberto(false)} title="Fechar"><X size={18} /></button>
             </header>
@@ -1167,9 +1183,9 @@ export function BiConsultasEditor() {
             {mensagem && <div className="sucesso">{mensagem}</div>}
             <form className="biConsultaModalForm" onSubmit={salvar}>
               <BiCampo rotulo="Nome"><input value={String(formulario.nome ?? '')} onChange={(evento) => setFormulario({ ...formulario, nome: evento.target.value })} /></BiCampo>
-              <BiCampo rotulo="Fonte de dados"><select value={String(formulario.fonte_dados_id ?? '')} onChange={(evento) => setFormulario({ ...formulario, fonte_dados_id: evento.target.value })}><option value="">PostgreSQL padrao</option>{fontes.map((fonte) => <option key={String(fonte.id)} value={String(fonte.id)}>{String(fonte.nome)} - {String(fonte.tipo)}</option>)}</select></BiCampo>
+              <BiCampo rotulo="Fonte de dados"><select value={String(formulario.fonte_dados_id ?? '')} onChange={(evento) => setFormulario({ ...formulario, fonte_dados_id: evento.target.value })}><option value="">PostgreSQL padrão</option>{fontes.map((fonte) => <option key={String(fonte.id)} value={String(fonte.id)}>{String(fonte.nome)} - {String(fonte.tipo)}</option>)}</select></BiCampo>
               <BiCampo rotulo="Cache (segundos)"><input type="number" value={Number(formulario.tempo_cache_segundos ?? 60)} onChange={(evento) => setFormulario({ ...formulario, tempo_cache_segundos: Number(evento.target.value) })} /></BiCampo>
-              <BiCampo rotulo="Registros na previa"><select value={limitePrevia} onChange={(evento) => setLimitePrevia(Number(evento.target.value))}><option value={5}>5 registros</option><option value={10}>10 registros</option><option value={50}>50 registros</option></select></BiCampo>
+              <BiCampo rotulo="Registros na prévia"><select value={limitePrevia} onChange={(evento) => setLimitePrevia(Number(evento.target.value))}><option value={5}>5 registros</option><option value={10}>10 registros</option><option value={50}>50 registros</option></select></BiCampo>
               <div className="biChecks biCampoGrande">
                 <label><input type="checkbox" checked={Boolean(formulario.permitir_procedure)} onChange={(evento) => setFormulario({ ...formulario, permitir_procedure: evento.target.checked })} /> Permitir procedure / EXEC / CALL nesta consulta</label>
               </div>
@@ -1183,11 +1199,11 @@ export function BiConsultasEditor() {
                 <span><code>:empresa_id</code> empresa ativa do usuario</span>
                 <span><code>:data_inicial</code> e <code>:data_final</code> periodo informado nos filtros</span>
                 <span><code>:ID</code>, <code>:cliente_id</code>, <code>:filial_id</code> ou qualquer nome usado no SQL</span>
-                <span>Procedure/EXEC fica bloqueado por padrao. Marque a opcao acima apenas para consultas controladas.</span>
+                <span>Procedure/EXEC fica bloqueado por padrão. Marque a opção acima apenas para consultas controladas.</span>
               </div>
               <div className="biFormAcoes biCampoGrande">
-                <button className="ghost" type="button" onClick={() => setFormulario({ ...formulario, sql_consulta: formatarSqlControlS(String(formulario.sql_consulta ?? '')) })}><FileCode2 size={15} />Identar padrÃ£o Control S</button>
-                <button className="ghost" type="button" onClick={testarFormulario}><Table2 size={15} />Testar e ver prÃ©via</button>
+                <button className="ghost" type="button" onClick={() => setFormulario({ ...formulario, sql_consulta: formatarSqlControlS(String(formulario.sql_consulta ?? '')) })}><FileCode2 size={15} />Identar padrão Control S</button>
+                <button className="ghost" type="button" onClick={testarFormulario}><Table2 size={15} />Testar e ver prévia</button>
                 <button className="primary" type="submit"><Save size={15} />Salvar consulta</button>
               </div>
             </form>
@@ -1195,11 +1211,11 @@ export function BiConsultasEditor() {
         </div>
       )}
       {modalPreviewConsultaAberto && (
-        <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Previa da consulta SQL">
+        <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label="Prévia da consulta SQL">
           <section className="biDetalheModal biPreviewModal">
             <header>
               <div>
-                <span>Previa dos dados</span>
+                <span>Prévia dos dados</span>
                 <h3>{String(formulario.nome ?? 'Consulta SQL')}</h3>
                 <p>{linhasPreview.length} registro(s) exibido(s) de {String(preview?.quantidade_total_consulta ?? preview?.quantidade_registros ?? 0)}</p>
               </div>
@@ -1212,7 +1228,7 @@ export function BiConsultasEditor() {
                   <tbody>{linhasPreview.map((linha, indice) => <tr key={indice}>{colunasPreview.map((coluna) => <td key={coluna}>{formatarValorBi(linha[coluna], coluna.includes('valor'))}</td>)}</tr>)}</tbody>
                 </table>
               </div>
-            ) : <EstadoBi titulo="Sem previa" descricao="A consulta executou, mas nao retornou registros para a previa." />}
+            ) : <EstadoBi titulo="Sem prévia" descricao="A consulta executou, mas não retornou registros para a prévia." />}
           </section>
         </div>
       )}
@@ -1235,3 +1251,7 @@ export function BiTemplates() {
 export function BiSemPermissao({ descricao }: { descricao: string }) {
   return <EstadoBi titulo="Sem permissao" descricao={descricao} />;
 }
+
+
+
+

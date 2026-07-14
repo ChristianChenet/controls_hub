@@ -29,13 +29,21 @@ function descriptografarSenha(valor?: string | null) {
   return Buffer.concat([decipher.update(Buffer.from(conteudoTexto, 'base64')), decipher.final()]).toString('utf8');
 }
 
-// A execucao de dashboards aceita apenas consultas de leitura; filtros entram como parametros.
-export function validarSqlDashboard(sql: string, permitirExec = false) {
+function consultaTemSintaxeSqlServer(sql: string) {
+  return /(^|\s)DECLARE\s+@|\bWITH\s*\(\s*NOLOCK\s*\)|\bOUTER\s+APPLY\b|\bCROSS\s+APPLY\b|\bFOR\s+JSON\b|@\w+/i.test(sql);
+}
+
+// A execucao de dashboards aceita consultas de leitura; SQL Server pode usar T-SQL quando a fonte correta estiver selecionada.
+export function validarSqlDashboard(sql: string, permitirExec = false, permitirTsql = false) {
   const texto = String(sql ?? '').trim();
   const normalizado = texto.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
-  const inicioPermitido = permitirExec ? /^(SELECT|WITH|EXEC|EXECUTE|CALL)\b/i : /^(SELECT|WITH)\b/i;
+  const inicioPermitido = permitirTsql
+    ? /^(DECLARE|SELECT|WITH|EXEC|EXECUTE|CALL)\b/i
+    : permitirExec
+      ? /^(SELECT|WITH|EXEC|EXECUTE|CALL)\b/i
+      : /^(SELECT|WITH)\b/i;
   if (!inicioPermitido.test(normalizado)) {
-    throw new Error(permitirExec ? 'A consulta do dashboard deve iniciar com SELECT, WITH, EXEC ou CALL.' : 'A consulta do dashboard deve iniciar com SELECT ou WITH.');
+    throw new Error(permitirTsql ? 'A consulta SQL Server deve iniciar com DECLARE, SELECT, WITH, EXEC ou CALL.' : permitirExec ? 'A consulta do dashboard deve iniciar com SELECT, WITH, EXEC ou CALL.' : 'A consulta do dashboard deve iniciar com SELECT ou WITH.');
   }
   const comandosBloqueadosConsulta = permitirExec
     ? /\b(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|MERGE|GRANT|REVOKE|VACUUM|DO)\b/i
@@ -313,11 +321,15 @@ export async function listarConsultasBi(empresaId: number) {
 }
 
 export async function salvarConsultaBi(empresaId: number, dados: RegistroBi, usuarioId: number) {
-  validarSqlDashboard(dados.sql_consulta, Boolean(dados.permitir_procedure));
   const fonteSelecionada = String(dados.fonte_dados_id ?? '');
   const fonteTipo = fonteSelecionada.startsWith('SQLSERVER_PIM:') ? 'SQLSERVER' : 'POSTGRESQL';
   const conexaoSqlServerId = fonteSelecionada.startsWith('SQLSERVER_PIM:') ? Number(fonteSelecionada.replace('SQLSERVER_PIM:', '')) : null;
   const fonteDadosId = fonteSelecionada && !fonteSelecionada.startsWith('SQLSERVER_PIM:') ? Number(fonteSelecionada) : null;
+  const permitirTsql = fonteTipo === 'SQLSERVER' || String(dados.fonte_dados_tipo ?? '').toUpperCase() === 'SQLSERVER';
+  if (!permitirTsql && consultaTemSintaxeSqlServer(String(dados.sql_consulta ?? ''))) {
+    throw new Error('Esta consulta usa sintaxe de SQL Server. Selecione uma conexao SQL Server em Fonte de dados antes de salvar ou testar.');
+  }
+  validarSqlDashboard(dados.sql_consulta, Boolean(dados.permitir_procedure) || permitirTsql, permitirTsql);
   return consultarUm<RegistroBi>(`
     INSERT INTO bi_consultas (id, empresa_id, fonte_dados_id, fonte_dados_tipo, conexao_sqlserver_id, nome, descricao, sql_consulta, parametros_json, tempo_cache_segundos, ativo, criado_por, atualizado_por, permitir_procedure)
     VALUES (COALESCE($1, nextval(pg_get_serial_sequence('bi_consultas','id'))), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)
@@ -345,7 +357,11 @@ export async function executarConsultaBi(empresaId: number, consultaOuDados: Reg
       ? await consultarUm<RegistroBi>('SELECT * FROM bi_consultas WHERE empresa_id = $1 AND id = $2 AND ativo = TRUE', [empresaId, consultaId])
       : consultaOuDados;
   if (!consulta) throw new Error('Consulta nao encontrada ou inativa.');
-  const sql = validarSqlDashboard(consulta.sql_consulta, Boolean(consulta.permitir_procedure));
+  const permitirTsql = String(consulta.fonte_dados_tipo ?? '').toUpperCase() === 'SQLSERVER' || Boolean(consulta.conexao_sqlserver_id);
+  if (!permitirTsql && consultaTemSintaxeSqlServer(String(consulta.sql_consulta ?? ''))) {
+    throw new Error('Esta consulta usa sintaxe de SQL Server. Selecione uma conexao SQL Server em Fonte de dados para testar.');
+  }
+  const sql = validarSqlDashboard(consulta.sql_consulta, Boolean(consulta.permitir_procedure) || permitirTsql, permitirTsql);
   const { texto, valores } = montarParametrosSql(sql, filtros);
   const inicio = Date.now();
   let execucaoId: number | null = null;
