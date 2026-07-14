@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Building2,
   Columns3,
   FileCode2,
@@ -97,13 +98,26 @@ import {
 } from './servicos/api';
 import {
   AtributosPim,
+  CargaSqlServerPim,
   ConfiguracoesPim,
+  ConexoesSqlServerPim,
   DashboardPim,
   ImportacaoPim,
   LogoProdutoCentral,
   PainelPimGenerico,
   ProdutosPim
 } from './modulos/cadastro_produto_central/Pim';
+import {
+  BiConsultasEditor,
+  BiFontesDados,
+  BiLogsExecucao,
+  BiSemPermissao,
+  BiTemplates,
+  BusinessIntelligenceDashboards,
+  menusBusinessIntelligence,
+  permissoesMenuBi,
+  usuarioPodeBi
+} from './modulos/business_intelligence/BusinessIntelligence';
 
 type TelaAtual =
   | 'dashboard'
@@ -127,15 +141,22 @@ type TelaAtual =
   | 'pimAtributos'
   | 'pimCanais'
   | 'pimImportacao'
+  | 'pimSqlConexoes'
+  | 'pimSqlCargas'
   | 'pimAssets'
   | 'pimWorkflows'
   | 'pimAprovacoes'
   | 'pimIa'
   | 'pimIntegracoes'
   | 'pimAuditoria'
-  | 'pimConfiguracoes';
+  | 'pimConfiguracoes'
+  | 'biDashboards'
+  | 'biFontesDados'
+  | 'biConsultas'
+  | 'biTemplates'
+  | 'biLogs';
 
-type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central';
+type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central' | 'business_intelligence';
 
 type DetalheCotacaoNormalizado = {
   cotacao: RegistroGenerico;
@@ -166,18 +187,17 @@ const menus: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = 
 
 const menusCadastroProduto: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = [
   { id: 'pimDashboard' as TelaAtual, nome: 'Dashboard', icone: LayoutDashboard },
-  { id: 'pimProdutos' as TelaAtual, nome: 'Produtos', icone: FileCode2 },
   { id: 'pimConjuntos' as TelaAtual, nome: 'Conjuntos', icone: FileCode2 },
-  { id: 'pimComponentes' as TelaAtual, nome: 'Componentes', icone: FileCode2 },
-  { id: 'pimSkus' as TelaAtual, nome: 'SKUs', icone: FileCode2 },
+  { id: 'pimProdutos' as TelaAtual, nome: 'Produtos', icone: FileCode2 },
   { id: 'pimAtributos' as TelaAtual, nome: 'Atributos', icone: Settings },
   { id: 'pimCanais' as TelaAtual, nome: 'Canais / Marketplaces', icone: Settings },
-  { id: 'pimImportacao' as TelaAtual, nome: 'Importacao', icone: FileCode2 },
+  { id: 'pimImportacao' as TelaAtual, nome: 'Importação por Arquivo', icone: FileCode2 },
+  { id: 'pimSqlConexoes' as TelaAtual, nome: 'Conexões SQL Server', icone: Settings },
+  { id: 'pimSqlCargas' as TelaAtual, nome: 'Carga SQL / De-Para', icone: FileCode2 },
   { id: 'pimAssets' as TelaAtual, nome: 'Imagens e Documentos', icone: FileCode2 },
   { id: 'pimWorkflows' as TelaAtual, nome: 'Workflows', icone: Columns3 },
   { id: 'pimAprovacoes' as TelaAtual, nome: 'Aprovacoes', icone: ShieldCheck },
   { id: 'pimIa' as TelaAtual, nome: 'IA & Enriquecimento', icone: Settings },
-  { id: 'pimIntegracoes' as TelaAtual, nome: 'Integracoes', icone: Settings },
   { id: 'pimAuditoria' as TelaAtual, nome: 'Auditoria', icone: FileCode2 },
   { id: 'pimConfiguracoes' as TelaAtual, nome: 'Configuracoes', icone: Settings },
   { id: 'empresas' as TelaAtual, nome: 'Empresas', icone: Building2 },
@@ -212,6 +232,8 @@ const permissoesMenuPim: Partial<Record<TelaAtual, string[]>> = {
   pimAtributos: ['PIM_VISUALIZAR_ATRIBUTOS', 'CONFIGURAR_ATRIBUTOS_PIM'],
   pimCanais: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM'],
   pimImportacao: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'],
+  pimSqlConexoes: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'GERENCIAR_INTEGRACOES_PIM'],
+  pimSqlCargas: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'],
   pimAssets: ['PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'],
   pimWorkflows: ['PIM_VISUALIZAR_WORKFLOW', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimAprovacoes: ['PIM_VISUALIZAR_APROVACAO', 'PIM_APROVAR', 'APROVAR_PRODUTO_PIM'],
@@ -250,6 +272,18 @@ function usuarioPodeVerMenuPim(usuario: UsuarioLogado, telaMenu: TelaAtual) {
   return permissoesNecessarias.some((permissao) => permissoesUsuario.has(permissao));
 }
 
+function usuarioPodeVerMenuBi(usuario: UsuarioLogado, telaMenu: TelaAtual) {
+  if (usuario.superadmin || usuario.administrador) {
+    return true;
+  }
+  const permissoesNecessarias = permissoesMenuBi[String(telaMenu)] ?? [];
+  if (!permissoesNecessarias.length) {
+    return true;
+  }
+  const permissoesUsuario = new Set(usuario.permissoes ?? []);
+  return permissoesNecessarias.some((permissao) => permissoesUsuario.has(permissao));
+}
+
 
 const rotasPorTela: Record<TelaAtual, string> = {
   dashboard: '/Dashboard',
@@ -273,13 +307,20 @@ const rotasPorTela: Record<TelaAtual, string> = {
   pimAtributos: '/Cadastro_Produto_Central/Atributos',
   pimCanais: '/Cadastro_Produto_Central/Canais',
   pimImportacao: '/Cadastro_Produto_Central/Importacao',
+  pimSqlConexoes: '/Cadastro_Produto_Central/Conexoes_SQL',
+  pimSqlCargas: '/Cadastro_Produto_Central/Carga_SQL',
   pimAssets: '/Cadastro_Produto_Central/Assets',
   pimWorkflows: '/Cadastro_Produto_Central/Workflows',
   pimAprovacoes: '/Cadastro_Produto_Central/Aprovacoes',
   pimIa: '/Cadastro_Produto_Central/IA',
   pimIntegracoes: '/Cadastro_Produto_Central/Integracoes',
   pimAuditoria: '/Cadastro_Produto_Central/Auditoria',
-  pimConfiguracoes: '/Cadastro_Produto_Central/Configuracoes'
+  pimConfiguracoes: '/Cadastro_Produto_Central/Configuracoes',
+  biDashboards: '/Business_Intelligence/Dashboards',
+  biFontesDados: '/Business_Intelligence/Fontes_Dados',
+  biConsultas: '/Business_Intelligence/Consultas',
+  biTemplates: '/Business_Intelligence/Templates',
+  biLogs: '/Business_Intelligence/Logs'
 };
 
 const MODELO_EMAIL_TRANSPORTADORA_PADRAO = `<div style="font-family:Arial,sans-serif;color:#172033">
@@ -306,13 +347,21 @@ const telasPorRota = Object.entries(rotasPorTela).reduce((acumulador, [tela, rot
 }, {} as Record<string, TelaAtual>);
 
 function obterTelaPelaRota(): TelaAtual {
+  if (/^\/business_intelligence\/dashboards\/\d+\/tv$/i.test(window.location.pathname)) {
+    return 'biDashboards';
+  }
   return telasPorRota[window.location.pathname.toLowerCase()] ?? 'dashboard';
 }
 
 function obterModuloPelaRota(): ModuloAtual {
-  return window.location.pathname.toLowerCase().startsWith('/cadastro_produto_central')
-    ? 'cadastro_produto_central'
-    : 'cotacao_frete';
+  const rota = window.location.pathname.toLowerCase();
+  if (rota.startsWith('/cadastro_produto_central')) {
+    return 'cadastro_produto_central';
+  }
+  if (rota.startsWith('/business_intelligence')) {
+    return 'business_intelligence';
+  }
+  return 'cotacao_frete';
 }
 
 function navegarParaTela(tela: TelaAtual, substituir = false) {
@@ -640,6 +689,12 @@ const moduloCadastroProduto = {
   id: 'cadastro_produto_central',
   nome: 'Cadastro de Produto Central',
   descricao: 'Cadastro mestre de produtos, atributos, imagens, documentos e integracao multicanal.'
+};
+
+const moduloBusinessIntelligence = {
+  id: 'business_intelligence',
+  nome: 'Business Intelligence',
+  descricao: 'Dashboards premium, consultas SQL, filtros, cache, logs e modo TV para decisões em tempo real.'
 };
 
 function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: EmpresaUsuario[]) => void }) {
@@ -1233,7 +1288,7 @@ function Dashboard() {
         <input placeholder="% frete máx." type="number" value={percentualFreteMax} onChange={(evento) => setPercentualFreteMax(evento.target.value)} />
         <select value={freteGratisFiltro} onChange={(evento) => setFreteGratisFiltro(evento.target.value)} title="Filtra pedidos conforme o frete cobrado no pedido.">
           <option value="">Frete: todos</option>
-          <option value="SIM">Frete gr?tis</option>
+          <option value="SIM">Frete grátis</option>
           <option value="NAO">Com frete</option>
         </select>
         <label className="toggleLinha"><input type="checkbox" checked={somenteTrocaTransportadora} onChange={(evento) => setSomenteTrocaTransportadora(evento.target.checked)} />Troca de transportadora</label>
@@ -1931,7 +1986,7 @@ function KanbanCotacoes({
         </select>
         <select className="selectFiltroCompacto" value={freteGratisFiltro} onChange={(evento) => setFreteGratisFiltro(evento.target.value)} title="Filtra pedidos conforme o frete cobrado no pedido.">
           <option value="">Frete: todos</option>
-          <option value="SIM">Frete gr?tis</option>
+          <option value="SIM">Frete grátis</option>
           <option value="NAO">Com frete</option>
         </select>
         <button className="ghost" onClick={carregarKanban}>Filtrar</button>
@@ -2277,7 +2332,7 @@ function CotacoesOperacional({
         faturado: faturadoFiltro || undefined,
         multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
         fluxo_logistico: fluxoLogisticoFiltro || undefined,
-      frete_gratis: freteGratisFiltro || undefined,
+        frete_gratis: freteGratisFiltro || undefined,
         pagina: String(paginaCotacao),
         limite: String(limiteCotacao)
       });
@@ -2624,7 +2679,7 @@ function CotacoesOperacional({
         </select>
         <select value={freteGratisFiltro} onChange={(evento) => { setFreteGratisFiltro(evento.target.value); setPaginaCotacao(1); }} title="Filtra pedidos conforme o frete cobrado no pedido.">
           <option value="">Frete: todos</option>
-          <option value="SIM">Frete gr?tis</option>
+          <option value="SIM">Frete grátis</option>
           <option value="NAO">Com frete</option>
         </select>
       </div>
@@ -2839,7 +2894,6 @@ function SemaforoSlaCotacao({ cotacao, parametros, compacto = false }: { cotacao
   );
 }
 
-
 function SemaforoN8n() {
   const [status, setStatus] = useState<RegistroGenerico | null>(null);
   const [erro, setErro] = useState('');
@@ -2882,9 +2936,9 @@ function SemaforoN8n() {
     : [
         `Monitor n8n: ${status?.mensagem ?? 'consultando...'}`,
         `URL: ${status?.url_monitor ?? '-'}`,
-        `Ultima consulta: ${formatarDataHoraBrasileira(status?.ultima_consulta_em)}`,
-        `Ultima integracao cotacao frete: ${status?.ultima_integracao_em ? formatarDataHoraBrasileira(status.ultima_integracao_em) : 'sem registro'}`,
-        `Minutos sem integracao: ${status?.minutos_sem_integracao ?? '-'}`,
+        `Última consulta: ${formatarDataHoraBrasileira(status?.ultima_consulta_em)}`,
+        `Última integração cotação frete: ${status?.ultima_integracao_em ? formatarDataHoraBrasileira(status.ultima_integracao_em) : 'sem registro'}`,
+        `Minutos sem integração: ${status?.minutos_sem_integracao ?? '-'}`,
         `Detalhe: ${status?.detalhe_tecnico ?? '-'}`
       ].join('\n');
 
@@ -4969,7 +5023,7 @@ function EnvioMassaCotacoes() {
         </select>
         <select value={freteGratisFiltro} onChange={(evento) => { setFreteGratisFiltro(evento.target.value); setPagina(1); }} title="Filtra pedidos conforme o frete cobrado no pedido.">
           <option value="">Frete: todos</option>
-          <option value="SIM">Frete gr?tis</option>
+          <option value="SIM">Frete grátis</option>
           <option value="NAO">Com frete</option>
         </select>
         <select value={semaforoFiltro} onChange={(evento) => { setSemaforoFiltro(evento.target.value); setPagina(1); }} title="Filtra pelo semáforo de SLA calculado pela data de criação da cotação.">
@@ -5720,12 +5774,12 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
       {erro && <div className="alerta">{erro}</div>}
       <form className="formCadastro" onSubmit={salvar}>
         <fieldset className="campoLargo grupoConfiguracao grupoMonitorN8n">
-          <legend>Monitor n8n / Integracao</legend>
-          <small>Controla o semaforo exibido no cabecalho enquanto o usuario esta logado.</small>
+          <legend>Monitor n8n / Integração</legend>
+          <small>Controla o semáforo exibido no cabeçalho enquanto o usuário está logado.</small>
           <div className="gradeConfiguracaoInterna">
             <label>URL do n8n<input value={parametros.URL_MONITOR_N8N ?? 'http://192.168.1.70:5678/'} onChange={(evento) => setParametros({ ...parametros, URL_MONITOR_N8N: evento.target.value })} /></label>
             <label>Atualizar a cada (min)<input value={parametros.INTERVALO_MONITOR_N8N_MINUTOS ?? '15'} onChange={(evento) => setParametros({ ...parametros, INTERVALO_MONITOR_N8N_MINUTOS: evento.target.value })} /></label>
-            <label>Alerta sem integracao (min)<input value={parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30'} onChange={(evento) => setParametros({ ...parametros, LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS: evento.target.value })} /></label>
+            <label>Alerta sem integração (min)<input value={parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30'} onChange={(evento) => setParametros({ ...parametros, LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS: evento.target.value })} /></label>
           </div>
           <div className="linhaAcoesMonitor">
             <button type="button" className="ghost" onClick={testarMonitorN8n}>Testar n8n agora</button>
@@ -5875,6 +5929,7 @@ function SelecaoModulo({
 }) {
   const podeCotacao = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('UTILIZA_COTACAO_FRETE');
   const podePim = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_CADASTRO_PRODUTO_CENTRAL') || usuario.permissoes?.includes('PIM_VISUALIZAR_DASHBOARD');
+  const podeBi = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_BUSINESS_INTELLIGENCE');
 
   return (
     <main className="selecaoModulo">
@@ -5900,9 +5955,14 @@ function SelecaoModulo({
           <small>{podeCotacao ? moduloCotacao.descricao : 'Sem permissão: UTILIZA_COTACAO_FRETE'}</small>
         </button>
         <button className="moduloCard" disabled={!podePim} onClick={() => aoAbrirModulo('cadastro_produto_central')}>
-          <strong><LogoProdutoCentral pequeno /></strong>
+          <strong><LogoProdutoCentral /></strong>
           <span>{moduloCadastroProduto.nome}</span>
           <small>{podePim ? moduloCadastroProduto.descricao : 'Sem permissao: VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'}</small>
+        </button>
+        <button className="moduloCard moduloCardBi" disabled={!podeBi} onClick={() => aoAbrirModulo('business_intelligence')}>
+          <strong><BarChart3 size={42} /></strong>
+          <span>{moduloBusinessIntelligence.nome}</span>
+          <small>{podeBi ? moduloBusinessIntelligence.descricao : 'Sem permissao: VISUALIZAR_BUSINESS_INTELLIGENCE'}</small>
         </button>
       </section>
     </main>
@@ -5947,6 +6007,8 @@ export function App() {
     setModuloAtual(obterModuloPelaRota());
     setModuloAberto(window.location.pathname !== '/');
   }
+
+
 
   function sair() {
     localStorage.removeItem('controlSHubToken');
@@ -6015,14 +6077,22 @@ export function App() {
     ? window.location.pathname.replace('/cotacao/token/', '')
     : '';
 
-  const menusBase = moduloAtual === 'cadastro_produto_central' ? menusCadastroProduto : menus;
+  const menusBase = moduloAtual === 'cadastro_produto_central'
+    ? menusCadastroProduto
+    : moduloAtual === 'business_intelligence'
+      ? menusBusinessIntelligence as { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[]
+      : menus;
   const podeVerMenuAtual = (item: { id: TelaAtual }) => {
     if (!usuario) {
       return true;
     }
-    return moduloAtual === 'cadastro_produto_central'
-      ? usuarioPodeVerMenuPim(usuario, item.id)
-      : usuarioPodeVerMenu(usuario, item.id);
+    if (moduloAtual === 'cadastro_produto_central') {
+      return usuarioPodeVerMenuPim(usuario, item.id);
+    }
+    if (moduloAtual === 'business_intelligence') {
+      return usuarioPodeVerMenuBi(usuario, item.id);
+    }
+    return usuarioPodeVerMenu(usuario, item.id);
   };
   const menusPermitidos = usuario ? menusBase.filter((item) => podeVerMenuAtual(item)) : [];
   const menusOrdenados = ordemMenus
@@ -6058,7 +6128,7 @@ export function App() {
         empresas={empresas}
         aoTrocarEmpresa={alterarEmpresaAtiva}
         aoAbrirModulo={(modulo) => {
-          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : 'dashboard';
+          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : modulo === 'business_intelligence' ? 'biDashboards' : 'dashboard';
           setModuloAtual(modulo);
           setTela(telaInicial);
           setModuloAberto(true);
@@ -6150,18 +6220,24 @@ export function App() {
         {tela === 'pimDashboard' && <DashboardPim />}
         {tela === 'pimProdutos' && <ProdutosPim />}
         {tela === 'pimConjuntos' && <ProdutosPim modo="conjuntos" />}
-        {tela === 'pimSkus' && <ProdutosPim modo="skus" />}
-        {tela === 'pimComponentes' && <PainelPimGenerico tela={tela} titulo="Componentes" subtitulo="Cadastre evaporadoras, condensadoras, controles, kits e acessórios reutilizáveis." />}
+        {tela === 'pimSkus' && <ProdutosPim />}
+        {tela === 'pimComponentes' && <ProdutosPim />}
         {tela === 'pimAtributos' && <AtributosPim />}
         {tela === 'pimCanais' && <PainelPimGenerico tela={tela} titulo="Canais / Marketplaces" subtitulo="Categorias, regras, mapeamentos e score mínimo por canal." />}
         {tela === 'pimImportacao' && <ImportacaoPim />}
+        {tela === 'pimSqlConexoes' && <ConexoesSqlServerPim />}
+        {tela === 'pimSqlCargas' && <CargaSqlServerPim />}
         {tela === 'pimAssets' && <PainelPimGenerico tela={tela} titulo="Imagens e Documentos" subtitulo="Biblioteca de imagens, manuais, fichas técnicas, vídeos e URLs." />}
         {tela === 'pimWorkflows' && <PainelPimGenerico tela={tela} titulo="Workflows" subtitulo="Fluxos de revisão, aprovação, publicação e arquivamento." />}
         {tela === 'pimAprovacoes' && <PainelPimGenerico tela={tela} titulo="Aprovações" subtitulo="Pendências de aprovação, comparação e histórico de decisão." />}
         {tela === 'pimIa' && <PainelPimGenerico tela={tela} titulo="IA & Enriquecimento" subtitulo="Configurações, sugestões e validações assistidas por IA." />}
-        {tela === 'pimIntegracoes' && <PainelPimGenerico tela={tela} titulo="Integrações" subtitulo="Arquitetura preparada para ERP Decis, ShopPub, e-commerce e marketplaces." />}
         {tela === 'pimAuditoria' && <PainelPimGenerico tela={tela} titulo="Auditoria" subtitulo="Trilha de alterações relevantes do Cadastro de Produto Central." />}
         {tela === 'pimConfiguracoes' && <ConfiguracoesPim />}
+        {tela === 'biDashboards' && (usuarioPodeBi(usuario, ['VISUALIZAR_BUSINESS_INTELLIGENCE']) ? <BusinessIntelligenceDashboards usuario={usuario} empresaAtiva={empresaAtiva} /> : <BiSemPermissao descricao="Você não possui permissão para visualizar dashboards de Business Intelligence." />)}
+        {tela === 'biFontesDados' && (usuarioPodeBi(usuario, ['BI_CONFIGURAR_FONTES_DADOS']) ? <BiFontesDados /> : <BiSemPermissao descricao="Você não possui permissão para configurar fontes de dados." />)}
+        {tela === 'biConsultas' && (usuarioPodeBi(usuario, ['BI_CONFIGURAR_CONSULTAS']) ? <BiConsultasEditor /> : <BiSemPermissao descricao="Você não possui permissão para configurar consultas SQL." />)}
+        {tela === 'biTemplates' && (usuarioPodeBi(usuario, ['VISUALIZAR_BUSINESS_INTELLIGENCE']) ? <BiTemplates /> : <BiSemPermissao descricao="Você não possui permissão para visualizar templates." />)}
+        {tela === 'biLogs' && (usuarioPodeBi(usuario, ['BI_VISUALIZAR_LOGS']) ? <BiLogsExecucao /> : <BiSemPermissao descricao="Você não possui permissão para visualizar logs do Business Intelligence." />)}
         {tela === 'dashboard' && <Dashboard />}
         {tela === 'cotacoes' && <CotacoesOperacional usuario={usuario} cotacaoInicialId={cotacaoParaAbrir} aoCotacaoInicialAberta={() => setCotacaoParaAbrir(null)} />}
         {tela === 'envioMassa' && <EnvioMassaCotacoes />}

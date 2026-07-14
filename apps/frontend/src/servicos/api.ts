@@ -585,6 +585,17 @@ export async function salvarAssetPim(dados: RegistroGenerico) {
   });
 }
 
+export async function vincularAssetsProdutosPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/assets/vinculos', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function desvincularAssetProdutoPim(produtoId: number, assetId: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/produtos/${produtoId}/assets/${assetId}`, { method: 'DELETE' });
+}
+
 export async function listarImportacoesPim() {
   return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/importacoes');
 }
@@ -608,7 +619,27 @@ export async function salvarConexaoSqlServerPim(dados: RegistroGenerico) {
 }
 
 export async function testarConexaoSqlServerPim(id: number) {
-  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/sqlserver/conexoes/${id}/testar`, { method: 'POST' });
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/sqlserver/conexoes/${id}/testar`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
+export async function listarConsultasSqlServerPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/sqlserver/consultas');
+}
+
+export async function salvarConsultaSqlServerPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/sqlserver/consultas', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirConsultaSqlServerPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/sqlserver/consultas/${id}`, {
+    method: 'DELETE'
+  });
 }
 
 export async function consultarSqlServerPim(dados: RegistroGenerico) {
@@ -644,6 +675,146 @@ export async function salvarConfiguracoesPim(dados: RegistroGenerico) {
   });
 }
 
+export async function testarIaPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/ia/testar', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function compararProdutoIaPim(produtoId: number, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/produtos/${produtoId}/ia/comparar`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
 export async function listarAuditoriaPim() {
   return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/auditoria');
+}
+
+export async function listarDashboardsBi() {
+  return requisitar<RegistroGenerico[]>('/api/business-intelligence/dashboards');
+}
+
+export async function obterDashboardBi(id: number) {
+  return requisitar<{ dashboard: RegistroGenerico; paginas: RegistroGenerico[]; widgets: RegistroGenerico[]; filtros: RegistroGenerico[]; permissoes: RegistroGenerico[] }>(`/api/business-intelligence/dashboards/${id}`);
+}
+
+export async function salvarDashboardBi(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/business-intelligence/dashboards', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirDashboardBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${id}`, { method: 'DELETE' });
+}
+
+export async function publicarDashboardBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${id}/publicar`, { method: 'POST' });
+}
+
+export async function duplicarDashboardBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${id}/duplicar`, { method: 'POST' });
+}
+
+export async function exportarDashboardBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${id}/exportar`);
+}
+
+export async function importarDashboardBi(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/business-intelligence/dashboards/importar', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function salvarPermissaoDashboardBi(dashboardId: number, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico[]>(`/api/business-intelligence/dashboards/${dashboardId}/permissoes`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirPermissaoDashboardBi(dashboardId: number, permissaoId: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${dashboardId}/permissoes/${permissaoId}`, { method: 'DELETE' });
+}
+
+export async function salvarPaginaBi(dashboardId: number, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${dashboardId}/paginas`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function salvarWidgetBi(dashboardId: number, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${dashboardId}/widgets`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirWidgetBi(dashboardId: number, widgetId: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/dashboards/${dashboardId}/widgets/${widgetId}`, { method: 'DELETE' });
+}
+
+export async function executarWidgetBi(widgetId: number, filtros?: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/widgets/${widgetId}/executar`, {
+    method: 'POST',
+    body: JSON.stringify({ filtros: filtros ?? {} })
+  });
+}
+
+export async function listarFontesDadosBi() {
+  return requisitar<RegistroGenerico[]>('/api/business-intelligence/fontes-dados');
+}
+
+export async function salvarFonteDadosBi(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/business-intelligence/fontes-dados', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirFonteDadosBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/fontes-dados/${id}`, { method: 'DELETE' });
+}
+
+export async function testarFonteDadosBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/fontes-dados/${id}/testar`, { method: 'POST' });
+}
+
+export async function listarConsultasBi() {
+  return requisitar<RegistroGenerico[]>('/api/business-intelligence/consultas');
+}
+
+export async function salvarConsultaBi(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/business-intelligence/consultas', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirConsultaBi(id: number) {
+  return requisitar<RegistroGenerico>(`/api/business-intelligence/consultas/${id}`, { method: 'DELETE' });
+}
+
+export async function testarConsultaBi(consulta: number | RegistroGenerico, filtros?: RegistroGenerico, limite?: number) {
+  const corpo = typeof consulta === 'number'
+    ? { id: consulta, filtros: filtros ?? {}, limite: limite ?? 5 }
+    : { ...consulta, filtros: filtros ?? {}, limite: limite ?? 5 };
+  return requisitar<RegistroGenerico>('/api/business-intelligence/consultas/testar', {
+    method: 'POST',
+    body: JSON.stringify(corpo)
+  });
+}
+
+export async function listarLogsBi() {
+  return requisitar<RegistroGenerico[]>('/api/business-intelligence/logs');
+}
+
+export async function listarTemplatesBi() {
+  return requisitar<RegistroGenerico[]>('/api/business-intelligence/templates');
 }

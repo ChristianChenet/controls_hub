@@ -1,7 +1,5 @@
 ﻿import { consultar, consultarUm } from '../../banco/conexao.js';
 
-import sqlServer from 'mssql';
-
 export type ProdutoCadastro = {
   id?: number;
   codigo_interno?: string;
@@ -33,6 +31,7 @@ export type ProdutoCadastro = {
   peso?: number | null;
   altura?: number | null;
   largura?: number | null;
+  profundidade?: number | null;
   comprimento?: number | null;
   titulo_meta?: string | null;
   descricao_meta?: string | null;
@@ -255,7 +254,7 @@ export async function listarProdutos(empresaId: number, busca?: string, status?:
       AND ($2::TEXT IS NULL OR codigo_interno ILIKE $2 OR sku_interno ILIKE $2 OR ean_gtin ILIKE $2 OR modelo ILIKE $2 OR marca ILIKE $2 OR descricao_interna ILIKE $2)
       AND ($3::TEXT IS NULL OR status = $3)
     ORDER BY alterado_em DESC NULLS LAST, criado_em DESC
-    LIMIT 300`,
+    LIMIT 10000`,
     [empresaId, termo, status || null]
   );
 }
@@ -419,7 +418,7 @@ export async function salvarProduto(empresaId: number, dados: ProdutoCadastro, u
       dados.peso ?? null,
       dados.altura ?? null,
       dados.largura ?? null,
-      dados.comprimento ?? null,
+      dados.profundidade ?? dados.comprimento ?? null,
       scoreBase.score,
       JSON.stringify(scoreBase.faltantes),
       tituloMeta ?? null,
@@ -1116,7 +1115,7 @@ export async function listarAssets(empresaId: number, busca?: string) {
 }
 
 export async function salvarAsset(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
-  return consultarUm(
+  const asset = await consultarUm(
     `INSERT INTO ativos_digitais (empresa_id, nome, tipo, arquivo, url, texto_alternativo, ordem, status, tags, marca, modelo, criado_por_usuario_id)
     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 0), COALESCE($8, 'ATIVO'), $9, $10, $11, $12)
     RETURNING *`,
@@ -1135,6 +1134,101 @@ export async function salvarAsset(empresaId: number, dados: Record<string, unkno
       usuarioId
     ]
   );
+
+  const produtoIds = Array.isArray(dados.produto_ids) ? dados.produto_ids.map(Number).filter(Boolean) : [];
+  if (asset?.id && produtoIds.length) {
+    await vincularAssetsProdutos(empresaId, {
+      asset_ids: [asset.id],
+      produto_ids: produtoIds,
+      tipo_vinculo: dados.tipo_vinculo ?? 'SECUNDARIA',
+      principal: Boolean(dados.principal)
+    }, usuarioId);
+  }
+
+  return asset;
+}
+
+export async function vincularAssetsProdutos(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const assetIds = Array.isArray(dados.asset_ids) ? dados.asset_ids.map(Number).filter(Boolean) : [];
+  const produtoIdsDiretos = Array.isArray(dados.produto_ids) ? dados.produto_ids.map(Number).filter(Boolean) : [];
+  const codigosErp = Array.isArray(dados.codigos_erp)
+    ? dados.codigos_erp.map((item) => String(item).trim()).filter(Boolean)
+    : String(dados.codigos_erp ?? '').split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
+  const tipoVinculo = String(dados.tipo_vinculo ?? 'SECUNDARIA');
+  const principal = Boolean(dados.principal);
+
+  if (!assetIds.length) throw new Error('Selecione ao menos uma imagem ou documento.');
+  const produtosPorCodigo = codigosErp.length
+    ? await consultar<{ id: number }>(
+      `SELECT id
+      FROM produtos
+      WHERE empresa_id = $1
+        AND codigo_erp_decis = ANY($2::TEXT[])
+        AND excluido = FALSE`,
+      [empresaId, codigosErp]
+    )
+    : [];
+  const produtoIds = Array.from(new Set([...produtoIdsDiretos, ...produtosPorCodigo.map((item) => Number(item.id))]));
+  if (!produtoIds.length) throw new Error('Informe ao menos um produto/conjunto para vincular.');
+
+  const assetsValidos = await consultar<{ id: number }>(
+    `SELECT id FROM ativos_digitais WHERE empresa_id = $1 AND id = ANY($2::BIGINT[])`,
+    [empresaId, assetIds]
+  );
+  const produtosValidos = await consultar<{ id: number }>(
+    `SELECT id FROM produtos WHERE empresa_id = $1 AND id = ANY($2::BIGINT[]) AND excluido = FALSE`,
+    [empresaId, produtoIds]
+  );
+
+  let vinculados = 0;
+  for (const asset of assetsValidos) {
+    for (const produto of produtosValidos) {
+      if (principal) {
+        await consultar(
+          `UPDATE ativos_digitais_produtos_vinculos
+          SET principal = FALSE
+          WHERE produto_id = $1`,
+          [produto.id]
+        );
+      }
+      await consultar(
+        `INSERT INTO ativos_digitais_produtos_vinculos (ativo_digital_id, produto_id, tipo_vinculo, ordem, principal)
+        VALUES ($1, $2, $3, COALESCE($4, 0), $5)
+        ON CONFLICT (ativo_digital_id, produto_id, tipo_vinculo) DO UPDATE SET
+          ordem = EXCLUDED.ordem,
+          principal = EXCLUDED.principal`,
+        [asset.id, produto.id, tipoVinculo, dados.ordem ? Number(dados.ordem) : 0, principal]
+      );
+      vinculados += 1;
+    }
+  }
+
+  await consultar(
+    `INSERT INTO produtos_historico_campos (produto_id, empresa_id, campo, valor_anterior, valor_novo, origem, comentario, criado_por_usuario_id)
+    SELECT id, $1, 'assets', NULL, $2, 'MANUAL', 'Vinculo de imagens/documentos em massa', $3
+    FROM produtos
+    WHERE id = ANY($4::BIGINT[])`,
+    [empresaId, JSON.stringify({ asset_ids: assetIds, tipo_vinculo: tipoVinculo, principal }), usuarioId, produtoIds]
+  );
+
+  return { vinculados, assets: assetsValidos.length, produtos: produtosValidos.length };
+}
+
+export async function desvincularAssetProduto(empresaId: number, produtoId: number, assetId: number) {
+  const removido = await consultarUm<{ id: number }>(
+    `DELETE FROM ativos_digitais_produtos_vinculos apl
+    USING produtos p, ativos_digitais a
+    WHERE apl.produto_id = p.id
+      AND apl.ativo_digital_id = a.id
+      AND p.empresa_id = $1
+      AND a.empresa_id = $1
+      AND apl.produto_id = $2
+      AND apl.ativo_digital_id = $3
+    RETURNING apl.id`,
+    [empresaId, produtoId, assetId]
+  );
+
+  return { removido: Boolean(removido) };
 }
 
 export async function listarImportacoes(empresaId: number) {
@@ -1299,6 +1393,121 @@ export async function salvarConfiguracoesModulo(empresaId: number, dados: Record
   );
 }
 
+async function buscarConfiguracaoIa(empresaId: number) {
+  const modulo = await buscarModuloCadastroProdutoCentral();
+  if (!modulo) return null;
+  return consultarUm<{ ativo: boolean; modelo_padrao: string; temperatura: number; limite_tokens: number; chave_openai?: string | null }>(
+    `SELECT ativo, modelo_padrao, temperatura, limite_tokens, chave_openai
+    FROM ia_configuracoes
+    WHERE empresa_id = $1
+      AND modulo_id = $2`,
+    [empresaId, modulo.id]
+  );
+}
+
+export async function testarIaCadastroProdutoCentral(empresaId: number, dados: Record<string, unknown>) {
+  const configuracao = await buscarConfiguracaoIa(empresaId);
+  const chave = String(dados.chave_openai ?? configuracao?.chave_openai ?? '').trim();
+  const modelo = String(dados.modelo ?? dados.ia_modelo_padrao ?? configuracao?.modelo_padrao ?? 'gpt-4.1-mini');
+  if (!chave) return { ok: false, mensagem: 'Informe a chave OpenAI ou salve a configuracao antes de testar.', modelo };
+
+  const resposta = await fetch(`https://api.openai.com/v1/models/${encodeURIComponent(modelo)}`, {
+    headers: { Authorization: `Bearer ${chave}` }
+  });
+
+  if (!resposta.ok) {
+    const texto = await resposta.text();
+    return { ok: false, modelo, mensagem: `Falha ao validar modelo/chave: HTTP ${resposta.status}`, detalhe: texto.slice(0, 500) };
+  }
+
+  const json = await resposta.json() as Record<string, unknown>;
+  return { ok: true, modelo: json.id ?? modelo, mensagem: 'Conexao com OpenAI validada.' };
+}
+
+function montarComparacaoIa(produto: Record<string, unknown>, sugestao: Record<string, unknown>) {
+  const campos = ['codigo_referencia', 'codigo_fabricante', 'nome_comercial', 'marca', 'modelo', 'categoria', 'ciclo', 'tensao', 'btu', 'tecnologia', 'garantia'];
+  return campos.map((campo) => ({
+    campo,
+    valor_cadastro: produto[campo] ?? '',
+    valor_ia: sugestao[campo] ?? '',
+    valor_escolhido: produto[campo] ?? sugestao[campo] ?? '',
+    diferente: String(produto[campo] ?? '') !== String(sugestao[campo] ?? '')
+  }));
+}
+
+export async function compararProdutoComIa(empresaId: number, produtoId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const produto = await consultarUm<Record<string, unknown>>(
+    `SELECT *
+    FROM produtos
+    WHERE id = $1
+      AND empresa_id = $2
+      AND excluido = FALSE`,
+    [produtoId, empresaId]
+  );
+  if (!produto) throw new Error('Produto/conjunto nao encontrado.');
+
+  const configuracao = await buscarConfiguracaoIa(empresaId);
+  const chave = String(dados.chave_openai ?? configuracao?.chave_openai ?? '').trim();
+  const modelo = String(dados.modelo ?? configuracao?.modelo_padrao ?? 'gpt-4.1-mini');
+  const sitePrioritario = String(dados.site_prioritario ?? 'https://www.leveros.com.br/');
+  const codigoReferencia = String(dados.codigo_referencia ?? dados.codigo_fabricante ?? produto.codigo_fabricante ?? produto.modelo ?? '').trim();
+  const referencias = codigoReferencia.split('|').map((item) => item.trim()).filter(Boolean);
+  if (!codigoReferencia) throw new Error('Informe a referencia da condensadora e evaporadora para comparar com dados enriquecidos.');
+
+  if (!chave || configuracao?.ativo === false) {
+    const sugestao = { codigo_referencia: codigoReferencia, referencias, fonte_prioritaria: sitePrioritario };
+    return {
+      configurado: false,
+      modelo,
+      site_prioritario: sitePrioritario,
+      mensagem: 'IA nao configurada/ativa. Salve a chave OpenAI e ative a IA para consultar dados externos.',
+      comparacao: montarComparacaoIa({ ...produto, codigo_referencia: codigoReferencia }, sugestao)
+    };
+  }
+
+  const prompt = `Busque informacoes publicas de um conjunto de ar-condicionado no site ${sitePrioritario} priorizando a referencia composta do conjunto. Referencia composta: ${codigoReferencia}. Separe as referencias por pipe quando houver, considerando condensadora e evaporadora: ${referencias.join(' | ')}. Retorne somente JSON com campos codigo_referencia, referencias, nome_comercial, marca, modelo, categoria, ciclo, tensao, btu, tecnologia, garantia, fonte_url e observacoes.`;
+  let sugestao: Record<string, unknown> = {};
+  let bruto = '';
+  try {
+    const resposta = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${chave}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: modelo,
+        input: prompt,
+        temperature: Number(configuracao?.temperatura ?? 0.2),
+        max_output_tokens: Number(configuracao?.limite_tokens ?? 1200)
+      })
+    });
+    bruto = await resposta.text();
+    if (!resposta.ok) throw new Error(`OpenAI HTTP ${resposta.status}: ${bruto.slice(0, 400)}`);
+    const json = JSON.parse(bruto) as any;
+    const texto = json.output_text ?? json.output?.flatMap((item: any) => item.content ?? []).map((item: any) => item.text ?? '').join('\n') ?? '';
+    bruto = texto || bruto;
+    const match = bruto.match(/\{[\s\S]*\}/);
+    sugestao = match ? JSON.parse(match[0]) : { observacoes: bruto };
+  } catch (error) {
+    sugestao = { codigo_referencia: codigoReferencia, referencias, observacoes: error instanceof Error ? error.message : 'Falha ao consultar IA.' };
+  }
+
+  await consultar(
+    `INSERT INTO ia_sugestoes (produto_id, tipo_sugestao, entrada, sugestao, status, criado_por_usuario_id)
+    VALUES ($1, 'ENRIQUECIMENTO_LEVEROS', $2::JSONB, $3::JSONB, 'GERADA', $4)`,
+    [produtoId, JSON.stringify({ codigo_referencia: codigoReferencia, referencias, site_prioritario: sitePrioritario, modelo }), JSON.stringify({ sugestao, bruto }), usuarioId]
+  );
+
+  return {
+    configurado: true,
+    modelo,
+    site_prioritario: sitePrioritario,
+    sugestao,
+    comparacao: montarComparacaoIa({ ...produto, codigo_referencia: codigoReferencia }, sugestao)
+  };
+}
+
 export async function listarAuditoriaPim(empresaId: number) {
   return consultar(
     `SELECT a.*, u.nome AS usuario_nome
@@ -1314,12 +1523,27 @@ export async function listarAuditoriaPim(empresaId: number) {
 
 function validarConsultaSqlServerLeitura(consultaSql: string) {
   const sql = consultaSql.trim().replace(/;+\s*$/g, '');
-  if (!/^(SELECT|WITH)\s/i.test(sql)) {
-    throw new Error('A consulta SQL Server deve ser somente leitura e iniciar com SELECT ou WITH.');
+  if (!/^(SELECT|WITH|EXEC|EXECUTE)\s/i.test(sql)) {
+    throw new Error('A consulta SQL Server deve iniciar com SELECT, WITH, EXEC ou EXECUTE.');
   }
-  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|MERGE|EXEC|EXECUTE|CREATE|GRANT|REVOKE)\b/i.test(sql)) {
+  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|MERGE|CREATE|GRANT|REVOKE)\b/i.test(sql)) {
     throw new Error('A consulta SQL Server contem comando nao permitido para carga manual.');
   }
+  return sql;
+}
+
+function prepararConsultaSqlServerComParametros(request: any, consultaSql: string, parametros: Record<string, unknown> = {}) {
+  const nomes = new Set<string>();
+  const sql = consultaSql.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (_texto, nome) => {
+    nomes.add(nome);
+    return `@${nome}`;
+  });
+
+  for (const nome of nomes) {
+    const valor = parametros[nome] ?? parametros[nome.toUpperCase()] ?? parametros[nome.toLowerCase()] ?? null;
+    request.input(nome, valor);
+  }
+
   return sql;
 }
 
@@ -1334,8 +1558,16 @@ async function buscarConexaoSqlServer(empresaId: number, id: number) {
   );
 }
 
-async function executarConsultaSqlServer(conexao: ConexaoSqlServerPim, consultaSql: string, limite = 500) {
-  const pool = new sqlServer.ConnectionPool({
+async function executarConsultaSqlServer(conexao: ConexaoSqlServerPim, consultaSql: string, limite = 500, parametros: Record<string, unknown> = {}) {
+  let mssql: any;
+  try {
+    mssql = await import('mssql');
+  } catch {
+    throw new Error('Driver SQL Server nao instalado. Execute npm install no backend.');
+  }
+
+  const sqlDriver = mssql.default ?? mssql;
+  const pool = new sqlDriver.ConnectionPool({
     server: conexao.host,
     port: Number(conexao.porta || 1433),
     database: conexao.banco,
@@ -1351,10 +1583,13 @@ async function executarConsultaSqlServer(conexao: ConexaoSqlServerPim, consultaS
 
   await pool.connect();
   try {
-    const resultado = await pool.request().query(validarConsultaSqlServerLeitura(consultaSql));
-    const linhas = (resultado.recordset ?? []).slice(0, limite);
+    const request = pool.request();
+    const sqlPreparado = prepararConsultaSqlServerComParametros(request, validarConsultaSqlServerLeitura(consultaSql), parametros);
+    const resultado = await request.query(sqlPreparado);
+    const todasLinhas = resultado.recordset ?? [];
+    const linhas = limite > 0 ? todasLinhas.slice(0, limite) : todasLinhas;
     const colunas = Object.keys(linhas[0] ?? {});
-    return { colunas, linhas, total: resultado.recordset?.length ?? 0 };
+    return { colunas, linhas, total: todasLinhas.length };
   } finally {
     await pool.close();
   }
@@ -1425,10 +1660,99 @@ export async function testarConexaoSqlServerPim(empresaId: number, id: number) {
   }
 }
 
+export async function listarConsultasSqlServerPim(empresaId: number) {
+  return consultar(
+    `SELECT q.*, c.nome AS conexao_nome
+    FROM pim_consultas_sqlserver q
+    LEFT JOIN pim_conexoes_sqlserver c ON c.id = q.conexao_id
+    WHERE q.empresa_id = $1
+      AND q.ativo = TRUE
+    ORDER BY q.tipo_carga ASC, q.nome ASC`,
+    [empresaId]
+  );
+}
+
+export async function salvarConsultaSqlServerPim(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const consultaSql = validarConsultaSqlServerLeitura(String(dados.consulta_sql ?? ''));
+  const nome = String(dados.nome ?? '').trim();
+  if (!nome) throw new Error('Informe um nome para salvar a consulta.');
+
+  const existente = await consultarUm<{ id: number }>(
+    `SELECT id
+    FROM pim_consultas_sqlserver
+    WHERE empresa_id = $1
+      AND nome = $2
+    ORDER BY ativo DESC, alterado_em DESC NULLS LAST, criado_em DESC
+    LIMIT 1`,
+    [empresaId, nome]
+  );
+
+  const parametros = [
+    empresaId,
+    dados.conexao_id ? Number(dados.conexao_id) : null,
+    nome,
+    dados.descricao ?? null,
+    String(dados.tipo_carga ?? 'PRODUTO_MESTRE'),
+    consultaSql,
+    String(dados.modo_carga_padrao ?? dados.modo_carga ?? 'APENAS_VALIDAR'),
+    JSON.stringify(dados.mapeamento ?? {}),
+    JSON.stringify(dados.colunas_detectadas ?? []),
+    JSON.stringify(dados.parametros ?? []),
+    usuarioId
+  ];
+
+  if (existente?.id) {
+    return consultarUm(
+      `UPDATE pim_consultas_sqlserver
+      SET conexao_id = $2,
+      descricao = $4,
+      tipo_carga = $5,
+      consulta_sql = $6,
+      modo_carga_padrao = $7,
+      mapeamento = $8::JSONB,
+      colunas_detectadas = $9::JSONB,
+      parametros = $10::JSONB,
+      ativo = TRUE,
+      alterado_em = NOW()
+      WHERE id = $12
+        AND empresa_id = $1
+      RETURNING *`,
+      [...parametros, existente.id]
+    );
+  }
+
+  return consultarUm(
+    `INSERT INTO pim_consultas_sqlserver (
+      empresa_id, conexao_id, nome, descricao, tipo_carga, consulta_sql, modo_carga_padrao,
+      mapeamento, colunas_detectadas, parametros, ativo, alterado_em, criado_por_usuario_id
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9::JSONB, $10::JSONB, TRUE, NOW(), $11)
+    RETURNING *`,
+    parametros
+  );
+}
+
+export async function excluirConsultaSqlServerPim(empresaId: number, id: number) {
+  return consultarUm(
+    `UPDATE pim_consultas_sqlserver
+    SET ativo = FALSE,
+      alterado_em = NOW()
+    WHERE id = $1
+      AND empresa_id = $2
+    RETURNING *`,
+    [id, empresaId]
+  );
+}
+
 export async function consultarSqlServerPim(empresaId: number, dados: Record<string, unknown>) {
   const conexao = await buscarConexaoSqlServer(empresaId, Number(dados.conexao_id));
   if (!conexao) throw new Error('Conexao SQL Server nao encontrada.');
-  const resultado = await executarConsultaSqlServer(conexao, String(dados.consulta_sql ?? ''), Number(dados.limite ?? 100));
+  const resultado = await executarConsultaSqlServer(
+    conexao,
+    String(dados.consulta_sql ?? ''),
+    Number(dados.limite ?? 100),
+    (dados.parametros_valores ?? {}) as Record<string, unknown>
+  );
   return {
     colunas: resultado.colunas,
     previa: resultado.linhas.slice(0, 20),
@@ -1437,18 +1761,229 @@ export async function consultarSqlServerPim(empresaId: number, dados: Record<str
 }
 
 function mapearLinhaSqlServerParaProduto(linha: Record<string, unknown>, mapeamento: Record<string, unknown>) {
-  return Object.entries(mapeamento).reduce<ProdutoCadastro>((acc, [colunaOrigem, campoDestino]) => {
+  const produto = Object.entries(mapeamento).reduce<ProdutoCadastro>((acc, [colunaOrigem, campoDestino]) => {
     if (!campoDestino) return acc;
     const campo = String(campoDestino);
     const valor = linha[colunaOrigem];
     if (valor === undefined || valor === null || valor === '') return acc;
-    return { ...acc, [campo]: valor } as ProdutoCadastro;
+    if (campo.startsWith('ATRIBUTO::')) {
+      const atual = Array.isArray((acc as any).__atributos_dinamicos) ? (acc as any).__atributos_dinamicos : [];
+      return {
+        ...acc,
+        __atributos_dinamicos: [
+          ...atual,
+          { atributo_id: Number(campo.replace('ATRIBUTO::', '')), valor, coluna_origem: colunaOrigem }
+        ]
+      } as ProdutoCadastro;
+    }
+    if (campo.startsWith('ATRIBUTO_AUTO::')) {
+      const [, codigo, nome, escopo, tipo] = campo.split('::');
+      const atual = Array.isArray((acc as any).__atributos_dinamicos) ? (acc as any).__atributos_dinamicos : [];
+      return {
+        ...acc,
+        __atributos_dinamicos: [
+          ...atual,
+          {
+            atributo_codigo: codigo,
+            atributo_nome: nome,
+            escopo: escopo || 'PRODUTO',
+            tipo_campo: tipo || 'TEXTO',
+            valor,
+            coluna_origem: colunaOrigem
+          }
+        ]
+      } as ProdutoCadastro;
+    }
+    if (campo.startsWith('GRUPO::')) {
+      const [, grupo, nomeCampo] = campo.split('::');
+      const fiscalComercialAtual = { ...((acc as any).fiscal_comercial ?? {}) };
+      const grupoAtual = { ...((fiscalComercialAtual as any)[grupo] ?? {}) };
+      return {
+        ...acc,
+        fiscal_comercial: {
+          ...fiscalComercialAtual,
+          [grupo]: {
+            ...grupoAtual,
+            [nomeCampo]: valor
+          }
+        }
+      } as ProdutoCadastro;
+    }
+    if (campo === 'profundidade') {
+      return { ...acc, profundidade: valor, comprimento: valor } as ProdutoCadastro;
+    }
+    return { ...acc, [campo]: campo === 'tipo_produto' ? normalizarTipoClimatizacao(valor) : valor } as ProdutoCadastro;
   }, {});
+
+  const comerciais: Record<string, string> = {
+    preco: 'preco_venda_padrao',
+    preco_promocional: 'preco_promocional',
+    venda_avista: 'preco_venda_avista',
+    venda_padrao: 'preco_venda_padrao',
+    venda_cartao: 'preco_venda_cartao',
+    estoque: 'estoque_disponivel',
+    estoque_disponivel: 'estoque_disponivel',
+    estoque_fisico: 'estoque_fisico',
+    estoque_reservado: 'estoque_reservado',
+    custo_fabrica: 'custo_fabrica',
+    custo_fabrica_uso: 'custo_fabrica_uso',
+    acrescimo_avista: 'acrescimo_avista',
+    acrescimo: 'acrescimo'
+  };
+
+  const fiscalComercial = { ...((produto as any).fiscal_comercial ?? {}) };
+  for (const [campo, destino] of Object.entries(comerciais)) {
+    if ((produto as any)[campo] !== undefined) {
+      fiscalComercial[destino] = (produto as any)[campo];
+      delete (produto as any)[campo];
+    }
+  }
+  if (Object.keys(fiscalComercial).length) {
+    (produto as any).fiscal_comercial = fiscalComercial;
+  }
+
+  return produto;
+}
+
+function normalizarTipoClimatizacao(valor: unknown) {
+  const texto = String(valor ?? '').trim();
+  const normalizado = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase();
+  const aliases: Record<string, string> = {
+    HI_WALL: 'SPLIT_HI_WALL',
+    HW: 'SPLIT_HI_WALL',
+    SPLIT: 'SPLIT_HI_WALL',
+    SPLIT_HIWALL: 'SPLIT_HI_WALL',
+    SPLIT_HI_WALL: 'SPLIT_HI_WALL',
+    PISO_TETO: 'PISO_TETO',
+    PT: 'PISO_TETO',
+    CASSETE: 'CASSETE_4_VIAS',
+    K7: 'CASSETE_4_VIAS',
+    CASSETE_1_VIA: 'CASSETE_1_VIA',
+    CASSETE_2_VIAS: 'CASSETE_2_VIAS',
+    CASSETE_4_VIAS: 'CASSETE_4_VIAS',
+    CASSETE_COMPACTO: 'CASSETE_COMPACTO',
+    DUTADO: 'DUTADO',
+    DUTO: 'DUTADO',
+    BUILT_IN: 'DUTADO',
+    SPLITAO: 'DUTADO',
+    MULTI_SPLIT: 'MULTI_SPLIT',
+    VRF: 'VRF',
+    CHILLER: 'CHILLER',
+    FAN_COIL: 'FAN_COIL',
+    FANCOIL: 'FAN_COIL',
+    UTA: 'UTA',
+    SELF: 'UTA',
+    JANELA: 'JANELA',
+    PORTATIL: 'PORTATIL',
+    EVAPORADORA: 'EVAPORADORA',
+    CONDENSADORA: 'CONDENSADORA',
+    CONTROLE: 'CONTROLE_REMOTO',
+    CONTROLE_REMOTO: 'CONTROLE_REMOTO',
+    KIT: 'KIT_INSTALACAO',
+    KITS: 'KIT_INSTALACAO',
+    KIT_S: 'KIT_INSTALACAO',
+    KIT_INSTALACAO: 'KIT_INSTALACAO',
+    ACESSORIO: 'ACESSORIO',
+    PAINEL: 'ACESSORIO',
+    MODULO_TROCADOR: 'ACESSORIO',
+    COMPRESSOR: 'COMPRESSOR',
+    VENTILADOR: 'VENTILADOR',
+    MODULO_VENTILADOR: 'VENTILADOR',
+    MOTOR: 'MOTOR',
+    PLACA: 'PLACA_ELETRONICA',
+    PLACA_ELETRONICA: 'PLACA_ELETRONICA',
+    SENSOR: 'SENSOR',
+    VALVULA: 'VALVULA',
+    FILTRO: 'FILTRO',
+    MODULO_WIFI: 'MODULO_WIFI'
+  };
+  return aliases[normalizado] ?? normalizado;
+}
+
+async function gravarAtributosDinamicosCarga(empresaId: number, produtoId: number, linhaMapeada: Record<string, unknown>) {
+  const atributos = Array.isArray((linhaMapeada as any).__atributos_dinamicos) ? (linhaMapeada as any).__atributos_dinamicos : [];
+  for (const item of atributos) {
+    let atributo = null as { id: number; tipo_campo: string | null } | null;
+    const atributoId = Number(item.atributo_id);
+    if (atributoId) {
+      atributo = await consultarUm<{ id: number; tipo_campo: string | null }>(
+        `SELECT id, tipo_campo
+        FROM atributos
+        WHERE id = $1
+          AND empresa_id = $2
+          AND ativo = TRUE`,
+        [atributoId, empresaId]
+      );
+    } else if (item.atributo_codigo) {
+      const criado = await obterOuCriarAtributoCarga(empresaId, {
+        atributo_codigo: item.atributo_codigo,
+        atributo_nome: item.atributo_nome ?? item.atributo_codigo,
+        escopo: item.escopo ?? 'PRODUTO',
+        tipo_campo: item.tipo_campo ?? 'TEXTO'
+      }, String(item.escopo ?? 'PRODUTO'));
+      atributo = criado ? { id: criado.id, tipo_campo: String(item.tipo_campo ?? 'TEXTO') } : null;
+    }
+    if (!atributo) continue;
+    const valor = item.valor;
+    const tipo = String(atributo.tipo_campo ?? '').toUpperCase();
+    const numero = ['NUMERO', 'DECIMAL'].includes(tipo) && valor !== '' && valor !== null && valor !== undefined ? Number(String(valor).replace(',', '.')) : null;
+    await gravarValorAtributoProduto(produtoId, atributo.id, {
+      valor_texto: numero === null ? valor : null,
+      valor_numero: Number.isFinite(numero as number) ? numero : null,
+      valor_booleano: tipo === 'BOOLEANO' ? ['S', 'SIM', 'TRUE', '1'].includes(String(valor).toUpperCase()) : null
+    });
+  }
+}
+
+const ATRIBUTOS_TECNICOS_CARGA: Record<string, { nome: string; unidade?: string; tipo?: string }> = {
+  ciclo: { nome: 'Ciclo' },
+  tensao: { nome: 'Tensao', unidade: 'V' },
+  tipo_capacidade: { nome: 'Tipo de capacidade' },
+  btu: { nome: 'BTU', unidade: 'BTU/h', tipo: 'NUMERO' },
+  tecnologia: { nome: 'Tecnologia' }
+};
+
+async function gravarAtributosTecnicosProdutoMestre(empresaId: number, produtoId: number, linhaMapeada: Record<string, unknown>) {
+  for (const [campo, config] of Object.entries(ATRIBUTOS_TECNICOS_CARGA)) {
+    const valor = linhaMapeada[campo];
+    if (valor === undefined || valor === null || valor === '') continue;
+    const atributo = await obterOuCriarAtributoCarga(empresaId, {
+      atributo_codigo: campo.toUpperCase(),
+      atributo_nome: config.nome,
+      tipo_campo: config.tipo ?? 'TEXTO',
+      escopo: 'PRODUTO',
+      unidade_medida: config.unidade ?? null,
+      valor_texto: valor,
+      valor_numero: config.tipo === 'NUMERO' ? valor : null
+    }, 'PRODUTO');
+    if (atributo) {
+      await gravarValorAtributoProduto(produtoId, atributo.id, {
+        valor_texto: config.tipo === 'NUMERO' ? null : valor,
+        valor_numero: config.tipo === 'NUMERO' ? valor : null,
+        unidade_medida: config.unidade ?? null
+      });
+    }
+  }
+}
+
+async function localizarProdutoPorCodigoErp(empresaId: number, codigoErp: unknown) {
+  const codigo = String(codigoErp ?? '').trim();
+  if (!codigo) return null;
+  return consultarUm<{ id: number; codigo_interno: string | null }>(
+    `SELECT id, codigo_interno
+    FROM produtos
+    WHERE empresa_id = $1
+      AND excluido = FALSE
+      AND codigo_erp_decis = $2
+    ORDER BY alterado_em DESC NULLS LAST, criado_em DESC
+    LIMIT 1`,
+    [empresaId, codigo]
+  );
 }
 
 async function localizarProdutoExistente(empresaId: number, produto: ProdutoCadastro) {
-  return consultarUm<{ id: number }>(
-    `SELECT id
+  return consultarUm<{ id: number; codigo_interno: string | null }>(
+    `SELECT id, codigo_interno
     FROM produtos
     WHERE empresa_id = $1
       AND excluido = FALSE
@@ -1522,26 +2057,12 @@ async function processarLinhaSkuSqlServer(empresaId: number, linhaMapeada: Recor
 async function processarLinhaComposicaoSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>, usuarioId: number) {
   const conjunto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.conjunto_codigo);
   if (!conjunto) throw new Error('Conjunto nao encontrado.');
-  const componenteProduto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.componente_codigo);
+  const codigoProduto = linhaMapeada.item_codigo ?? linhaMapeada.componente_codigo ?? linhaMapeada.produto_codigo;
+  const componenteProduto = await localizarProdutoPorCodigo(empresaId, codigoProduto);
   let produtoComponenteId: number | null = null;
 
   if (!componenteProduto) {
-    const componente = await consultarUm<{ id: number }>(
-      `INSERT INTO produtos_componentes (empresa_id, codigo, nome, tipo_componente, status, atributos, criado_por_usuario_id)
-      VALUES ($1, $2, $3, COALESCE($4, 'OUTRO'), 'ATIVO', '{}'::JSONB, $5)
-      ON CONFLICT (empresa_id, codigo) DO UPDATE SET
-        nome = EXCLUDED.nome,
-        tipo_componente = EXCLUDED.tipo_componente
-      RETURNING id`,
-      [
-        empresaId,
-        String(linhaMapeada.componente_codigo ?? `COMP-${Date.now()}`),
-        String(linhaMapeada.componente_nome ?? linhaMapeada.componente_codigo ?? 'Componente'),
-        linhaMapeada.tipo_relacao ?? 'COMPONENTE',
-        usuarioId
-      ]
-    );
-    produtoComponenteId = componente?.id ?? null;
+    throw new Error(`Produto materia prima nao encontrado para vinculo: ${String(codigoProduto ?? '')}. Importe os produtos antes dos conjuntos/vinculos.`);
   }
 
   await consultar(
@@ -1550,7 +2071,7 @@ async function processarLinhaComposicaoSqlServer(empresaId: number, linhaMapeada
     ON CONFLICT DO NOTHING`,
     [
       conjunto.id,
-      componenteProduto?.id ?? null,
+      componenteProduto.id,
       produtoComponenteId,
       linhaMapeada.quantidade ? Number(linhaMapeada.quantidade) : 1,
       linhaMapeada.tipo_relacao ?? 'COMPONENTE',
@@ -1559,6 +2080,8 @@ async function processarLinhaComposicaoSqlServer(empresaId: number, linhaMapeada
       linhaMapeada.observacao ?? null
     ]
   );
+
+  await recalcularAtributosNumericosConjunto(empresaId, conjunto.id);
 }
 
 async function processarLinhaAtributoMarketplaceSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>) {
@@ -1650,20 +2173,71 @@ async function processarLinhaCaracteristicaConjuntoSqlServer(empresaId: number, 
 }
 
 async function processarLinhaCaracteristicaItemSqlServer(empresaId: number, linhaMapeada: Record<string, unknown>, usuarioId: number) {
-  await processarLinhaComposicaoSqlServer(empresaId, {
-    conjunto_codigo: linhaMapeada.conjunto_codigo,
-    componente_codigo: linhaMapeada.item_codigo,
-    componente_nome: linhaMapeada.item_nome ?? linhaMapeada.item_codigo,
-    tipo_relacao: linhaMapeada.tipo_relacao ?? 'MATERIA_PRIMA',
-    quantidade: linhaMapeada.quantidade ?? 1,
-    ordem: linhaMapeada.ordem ?? 0,
-    obrigatorio: linhaMapeada.obrigatorio ?? true
-  }, usuarioId);
-
   const itemProduto = await localizarProdutoPorCodigo(empresaId, linhaMapeada.item_codigo);
+  if (!itemProduto) throw new Error(`Produto materia prima nao encontrado para caracteristica: ${String(linhaMapeada.item_codigo ?? '')}.`);
   const atributo = await obterOuCriarAtributoCarga(empresaId, linhaMapeada, 'COMPONENTE');
   if (itemProduto && atributo) {
     await gravarValorAtributoProduto(itemProduto.id, atributo.id, linhaMapeada);
+  }
+}
+
+async function recalcularAtributoNumericoConjunto(empresaId: number, conjuntoCodigo: string, atributoId: number) {
+  if (!conjuntoCodigo || !atributoId) return;
+  const conjunto = await localizarProdutoPorCodigo(empresaId, conjuntoCodigo);
+  if (!conjunto) return;
+  const soma = await consultarUm<{ total: number | null }>(
+    `SELECT SUM(COALESCE(av.valor_numero, 0) * COALESCE(pcv.quantidade, 1)) AS total
+    FROM produtos_componentes_vinculos pcv
+    INNER JOIN produtos p ON p.id = pcv.componente_produto_id
+    INNER JOIN atributos_valores av ON av.produto_id = p.id
+    WHERE pcv.conjunto_produto_id = $1
+      AND av.atributo_id = $2
+      AND p.empresa_id = $3
+      AND av.valor_numero IS NOT NULL`,
+    [conjunto.id, atributoId, empresaId]
+  );
+  if (soma?.total === null || soma?.total === undefined) return;
+  await consultar(
+    `DELETE FROM atributos_valores
+    WHERE produto_id = $1
+      AND atributo_id = $2
+      AND valor_json->>'origem' = 'SOMA_PRODUTOS_CONJUNTO'`,
+    [conjunto.id, atributoId]
+  );
+  await consultar(
+    `INSERT INTO atributos_valores (produto_id, atributo_id, valor_texto, valor_numero, valor_booleano, valor_json, alterado_em)
+    VALUES ($1, $2, NULL, $3, NULL, $4::JSONB, NOW())`,
+    [conjunto.id, atributoId, Number(soma.total), JSON.stringify({ origem: 'SOMA_PRODUTOS_CONJUNTO' })]
+  );
+}
+
+async function recalcularAtributosNumericosConjunto(empresaId: number, conjuntoId: number) {
+  const atributos = await consultar<{ atributo_id: number }>(
+    `SELECT DISTINCT av.atributo_id
+    FROM produtos_componentes_vinculos pcv
+    INNER JOIN produtos p ON p.id = pcv.componente_produto_id
+    INNER JOIN atributos_valores av ON av.produto_id = p.id
+    WHERE pcv.conjunto_produto_id = $1
+      AND p.empresa_id = $2
+      AND av.valor_numero IS NOT NULL`,
+    [conjuntoId, empresaId]
+  );
+  const conjunto = await consultarUm<{ codigo_erp_decis: string | null; codigo_interno: string | null }>(
+    `SELECT codigo_erp_decis, codigo_interno FROM produtos WHERE id = $1 AND empresa_id = $2`,
+    [conjuntoId, empresaId]
+  );
+  const codigo = conjunto?.codigo_erp_decis ?? conjunto?.codigo_interno;
+  for (const atributo of atributos) {
+    await recalcularAtributoNumericoConjunto(empresaId, String(codigo ?? ''), atributo.atributo_id);
+  }
+}
+
+function aplicarTipoProdutoPorCarga(produto: ProdutoCadastro, tipoCarga: string) {
+  if (tipoCarga === 'PRODUTOS_BASE' && !produto.tipo_produto) {
+    produto.tipo_produto = 'EVAPORADORA';
+  }
+  if (tipoCarga === 'CONJUNTOS' && !produto.tipo_produto) {
+    produto.tipo_produto = 'SPLIT_HI_WALL';
   }
 }
 
@@ -1674,7 +2248,12 @@ export async function executarCargaSqlServerPim(empresaId: number, dados: Record
   const consultaSql = validarConsultaSqlServerLeitura(String(dados.consulta_sql ?? ''));
   const modo = String(dados.modo_carga ?? 'APENAS_VALIDAR');
   const tipoCarga = String(dados.tipo_carga ?? 'PRODUTO_MESTRE');
-  const resultado = await executarConsultaSqlServer(conexao, consultaSql, Number(dados.limite ?? 500));
+  const resultado = await executarConsultaSqlServer(
+    conexao,
+    consultaSql,
+    Number(dados.limite ?? 500),
+    (dados.parametros_valores ?? {}) as Record<string, unknown>
+  );
   const mapeamento = (dados.mapeamento ?? {}) as Record<string, unknown>;
   let produtosProcessados = 0;
   let produtosInseridos = 0;
@@ -1687,11 +2266,23 @@ export async function executarCargaSqlServerPim(empresaId: number, dados: Record
     const produto = linhaMapeada as ProdutoCadastro;
     produto.status = 'RASCUNHO';
     produto.origem = 'SQL_SERVER_OFICIAL';
+    aplicarTipoProdutoPorCarga(produto, tipoCarga);
     produtosProcessados += 1;
 
-    const existente = tipoCarga === 'PRODUTO_MESTRE' ? await localizarProdutoExistente(empresaId, produto) : null;
+    const tipoCadastroProduto = ['PRODUTO_MESTRE', 'PRODUTOS_BASE', 'CONJUNTOS'].includes(tipoCarga);
+    const existente = tipoCadastroProduto
+      ? (modo === 'INSERIR_OU_ATUALIZAR_ERP'
+        ? await localizarProdutoPorCodigoErp(empresaId, produto.codigo_erp_decis)
+        : await localizarProdutoExistente(empresaId, produto))
+      : null;
     if (modo === 'APENAS_VALIDAR') {
       logs.push(`${produto.sku_interno ?? produto.codigo_interno ?? produto.modelo ?? 'Produto'}: validado${existente ? ' com cadastro existente' : ' como novo cadastro'}.`);
+      continue;
+    }
+
+    if (modo === 'INSERIR_OU_ATUALIZAR_ERP' && !produto.codigo_erp_decis) {
+      produtosComErro += 1;
+      logs.push(`${produto.sku_interno ?? produto.codigo_interno ?? produto.modelo ?? 'Produto'}: codigo_erp_decis obrigatorio para inserir/atualizar por ERP.`);
       continue;
     }
 
@@ -1721,13 +2312,24 @@ export async function executarCargaSqlServerPim(empresaId: number, dados: Record
       } else if (tipoCarga === 'ATRIBUTOS_MARKETPLACE') {
         await processarLinhaAtributoMarketplaceSqlServer(empresaId, linhaMapeada);
         produtosAtualizados += 1;
-      } else if (existente && modo === 'ATUALIZAR_EXISTENTES') {
+      } else if (tipoCadastroProduto && existente && (modo === 'ATUALIZAR_EXISTENTES' || modo === 'INSERIR_OU_ATUALIZAR_ERP')) {
         produto.id = existente.id;
-        await salvarProduto(empresaId, produto, usuarioId);
+        produto.codigo_interno = existente.codigo_interno ?? produto.codigo_interno;
+        const salvo = await salvarProduto(empresaId, produto, usuarioId);
+        if (salvo?.id) {
+          await gravarAtributosTecnicosProdutoMestre(empresaId, Number(salvo.id), linhaMapeada);
+          await gravarAtributosDinamicosCarga(empresaId, Number(salvo.id), linhaMapeada);
+        }
         produtosAtualizados += 1;
-      } else {
-        await salvarProduto(empresaId, produto, usuarioId);
+      } else if (tipoCadastroProduto) {
+        const salvo = await salvarProduto(empresaId, produto, usuarioId);
+        if (salvo?.id) {
+          await gravarAtributosTecnicosProdutoMestre(empresaId, Number(salvo.id), linhaMapeada);
+          await gravarAtributosDinamicosCarga(empresaId, Number(salvo.id), linhaMapeada);
+        }
         produtosInseridos += 1;
+      } else {
+        logs.push('Tipo de carga nao processado para esta linha.');
       }
     } catch (error) {
       produtosComErro += 1;

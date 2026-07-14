@@ -1,13 +1,16 @@
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="256" height="256" rx="44" fill="#06131A"/>
-  <path d="M128 42L195 81V158L128 197L61 158V81L128 42Z" fill="#0C1F25" stroke="#38FF68" stroke-width="8" stroke-linejoin="round"/>
-  <path d="M128 42V119M195 81L128 119M61 81L128 119M128 119V197" stroke="#EAFEF0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M91 99L128 77L165 99L128 121L91 99Z" fill="#38FF68" fill-opacity="0.18" stroke="#38FF68" stroke-width="5" stroke-linejoin="round"/>
-  <circle cx="42" cy="128" r="12" fill="#38FF68"/>
-  <circle cx="214" cy="128" r="12" fill="#38FF68"/>
-  <circle cx="128" cy="218" r="12" fill="#38FF68"/>
-  <circle cx="128" cy="28" r="12" fill="#38FF68"/>
-  <path d="M54 128H78M178 128H202M128 54V42M128 202V194" stroke="#38FF68" stroke-width="6" stroke-linecap="round"/>
-  <path d="M92 151H164" stroke="#EAFEF0" stroke-width="6" stroke-linecap="round"/>
-  <path d="M106 169H150" stroke="#38FF68" stroke-width="6" stroke-linecap="round"/>
+  <path d="M51 148C51 107.131 84.131 74 125 74H171C187.569 74 201 87.4315 201 104V148C201 164.569 187.569 178 171 178H81C64.4315 178 51 164.569 51 148Z" fill="#0B1F25" stroke="#38FF68" stroke-width="8"/>
+  <path d="M75 109H177" stroke="#EAFEF0" stroke-width="8" stroke-linecap="round"/>
+  <path d="M83 132H166" stroke="#38FF68" stroke-width="7" stroke-linecap="round"/>
+  <path d="M92 154H151" stroke="#EAFEF0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+  <path d="M197 130H218C228.493 130 237 138.507 237 149V149C237 159.493 228.493 168 218 168H204" stroke="#38FF68" stroke-width="8" stroke-linecap="round"/>
+  <path d="M126 190V218" stroke="#38FF68" stroke-width="8" stroke-linecap="round"/>
+  <path d="M105 210H147" stroke="#EAFEF0" stroke-width="7" stroke-linecap="round"/>
+  <path d="M54 76L72 58M54 58L72 76" stroke="#38FF68" stroke-width="6" stroke-linecap="round"/>
+  <path d="M200 57L214 43M200 43L214 57" stroke="#EAFEF0" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+  <circle cx="38" cy="132" r="8" fill="#38FF68"/>
+  <circle cx="224" cy="94" r="7" fill="#38FF68"/>
+  <path d="M31 170C44 162 58 162 71 170C84 178 98 178 111 170" stroke="#38FF68" stroke-width="6" stroke-linecap="round"/>
+  <path d="M144 44C152 55 152 66 144 77M163 40C173 55 173 70 163 85" stroke="#EAFEF0" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
 </svg>

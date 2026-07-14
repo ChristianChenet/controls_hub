@@ -7,8 +7,10 @@ REM Nao apaga banco, nao remove .env, logs, backups nem dados locais.
 set "RAIZ=%~dp0"
 set "ZIP=%RAIZ%ControlSHub_atualizacao.zip"
 set "TMP=%RAIZ%_update_tmp"
-set "LOG=%RAIZ%logs\aplicar_zip_%DATE:~-4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%.log"
-set "LOG=%LOG: =0%"
+set "DATA_LOG=%DATE:~-4%%DATE:~3,2%%DATE:~0,2%"
+set "HORA_LOG=%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
+set "HORA_LOG=%HORA_LOG: =0%"
+set "LOG=%RAIZ%logs\aplicar_zip_%DATA_LOG%_%HORA_LOG%.log"
 
 if not exist "%RAIZ%logs" mkdir "%RAIZ%logs"
 
@@ -23,11 +25,20 @@ if not exist "%ZIP%" (
   exit /b 1
 )
 
+echo.
+echo Banco de dados:
+echo S = aplicar migrations gerais antigas do sistema
+echo N = nao mexer no banco agora
+echo.
+set /p APLICAR_SQL_PREDEFINIDO="Aplicar migrations gerais no banco? (S/N): "
+if /I not "%APLICAR_SQL_PREDEFINIDO%"=="S" set "APLICAR_SQL_PREDEFINIDO=N"
+call :log "Opcao de banco selecionada: %APLICAR_SQL_PREDEFINIDO%"
+
 if exist "%TMP%" rmdir /s /q "%TMP%"
 mkdir "%TMP%"
 
 call :log "Extraindo pacote..."
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP%' -DestinationPath '%TMP%' -Force" >> "%LOG%" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -LiteralPath '%ZIP%' -DestinationPath '%TMP%' -Force; Write-Host 'ZIP extraido com sucesso.'" >> "%LOG%" 2>&1
 if errorlevel 1 goto :falha
 
 call :log "Copiando arquivos sem apagar dados locais..."

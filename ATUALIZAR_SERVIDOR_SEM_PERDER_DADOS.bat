@@ -5,8 +5,10 @@ REM Atualizador seguro do Control S Hub.
 REM Nao apaga banco, nao restaura backup e nao remove dados de producao.
 
 set "RAIZ=%~dp0"
-set "LOG=%RAIZ%logs\atualizacao_servidor_%DATE:~-4%%DATE:~3,2%%DATE:~0,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%.log"
-set "LOG=%LOG: =0%"
+set "DATA_LOG=%DATE:~-4%%DATE:~3,2%%DATE:~0,2%"
+set "HORA_LOG=%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
+set "HORA_LOG=%HORA_LOG: =0%"
+set "LOG=%RAIZ%logs\atualizacao_servidor_%DATA_LOG%_%HORA_LOG%.log"
 
 if not exist "%RAIZ%logs" mkdir "%RAIZ%logs"
 
@@ -34,6 +36,11 @@ call :log "Build do backend..."
 pushd "%RAIZ%apps\backend"
 call npm install >> "%LOG%" 2>&1
 if errorlevel 1 goto :falha_popd
+call :log "Garantindo driver SQL Server do PIM..."
+call npm install mssql@12.7.0 >> "%LOG%" 2>&1
+if errorlevel 1 goto :falha_popd
+call node -e "import('mssql').then(()=>process.exit(0)).catch((e)=>{console.error(e);process.exit(1)})" >> "%LOG%" 2>&1
+if errorlevel 1 goto :falha_popd
 call npm run build >> "%LOG%" 2>&1
 if errorlevel 1 goto :falha_popd
 popd
@@ -47,7 +54,12 @@ if errorlevel 1 goto :falha_popd
 popd
 
 call :log ""
-set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 026 no banco? (S/N): "
+if "%APLICAR_SQL_PREDEFINIDO%"=="" (
+  set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 029 no banco? (S/N): "
+) else (
+  set "APLICAR_SQL=%APLICAR_SQL_PREDEFINIDO%"
+  call :log "Opcao de banco recebida do aplicador ZIP: %APLICAR_SQL%"
+)
 if /I "%APLICAR_SQL%"=="S" (
   call :validar_comando psql
   if errorlevel 1 goto :falha_popd
@@ -102,6 +114,15 @@ if /I "%APLICAR_SQL%"=="S" (
   if errorlevel 1 goto :falha_popd
   call :log "Aplicando migration 026_transportadora_escolhida_plataforma_sequencia.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\026_transportadora_escolhida_plataforma_sequencia.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 027_pim_sqlserver_carga_manual.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\027_pim_sqlserver_carga_manual.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 028_pim_consultas_sqlserver_salvas.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\028_pim_consultas_sqlserver_salvas.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 029_business_intelligence.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\029_business_intelligence.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
   call :log "Aplicando migration 030_parametros_monitor_n8n.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\030_parametros_monitor_n8n.sql" >> "%LOG%" 2>&1

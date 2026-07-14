@@ -93,8 +93,11 @@ import {
 import {
   alterarStatusProduto,
   consultarSqlServerPim,
+  compararProdutoComIa,
+  desvincularAssetProduto,
   duplicarProduto,
   executarCargaSqlServerPim,
+  excluirConsultaSqlServerPim,
   excluirAtributo,
   excluirMapeamentoAtributoCanal,
   excluirProduto,
@@ -107,6 +110,7 @@ import {
   listarComponentes,
   listarConfiguracoesModulo,
   listarConexoesSqlServerPim,
+  listarConsultasSqlServerPim,
   listarGruposAtributos,
   listarImportacoes,
   listarMapeamentosAtributosCanais,
@@ -123,10 +127,40 @@ import {
   salvarComponente,
   salvarConfiguracoesModulo,
   salvarConexaoSqlServerPim,
+  salvarConsultaSqlServerPim,
   salvarMapeamentoAtributoCanal,
   salvarProduto,
-  testarConexaoSqlServerPim
+  testarConexaoSqlServerPim,
+  testarIaCadastroProdutoCentral,
+  vincularAssetsProdutos
 } from './modulos/cadastro_produto_central/repositorioCadastroProdutoCentral.js';
+import {
+  duplicarDashboardBi,
+  exportarDashboardBi,
+  excluirConsultaBi,
+  excluirDashboardBi,
+  excluirFonteDadosBi,
+  excluirPaginaBi,
+  excluirPermissaoDashboardBi,
+  excluirWidgetBi,
+  executarConsultaBi,
+  executarWidgetBi,
+  listarConsultasBi,
+  listarDashboardsBi,
+  listarFontesDadosBi,
+  listarLogsBi,
+  listarTemplatesBi,
+  obterDashboardBi,
+  importarDashboardBi,
+  publicarDashboardBi,
+  salvarConsultaBi,
+  salvarDashboardBi,
+  salvarFonteDadosBi,
+  salvarPaginaBi,
+  salvarPermissaoDashboardBi,
+  salvarWidgetBi,
+  testarFonteDadosBi
+} from './modulos/business_intelligence/repositorioBusinessIntelligence.js';
 import { exigirSuperadmin, obterUsuarioSessao } from './seguranca/sessao.js';
 import { enviarEmail, testarConfiguracaoEmail } from './servicos/email.js';
 
@@ -1036,6 +1070,18 @@ export async function criarApp() {
     return sucesso(await salvarAsset(usuario.empresaAtivaId!, request.body as any, usuario.id));
   });
 
+  app.post('/api/cadastro-produto-central/assets/vinculos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'], 'Usuario sem permissao para vincular imagens e documentos.');
+    if (!usuario) return;
+    return sucesso(await vincularAssetsProdutos(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.delete<{ Params: { produtoId: string; assetId: string } }>('/api/cadastro-produto-central/produtos/:produtoId/assets/:assetId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'], 'Usuario sem permissao para desvincular imagens e documentos.');
+    if (!usuario) return;
+    return sucesso(await desvincularAssetProduto(usuario.empresaAtivaId!, Number(request.params.produtoId), Number(request.params.assetId)));
+  });
+
   app.get('/api/cadastro-produto-central/importacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para importar planilhas.');
     if (!usuario) return;
@@ -1064,6 +1110,24 @@ export async function criarApp() {
     const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'GERENCIAR_INTEGRACOES_PIM'], 'Usuario sem permissao para testar conexao SQL Server.');
     if (!usuario) return;
     return sucesso(await testarConexaoSqlServerPim(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.get('/api/cadastro-produto-central/sqlserver/consultas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR'], 'Usuario sem permissao para visualizar consultas SQL Server.');
+    if (!usuario) return;
+    return sucesso(await listarConsultasSqlServerPim(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/sqlserver/consultas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para salvar consultas SQL Server.');
+    if (!usuario) return;
+    return sucesso(await salvarConsultaSqlServerPim(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/cadastro-produto-central/sqlserver/consultas/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'], 'Usuario sem permissao para excluir consultas SQL Server.');
+    if (!usuario) return;
+    return sucesso(await excluirConsultaSqlServerPim(usuario.empresaAtivaId!, Number(request.params.id)));
   });
 
   app.post('/api/cadastro-produto-central/sqlserver/consultar', { preHandler: (app as any).autenticar }, async (request, reply) => {
@@ -1102,10 +1166,198 @@ export async function criarApp() {
     return sucesso(await salvarConfiguracoesModulo(usuario.empresaAtivaId!, request.body as any, usuario.id));
   });
 
+  app.post('/api/cadastro-produto-central/ia/testar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IA', 'USAR_IA_PIM', 'CONFIGURAR_IA_PIM'], 'Usuario sem permissao para testar IA.');
+    if (!usuario) return;
+    return sucesso(await testarIaCadastroProdutoCentral(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cadastro-produto-central/produtos/:id/ia/comparar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_IA', 'USAR_IA_PIM', 'PIM_EDITAR'], 'Usuario sem permissao para comparar dados com IA.');
+    if (!usuario) return;
+    return sucesso(await compararProdutoComIa(usuario.empresaAtivaId!, Number(request.params.id), request.body as any, usuario.id));
+  });
+
   app.get('/api/cadastro-produto-central/auditoria', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_AUDITORIA', 'VISUALIZAR_AUDITORIA_PIM'], 'Usuario sem permissao para visualizar auditoria do PIM.');
     if (!usuario) return;
     return sucesso(await listarAuditoriaPim(usuario.empresaAtivaId!));
+  });
+
+  app.get('/api/business-intelligence/dashboards', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['VISUALIZAR_BUSINESS_INTELLIGENCE'], 'Usuario sem permissao para visualizar Business Intelligence.');
+    if (!usuario) return;
+    const perfilId = Number((usuario as any).perfil_id ?? (usuario as any).perfilId ?? 0) || null;
+    return sucesso(await listarDashboardsBi(usuario.empresaAtivaId!, usuario.id, perfilId, usuario.administrador || usuario.superadmin));
+  });
+
+  app.get<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['VISUALIZAR_BUSINESS_INTELLIGENCE'], 'Usuario sem permissao para visualizar dashboard.');
+    if (!usuario) return;
+    const perfilId = Number((usuario as any).perfil_id ?? (usuario as any).perfilId ?? 0) || null;
+    const dashboard = await obterDashboardBi(usuario.empresaAtivaId!, Number(request.params.id), usuario.id, perfilId, usuario.administrador || usuario.superadmin);
+    if (!dashboard) {
+      return reply.status(404).send(falha('DASHBOARD_NAO_ENCONTRADO', 'Dashboard nao encontrado ou sem permissao de acesso.'));
+    }
+    return sucesso(dashboard);
+  });
+
+  app.post('/api/business-intelligence/dashboards', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CRIAR_DASHBOARDS', 'BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para salvar dashboards.');
+    if (!usuario) return;
+    const dashboard = await salvarDashboardBi(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({
+      empresaId: usuario.empresaAtivaId,
+      usuarioId: usuario.id,
+      moduloCodigo: 'BUSINESS_INTELLIGENCE',
+      telaCodigo: 'BI_DASHBOARDS',
+      tipoEvento: 'SALVAR_DASHBOARD_BI',
+      tabelaAfetada: 'bi_dashboards',
+      registroId: Number((dashboard as any)?.id ?? 0),
+      descricao: 'Dashboard de Business Intelligence criado ou atualizado.',
+      dadosNovos: dashboard
+    });
+    return sucesso(dashboard);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_EXCLUIR_DASHBOARDS'], 'Usuario sem permissao para excluir dashboards.');
+    if (!usuario) return;
+    return sucesso(await excluirDashboardBi(usuario.empresaAtivaId!, Number(request.params.id), usuario.id));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id/publicar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_PUBLICAR_DASHBOARDS'], 'Usuario sem permissao para publicar dashboards.');
+    if (!usuario) return;
+    return sucesso(await publicarDashboardBi(usuario.empresaAtivaId!, Number(request.params.id), usuario.id));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id/duplicar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CRIAR_DASHBOARDS'], 'Usuario sem permissao para duplicar dashboards.');
+    if (!usuario) return;
+    return sucesso(await duplicarDashboardBi(usuario.empresaAtivaId!, Number(request.params.id), usuario.id));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id/permissoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_GERENCIAR_PERMISSOES_DASHBOARDS', 'BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para liberar dashboards.');
+    if (!usuario) return;
+    return sucesso(await salvarPermissaoDashboardBi(usuario.empresaAtivaId!, Number(request.params.id), request.body as any));
+  });
+
+  app.delete<{ Params: { id: string; permissaoId: string } }>('/api/business-intelligence/dashboards/:id/permissoes/:permissaoId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_GERENCIAR_PERMISSOES_DASHBOARDS', 'BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para remover liberacao de dashboard.');
+    if (!usuario) return;
+    return sucesso(await excluirPermissaoDashboardBi(usuario.empresaAtivaId!, Number(request.params.id), Number(request.params.permissaoId)));
+  });
+
+  app.get<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id/exportar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_EDITAR_DASHBOARDS', 'BI_CRIAR_DASHBOARDS'], 'Usuario sem permissao para exportar dashboards.');
+    if (!usuario) return;
+    return sucesso(await exportarDashboardBi(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post('/api/business-intelligence/dashboards/importar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CRIAR_DASHBOARDS'], 'Usuario sem permissao para importar dashboards.');
+    if (!usuario) return;
+    return sucesso(await importarDashboardBi(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id/paginas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para editar paginas do dashboard.');
+    if (!usuario) return;
+    return sucesso(await salvarPaginaBi(usuario.empresaAtivaId!, Number(request.params.id), request.body as any));
+  });
+
+  app.delete<{ Params: { id: string; paginaId: string } }>('/api/business-intelligence/dashboards/:id/paginas/:paginaId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para excluir paginas do dashboard.');
+    if (!usuario) return;
+    return sucesso(await excluirPaginaBi(usuario.empresaAtivaId!, Number(request.params.id), Number(request.params.paginaId)));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/business-intelligence/dashboards/:id/widgets', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para editar widgets do dashboard.');
+    if (!usuario) return;
+    return sucesso(await salvarWidgetBi(usuario.empresaAtivaId!, Number(request.params.id), request.body as any));
+  });
+
+  app.delete<{ Params: { id: string; widgetId: string } }>('/api/business-intelligence/dashboards/:id/widgets/:widgetId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para excluir widgets do dashboard.');
+    if (!usuario) return;
+    return sucesso(await excluirWidgetBi(usuario.empresaAtivaId!, Number(request.params.id), Number(request.params.widgetId)));
+  });
+
+  app.post<{ Params: { widgetId: string }; Body: { filtros?: Record<string, unknown> } }>('/api/business-intelligence/widgets/:widgetId/executar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['VISUALIZAR_BUSINESS_INTELLIGENCE'], 'Usuario sem permissao para executar widget.');
+    if (!usuario) return;
+    return sucesso(await executarWidgetBi(usuario.empresaAtivaId!, Number(request.params.widgetId), request.body?.filtros ?? {}, usuario.id));
+  });
+
+  app.get('/api/business-intelligence/fontes-dados', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_FONTES_DADOS'], 'Usuario sem permissao para configurar fontes de dados.');
+    if (!usuario) return;
+    return sucesso(await listarFontesDadosBi(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/business-intelligence/fontes-dados', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_FONTES_DADOS'], 'Usuario sem permissao para salvar fontes de dados.');
+    if (!usuario) return;
+    return sucesso(await salvarFonteDadosBi(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/business-intelligence/fontes-dados/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_FONTES_DADOS'], 'Usuario sem permissao para excluir fontes de dados.');
+    if (!usuario) return;
+    return sucesso(await excluirFonteDadosBi(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/business-intelligence/fontes-dados/:id/testar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_FONTES_DADOS'], 'Usuario sem permissao para testar fontes de dados.');
+    if (!usuario) return;
+    return sucesso(await testarFonteDadosBi(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.get('/api/business-intelligence/consultas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_CONSULTAS', 'BI_EDITAR_DASHBOARDS'], 'Usuario sem permissao para visualizar consultas.');
+    if (!usuario) return;
+    return sucesso(await listarConsultasBi(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/business-intelligence/consultas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_CONSULTAS'], 'Usuario sem permissao para salvar consultas.');
+    if (!usuario) return;
+    return sucesso(await salvarConsultaBi(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/business-intelligence/consultas/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_CONSULTAS'], 'Usuario sem permissao para excluir consultas.');
+    if (!usuario) return;
+    return sucesso(await excluirConsultaBi(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post('/api/business-intelligence/consultas/testar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_CONFIGURAR_CONSULTAS'], 'Usuario sem permissao para testar consultas.');
+    if (!usuario) return;
+    const corpo = request.body as any;
+    const limite = Math.min(50, Math.max(5, Number(corpo?.limite ?? 5)));
+    const resultado = await executarConsultaBi(usuario.empresaAtivaId!, corpo, corpo?.filtros ?? {}, usuario.id, null);
+    return sucesso({
+      ...resultado,
+      dados: Array.isArray(resultado.dados) ? resultado.dados.slice(0, limite) : [],
+      limite_previa: limite,
+      quantidade_total_consulta: resultado.quantidade_registros
+    });
+  });
+
+  app.get('/api/business-intelligence/logs', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['BI_VISUALIZAR_LOGS'], 'Usuario sem permissao para visualizar logs.');
+    if (!usuario) return;
+    return sucesso(await listarLogsBi(usuario.empresaAtivaId!));
+  });
+
+  app.get('/api/business-intelligence/templates', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['VISUALIZAR_BUSINESS_INTELLIGENCE'], 'Usuario sem permissao para visualizar templates.');
+    if (!usuario) return;
+    return sucesso(await listarTemplatesBi());
   });
 
   app.get<{

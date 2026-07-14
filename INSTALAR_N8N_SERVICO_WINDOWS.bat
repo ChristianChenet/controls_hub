@@ -13,14 +13,14 @@ REM ================================================================
 SET "BASE_DIR=%~dp0"
 IF "%BASE_DIR:~-1%"=="\" SET "BASE_DIR=%BASE_DIR:~0,-1%"
 
-SET "SERVICO_N8N=N8NControlS"
+SET "SERVICO_N8N=ControlSIntN8N"
 SET "NSSM_DIR=C:\nssm"
 SET "NSSM_EXE=%NSSM_DIR%\win64\nssm.exe"
 SET "NSSM_URL=https://nssm.cc/release/nssm-2.24.zip"
 SET "NSSM_ZIP=%TEMP%\nssm-2.24.zip"
 
-SET "N8N_CMD=C:\Users\chris\AppData\Roaming\npm\n8n.cmd"
-SET "N8N_DIR=C:\Users\chris"
+SET "N8N_CMD=C:\Users\Daikin\AppData\Roaming\npm\n8n.cmd"
+SET "N8N_DIR=C:\Users\Daikin"
 SET "N8N_LOG_DIR=C:\n8n\logs"
 SET "N8N_HOST=192.168.1.70"
 SET "N8N_PORT=5678"
