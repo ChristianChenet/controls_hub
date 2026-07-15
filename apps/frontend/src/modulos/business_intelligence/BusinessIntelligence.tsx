@@ -228,13 +228,15 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
   }, [widget.id, JSON.stringify(filtros)]);
 
   const registros = ((dados?.registros ?? dados?.dados ?? []) as RegistroGenerico[]).map(normalizarLinhaBi);
+  const registrosCompletos = ((dados?.registros_completos ?? dados?.dados_completos ?? dados?.registros ?? dados?.dados ?? []) as RegistroGenerico[]).map(normalizarLinhaBi);
   const primeiro = registros[0] ?? {};
   const tipo = String(widget.tipo_widget ?? 'KPI').toUpperCase();
   const tipoGrafico = ['LINHAS', 'GRAFICO_LINHAS', 'AREA', 'BARRAS'].includes(tipo);
   const colunasConfiguradas = Array.isArray(widget.colunas_visiveis_json)
     ? widget.colunas_visiveis_json.map((coluna) => normalizarChaveBi(String(coluna))).filter(Boolean)
     : String(widget.colunas_visiveis_json ?? '').split(',').map((coluna) => normalizarChaveBi(coluna)).filter(Boolean);
-  const registrosDetalhe = Array.isArray(primeiro.detalhes_json) ? primeiro.detalhes_json as RegistroGenerico[] : registros;
+  const primeiroCompleto = registrosCompletos[0] ?? primeiro;
+  const registrosDetalhe = Array.isArray(primeiroCompleto.detalhes_json) ? primeiroCompleto.detalhes_json as RegistroGenerico[] : registrosCompletos;
   const colunasBase = Array.from(new Set(registros.flatMap((registro) => Object.keys(registro).filter((coluna) => coluna !== 'detalhes_json'))));
   const colunas = (colunasConfiguradas.length ? colunasConfiguradas : colunasBase).slice(0, 10);
   const colunasDetalhe = Array.from(new Set(registrosDetalhe.flatMap((registro) => Object.keys(registro).filter((coluna) => coluna !== 'detalhes_json')))).slice(0, 14);
@@ -242,6 +244,25 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
   const totalRegistros = Number(dados?.total_registros ?? registros.length);
   const registrosNaoExibidos = Number(dados?.registros_nao_exibidos ?? 0);
   const camposMetricaKpi = Object.keys(primeiro).filter((campo) => !['valor', 'total', 'quantidade', 'valor_monetario', 'valor_secundario', 'situacao', 'comparacao_dia_anterior', 'detalhes_json'].includes(campo));
+
+  function exportarDetalheExcel() {
+    const escaparHtml = (valor: unknown) => String(valor ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const cabecalho = colunasDetalhe.map((coluna) => `<th>${escaparHtml(coluna.replace(/_/g, ' '))}</th>`).join('');
+    const linhas = registrosDetalhe.map((registro) => `<tr>${colunasDetalhe.map((coluna) => `<td>${escaparHtml(formatarValorBi(registro[coluna], coluna === 'valor' || coluna.includes('valor')))}</td>`).join('')}</tr>`).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table><thead><tr>${cabecalho}</tr></thead><tbody>${linhas}</tbody></table></body></html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const nomeWidget = String(widget.titulo ?? 'detalhe').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'detalhe';
+    link.href = url;
+    link.download = `${nomeWidget}-detalhe.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <article className={`biWidget biWidget${tipo}`} style={{ '--bi-cor': corWidget, borderTopColor: corWidget, gridColumn: `span ${Math.min(15, Math.max(2, Number(widget.largura ?? 3)))}` } as CSSProperties}>
@@ -304,7 +325,10 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
                 <h3>{String(widget.titulo ?? 'Widget')}</h3>
                 <p>{String(widget.descricao ?? widget.subtitulo ?? 'Registros usados para compor este indicador.')}</p>
               </div>
-              <button type="button" onClick={() => setDetalheAberto(false)} title="Fechar detalhe"><X size={18} /></button>
+              <div className="biModalControles">
+                <button type="button" onClick={exportarDetalheExcel} title="Exportar detalhe para Excel"><Download size={18} /></button>
+                <button type="button" onClick={() => setDetalheAberto(false)} title="Fechar detalhe"><X size={18} /></button>
+              </div>
             </header>
             <div className="biDetalheResumo">
               <div><span>Consulta</span><strong>{String(widget.consulta_nome ?? widget.consulta_id ?? '-')}</strong></div>

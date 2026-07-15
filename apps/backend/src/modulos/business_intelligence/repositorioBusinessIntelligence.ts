@@ -462,6 +462,7 @@ export async function executarWidgetBi(empresaId: number, widgetId: number, filt
   const recorte = aplicarTopX(linhas, widget);
   return {
     registros: recorte.dados,
+    registros_completos: linhas,
     total_registros: recorte.total,
     registros_nao_exibidos: recorte.naoExibidos,
     origem_cache: Boolean(cache),
