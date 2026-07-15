@@ -72,10 +72,15 @@ function montarParametrosSql(sql: string, filtros: RegistroBi) {
 function aplicarTopX(linhas: RegistroBi[], widget: RegistroBi) {
   const ordenarPor = String(widget.ordenar_por ?? '').trim();
   const direcao = String(widget.direcao_ordenacao ?? 'DESC').toUpperCase() === 'ASC' ? 1 : -1;
+  const obterValorOrdenacao = (linha: RegistroBi) => {
+    if (!ordenarPor) return null;
+    const chave = Object.keys(linha).find((campo) => campo.toLocaleLowerCase('pt-BR') === ordenarPor.toLocaleLowerCase('pt-BR'));
+    return chave ? linha[chave] : linha[ordenarPor];
+  };
   const ordenadas = ordenarPor
     ? [...linhas].sort((a, b) => {
-        const va = a[ordenarPor];
-        const vb = b[ordenarPor];
+        const va = obterValorOrdenacao(a);
+        const vb = obterValorOrdenacao(b);
         if (va === vb) return 0;
         return va > vb ? direcao : -direcao;
       })

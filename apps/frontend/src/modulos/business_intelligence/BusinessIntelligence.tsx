@@ -151,6 +151,32 @@ function BiGraficoLinhas({ registros, cor }: { registros: RegistroGenerico[]; co
   );
 }
 
+function normalizarChaveBi(chave: string) {
+  return chave.trim().toLocaleLowerCase('pt-BR');
+}
+
+function normalizarLinhaBi(linha: RegistroGenerico): RegistroGenerico {
+  const normalizada = Object.entries(linha ?? {}).reduce<RegistroGenerico>((acc, [chave, valor]) => {
+    const chaveNormalizada = normalizarChaveBi(chave);
+    if (chaveNormalizada === 'detalhes_json' && typeof valor === 'string') {
+      try {
+        const detalhes = JSON.parse(valor);
+        acc[chaveNormalizada] = Array.isArray(detalhes) ? detalhes.map((item) => normalizarLinhaBi(item as RegistroGenerico)) : detalhes;
+      } catch {
+        acc[chaveNormalizada] = valor;
+      }
+      return acc;
+    }
+    if (Array.isArray(valor)) {
+      acc[chaveNormalizada] = valor.map((item) => typeof item === 'object' && item !== null ? normalizarLinhaBi(item as RegistroGenerico) : item);
+      return acc;
+    }
+    acc[chaveNormalizada] = valor;
+    return acc;
+  }, {});
+  return normalizada;
+}
+
 function normalizarDetalheDashboardBi(dados: any): { dashboard: RegistroGenerico; paginas: RegistroGenerico[]; widgets: RegistroGenerico[]; filtros: RegistroGenerico[]; permissoes: RegistroGenerico[] } {
   if (dados?.dashboard) {
     return {
@@ -201,13 +227,13 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
     return () => window.clearInterval(intervalo);
   }, [widget.id, JSON.stringify(filtros)]);
 
-  const registros = ((dados?.registros ?? dados?.dados ?? []) as RegistroGenerico[]);
+  const registros = ((dados?.registros ?? dados?.dados ?? []) as RegistroGenerico[]).map(normalizarLinhaBi);
   const primeiro = registros[0] ?? {};
   const tipo = String(widget.tipo_widget ?? 'KPI').toUpperCase();
   const tipoGrafico = ['LINHAS', 'GRAFICO_LINHAS', 'AREA', 'BARRAS'].includes(tipo);
   const colunasConfiguradas = Array.isArray(widget.colunas_visiveis_json)
-    ? widget.colunas_visiveis_json.map(String).filter(Boolean)
-    : String(widget.colunas_visiveis_json ?? '').split(',').map((coluna) => coluna.trim()).filter(Boolean);
+    ? widget.colunas_visiveis_json.map((coluna) => normalizarChaveBi(String(coluna))).filter(Boolean)
+    : String(widget.colunas_visiveis_json ?? '').split(',').map((coluna) => normalizarChaveBi(coluna)).filter(Boolean);
   const registrosDetalhe = Array.isArray(primeiro.detalhes_json) ? primeiro.detalhes_json as RegistroGenerico[] : registros;
   const colunasBase = Array.from(new Set(registros.flatMap((registro) => Object.keys(registro).filter((coluna) => coluna !== 'detalhes_json'))));
   const colunas = (colunasConfiguradas.length ? colunasConfiguradas : colunasBase).slice(0, 10);
