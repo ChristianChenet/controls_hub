@@ -5301,7 +5301,7 @@ h2 {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   width: 100%;
 }
 
@@ -5314,9 +5314,8 @@ h2 {
 
 .biDashboardViewer .biWidget:not(.biWidgetKPI) header h3 {
   justify-self: end;
-  max-width: min(390px, 52vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -5465,7 +5464,7 @@ h2 {
   align-items: center;
   background: var(--bi-cor, #2563eb);
   border-radius: 999px;
-  color: #ffffff;
+  color: #ffffff !important;
   display: inline-flex;
   font-size: 12px;
   font-weight: 900;
@@ -5476,6 +5475,10 @@ h2 {
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.biDetalheModal > header .biEtiquetaDetalhe {
+  color: #ffffff !important;
 }
 
 .biDetalheResumo {
@@ -6173,7 +6176,7 @@ body:has(.biModoTv) {
   align-items: center !important;
   display: grid !important;
   gap: 8px !important;
-  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-columns: minmax(0, 1fr) max-content !important;
   min-width: 0 !important;
   width: 100% !important;
 }
@@ -6188,9 +6191,8 @@ body:has(.biModoTv) {
 
 .biModoTv .biWidget:not(.biWidgetKPI) header h3 {
   justify-self: end !important;
-  max-width: min(380px, 56%) !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+  max-width: 100% !important;
+  overflow: visible !important;
   white-space: nowrap !important;
 }
 

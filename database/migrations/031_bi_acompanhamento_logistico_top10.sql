@@ -2,8 +2,7 @@
 -- A regra fica em migration separada porque a 029 pode ja ter sido aplicada em clientes existentes.
 UPDATE bi_dashboard_widgets w
 SET top_x_registros = 10,
-  altura = GREATEST(COALESCE(w.altura, 0), 5),
-  atualizado_em = NOW()
+  altura = GREATEST(COALESCE(w.altura, 0), 5)
 FROM bi_dashboards d
 WHERE d.id = w.dashboard_id
   AND d.nome = 'Acompanhamento Logistico'
