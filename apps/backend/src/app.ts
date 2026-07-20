@@ -1969,6 +1969,37 @@ export async function criarApp() {
     return sucesso(resultado);
   });
 
+  app.post<{
+    Body: {
+      cotacao_id?: string | number;
+      etapa_codigo?: string;
+    };
+  }>('/api/cotacao-frete/reprocessar-escolha-automatica', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirPermissao(request, reply, 'ESCOLHER_TRANSPORTADORA', 'Usuario sem permissao para reprocessar escolha automatica.');
+    if (!usuario) return;
+
+    const cotacaoId = request.body?.cotacao_id ? obterChaveCotacaoParametro(String(request.body.cotacao_id)) : null;
+    const etapaCodigo = request.body?.etapa_codigo ? decodeURIComponent(String(request.body.etapa_codigo)) : null;
+
+    if (!cotacaoId && !etapaCodigo) {
+      return reply.status(400).send(falha(
+        'FILTRO_REPROCESSAMENTO_OBRIGATORIO',
+        'Informe a cotacao ou a etapa para reprocessar a escolha automatica.'
+      ));
+    }
+
+    const resultado = await reprocessarEscolhasAutomaticasTransportadoraPedido({
+      empresaId: usuario.empresaAtivaId!,
+      usuarioId: usuario.id,
+      cotacaoId,
+      etapaCodigo
+    });
+
+    await sincronizarStatusCotacoes(usuario.empresaAtivaId!, cotacaoId ?? undefined);
+
+    return sucesso(resultado);
+  });
+
   app.post<{ Params: { codigo: string } }>('/api/cotacao-frete/kanban/etapas/:codigo/reprocessar-escolha-automatica', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'ESCOLHER_TRANSPORTADORA', 'Usuario sem permissao para reprocessar escolha automatica.');
     if (!usuario) return;
@@ -1976,7 +2007,7 @@ export async function criarApp() {
     const resultado = await reprocessarEscolhasAutomaticasTransportadoraPedido({
       empresaId: usuario.empresaAtivaId!,
       usuarioId: usuario.id,
-      etapaCodigo: obterChaveCotacaoParametro(request.params.codigo)
+      etapaCodigo: decodeURIComponent(String(request.params.codigo))
     });
 
     await sincronizarStatusCotacoes(usuario.empresaAtivaId!);

@@ -298,16 +298,16 @@ export async function escolherTransportadora(
 }
 
 export async function reprocessarEscolhaAutomaticaCotacao(cotacaoId: string | number) {
-  return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/reprocessar-escolha-automatica`, {
+  return requisitar<RegistroGenerico>('/api/cotacao-frete/reprocessar-escolha-automatica', {
     method: 'POST',
-    body: JSON.stringify({})
+    body: JSON.stringify({ cotacao_id: cotacaoId })
   });
 }
 
 export async function reprocessarEscolhaAutomaticaEtapa(codigo: string) {
-  return requisitar<RegistroGenerico>(`/api/cotacao-frete/kanban/etapas/${encodeURIComponent(String(codigo))}/reprocessar-escolha-automatica`, {
+  return requisitar<RegistroGenerico>('/api/cotacao-frete/reprocessar-escolha-automatica', {
     method: 'POST',
-    body: JSON.stringify({})
+    body: JSON.stringify({ etapa_codigo: codigo })
   });
 }
 
