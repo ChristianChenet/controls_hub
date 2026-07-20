@@ -355,7 +355,6 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
                 <p>{String(widget.descricao ?? widget.subtitulo ?? 'Registros usados para compor este indicador.')}</p>
               </div>
               <div className="biModalControles">
-                <span className="biEtiquetaDetalhe" style={{ '--bi-cor': corWidget } as CSSProperties}>{String(widget.titulo ?? 'Widget')}</span>
                 <button type="button" onClick={exportarDetalheExcel} title="Exportar detalhe para Excel"><Download size={18} /></button>
                 <button type="button" onClick={() => setDetalheAberto(false)} title="Fechar detalhe"><X size={18} /></button>
               </div>

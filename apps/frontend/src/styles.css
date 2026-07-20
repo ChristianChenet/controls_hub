@@ -5297,7 +5297,7 @@ h2 {
   min-height: 306px;
 }
 
-.biDashboardViewer .biWidget:not(.biWidgetKPI) header > div {
+.biDashboardViewer .biWidget:not(.biWidgetKPI) > header > div {
   align-items: center;
   display: grid;
   gap: 8px;
@@ -5305,14 +5305,20 @@ h2 {
   width: 100%;
 }
 
-.biDashboardViewer .biWidget:not(.biWidgetKPI) header span {
+.biDashboardViewer .biWidget:not(.biWidgetKPI) > header span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.biDashboardViewer .biWidget:not(.biWidgetKPI) header h3 {
+.biDashboardViewer .biWidget:not(.biWidgetKPI) > header h3 {
+  background: var(--bi-cor, #2563eb);
+  border-radius: 999px;
+  color: #ffffff !important;
+  display: inline-flex;
+  line-height: 1;
+  padding: 5px 14px;
   justify-self: end;
   max-width: 100%;
   overflow: visible;
@@ -6163,7 +6169,7 @@ body:has(.biModoTv) {
   height: 304px !important;
 }
 
-.biModoTv .biWidget:not(.biWidgetKPI) header h3 {
+.biModoTv .biWidget:not(.biWidgetKPI) > header h3 {
   background: var(--bi-cor) !important;
   border-radius: 999px !important;
   color: #ffffff !important;
@@ -6172,7 +6178,7 @@ body:has(.biModoTv) {
   padding: 5px 14px !important;
 }
 
-.biModoTv .biWidget:not(.biWidgetKPI) header > div {
+.biModoTv .biWidget:not(.biWidgetKPI) > header > div {
   align-items: center !important;
   display: grid !important;
   gap: 8px !important;
@@ -6181,7 +6187,7 @@ body:has(.biModoTv) {
   width: 100% !important;
 }
 
-.biModoTv .biWidget:not(.biWidgetKPI) header span {
+.biModoTv .biWidget:not(.biWidgetKPI) > header span {
   color: #111827 !important;
   max-width: none !important;
   overflow: hidden !important;
@@ -6189,7 +6195,7 @@ body:has(.biModoTv) {
   white-space: nowrap !important;
 }
 
-.biModoTv .biWidget:not(.biWidgetKPI) header h3 {
+.biModoTv .biWidget:not(.biWidgetKPI) > header h3 {
   justify-self: end !important;
   max-width: 100% !important;
   overflow: visible !important;
