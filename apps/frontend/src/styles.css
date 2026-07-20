@@ -4183,6 +4183,34 @@ h2 {
   border: 1px solid rgba(46, 230, 111, .22);
 }
 
+.kanbanCabecalhoAcoes {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.botaoReprocessarEtapa {
+  border: 1px solid rgba(137, 207, 240, .45);
+  background: rgba(137, 207, 240, .12);
+  color: #dff5ff;
+  border-radius: 999px;
+  min-height: 22px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.botaoReprocessarEtapa:disabled,
+.botaoReprocessarDetalhe:disabled {
+  opacity: .62;
+  cursor: wait;
+}
+
+.botaoReprocessarDetalhe {
+  white-space: nowrap;
+}
+
 .kanbanPremium .cartao {
   padding: 14px;
   border-radius: 10px;

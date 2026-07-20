@@ -77,6 +77,8 @@ import {
   prepararEnvioMassa,
   RegistroGenerico,
   registrarTimelineCotacao,
+  reprocessarEscolhaAutomaticaCotacao,
+  reprocessarEscolhaAutomaticaEtapa,
   responderCotacaoPublica,
   salvarEmpresa,
   salvarConfiguracaoEmail,
@@ -1784,6 +1786,8 @@ function KanbanCotacoes({
   const [linhas, setLinhas] = useState<RegistroGenerico[]>([]);
   const [etapasDisponiveis, setEtapasDisponiveis] = useState<RegistroGenerico[]>([]);
   const [erro, setErro] = useState('');
+  const [mensagem, setMensagem] = useState('');
+  const [etapaReprocessando, setEtapaReprocessando] = useState('');
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [colunaArrastada, setColunaArrastada] = useState('');
   const [dataInicial, setDataInicial] = useState('');
@@ -1857,6 +1861,29 @@ function KanbanCotacoes({
     setErro('');
     await alterarEtapaCotacao(cotacaoId, etapaId, feedback);
     await carregarKanban();
+  }
+
+  async function reprocessarEtapaKanban(codigoEtapa: string, nomeEtapa: string) {
+    const confirmar = window.confirm(`Reprocessar escolhas automáticas pendentes da etapa "${nomeEtapa}"?`);
+    if (!confirmar) {
+      return;
+    }
+
+    setErro('');
+    setMensagem('');
+    setEtapaReprocessando(codigoEtapa);
+    try {
+      const resultado = await reprocessarEscolhaAutomaticaEtapa(codigoEtapa);
+      const totalEscolhido = Number(resultado.total_escolhido ?? 0);
+      const totalAnalisado = Number(resultado.total_analisado ?? 0);
+      const totalErros = Number(resultado.total_erros ?? 0);
+      setMensagem(`Reprocessamento concluído: ${totalEscolhido} escolha(s) aplicada(s), ${totalAnalisado} cotação(ões) analisada(s)${totalErros ? `, ${totalErros} erro(s)` : ''}.`);
+      await carregarKanban();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao reprocessar a etapa.');
+    } finally {
+      setEtapaReprocessando('');
+    }
   }
 
   async function abrirDetalheKanban(cotacaoId: string | number) {
@@ -1952,12 +1979,10 @@ function KanbanCotacoes({
     setColunaArrastada('');
   }
 
-  if (erro) {
-    return <div className="alerta">{erro}</div>;
-  }
-
   return (
     <>
+      {erro && <div className="alerta">{erro}</div>}
+      {mensagem && <div className="sucesso">{mensagem}</div>}
       <div className="filtrosLinha kanbanFiltros kanbanFiltrosPremium">
         <input type="date" value={dataInicial} onChange={(evento) => setDataInicial(evento.target.value)} />
         <input type="date" value={dataFinal} onChange={(evento) => setDataFinal(evento.target.value)} />
@@ -2039,7 +2064,20 @@ function KanbanCotacoes({
               <strong>{String(etapa.etapa_nome)}</strong>
               <small>Total R$ {cards.reduce((total, card) => total + Number(card.valor_mercadoria ?? 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</small>
             </div>
-            <span>{cards.length}</span>
+            <div className="kanbanCabecalhoAcoes">
+              <button
+                className="botaoReprocessarEtapa"
+                title="Reprocessar escolhas automáticas pendentes desta etapa"
+                disabled={etapaReprocessando === String(etapa.etapa_codigo)}
+                onClick={(evento) => {
+                  evento.stopPropagation();
+                  reprocessarEtapaKanban(String(etapa.etapa_codigo), String(etapa.etapa_nome)).catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao reprocessar etapa.'));
+                }}
+              >
+                Auto
+              </button>
+              <span>{cards.length}</span>
+            </div>
           </header>
           {cards.map((card) => (
             <article
@@ -3790,6 +3828,7 @@ function DetalheCotacaoConteudo({
   const [transportadoraMotivo, setTransportadoraMotivo] = useState<RegistroGenerico | null>(null);
   const [motivoEscolhaManual, setMotivoEscolhaManual] = useState<RegistroGenerico | null>(null);
   const [erroEscolhaModal, setErroEscolhaModal] = useState('');
+  const [reprocessandoEscolha, setReprocessandoEscolha] = useState(false);
   const pode = (codigo: string) => Boolean(!usuario || usuario.superadmin || usuario.administrador || usuario.permissoes?.includes(codigo));
 
   useEffect(() => {
@@ -3938,6 +3977,31 @@ function DetalheCotacaoConteudo({
     }
   }
 
+  async function reprocessarEscolhaAutomaticaDetalhe() {
+    const confirmar = window.confirm('Reprocessar a escolha automática da transportadora do pedido para esta cotação?');
+    if (!confirmar) {
+      return;
+    }
+
+    setErroLink('');
+    setMensagemLink('');
+    setReprocessandoEscolha(true);
+    try {
+      const resultado = await reprocessarEscolhaAutomaticaCotacao(String(detalhe.cotacao.id));
+      const totalEscolhido = Number(resultado.total_escolhido ?? 0);
+      const totalAnalisado = Number(resultado.total_analisado ?? 0);
+      const totalErros = Number(resultado.total_erros ?? 0);
+      setMensagemLink(totalEscolhido > 0
+        ? `Escolha automática reprocessada: ${totalEscolhido} escolha(s) aplicada(s).`
+        : `Escolha automática reprocessada: nenhuma escolha aplicada em ${totalAnalisado} cotação(ões) analisada(s)${totalErros ? `, ${totalErros} erro(s)` : ''}.`);
+      await aoAtualizar();
+    } catch (error) {
+      setErroLink(error instanceof Error ? error.message : 'Falha ao reprocessar escolha automática.');
+    } finally {
+      setReprocessandoEscolha(false);
+    }
+  }
+
   async function editarValorManualDetalhe(transportadora: RegistroGenerico, valorManual?: number, prazoManual?: number | null, observacaoManual?: string | null) {
     let valorNumero = valorManual;
     let prazoNumero = prazoManual;
@@ -4015,6 +4079,14 @@ function DetalheCotacaoConteudo({
           <p className="metaDetalheCotacao">Cotação criada em: {formatarDataHoraBrasileira(detalhe.cotacao.criado_em)}</p>
         </div>
         <div className="statusRapidoDetalhe">
+          <button
+            className="miniBotao botaoReprocessarDetalhe"
+            disabled={reprocessandoEscolha}
+            title="Reprocessa a escolha automática da transportadora do pedido para esta cotação"
+            onClick={reprocessarEscolhaAutomaticaDetalhe}
+          >
+            {reprocessandoEscolha ? 'Reprocessando...' : 'Reprocessar escolha auto.'}
+          </button>
           <SemaforoSlaCotacao cotacao={detalhe.cotacao} parametros={parametrosEscolha} />
           {String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status ?? '').trim() && <i className="tagStatusDetalhe etapaKanban">{String(detalhe.cotacao.etapa_nome ?? detalhe.cotacao.status)}</i>}
           {(detalhe.cotacao.numeros_nfe || detalhe.cotacao.numero_nfe_faturada || Number(detalhe.cotacao.total_nfes ?? 0) > 0 || detalhe.cotacao.faturado_em) && <i className="tagStatusDetalhe faturado">Faturado</i>}
@@ -4027,8 +4099,12 @@ function DetalheCotacaoConteudo({
       {mensagemLink && (
         <div className="sucesso linkGeradoPainel">
           <span>{mensagemLink}</span>
-          <button className="ghost" onClick={() => copiarLink(mensagemLink.replace('Novo link gerado: ', ''))}>Copiar link</button>
-          <button className="ghost" onClick={() => window.open(mensagemLink.replace('Novo link gerado: ', ''), '_blank')}>Visualizar link</button>
+          {mensagemLink.startsWith('Novo link gerado: ') && (
+            <>
+              <button className="ghost" onClick={() => copiarLink(mensagemLink.replace('Novo link gerado: ', ''))}>Copiar link</button>
+              <button className="ghost" onClick={() => window.open(mensagemLink.replace('Novo link gerado: ', ''), '_blank')}>Visualizar link</button>
+            </>
+          )}
         </div>
       )}
       {erroLink && <div className="alerta">{erroLink}</div>}

@@ -2370,6 +2370,98 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
   return resultado;
 }
 
+export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: {
+  empresaId: number;
+  usuarioId?: number;
+  etapaCodigo?: string | null;
+  cotacaoId?: string | number | null;
+}) {
+  await consultar(
+    `ALTER TABLE transportadoras
+      ADD COLUMN IF NOT EXISTS escolher_automaticamente_se_pedido BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+
+  const parametros: unknown[] = [dados.empresaId];
+  const filtros: string[] = [
+    'c.empresa_id = $1',
+    'COALESCE(c.excluido, FALSE) = FALSE',
+    'COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE',
+    "UPPER(COALESCE(c.status, '')) <> 'CTE_EMITIDO'",
+    'c.transportadora_pedido_id IS NOT NULL',
+    'COALESCE(t.escolher_automaticamente_se_pedido, FALSE) = TRUE',
+    'COALESCE(t.ativa, TRUE) = TRUE',
+    'COALESCE(t.excluido, FALSE) = FALSE'
+  ];
+
+  if (dados.etapaCodigo) {
+    parametros.push(String(dados.etapaCodigo).toUpperCase());
+    filtros.push(`UPPER(COALESCE(e.codigo, c.status, '')) = $${parametros.length}`);
+  }
+
+  if (dados.cotacaoId) {
+    const chave = interpretarChaveCotacao(dados.empresaId, dados.cotacaoId);
+    parametros.push(chave.tipoDocumento, chave.numeroDocumento, chave.codigoChave);
+    filtros.push(`c.tipo_documento = $${parametros.length - 2}`);
+    filtros.push(`c.numero_documento = $${parametros.length - 1}`);
+    filtros.push(`c.codigo_chave = $${parametros.length}`);
+  }
+
+  const cotacoes = await consultar<{
+    id: string;
+    numero_documento: string;
+    codigo_chave: string;
+    etapa_codigo: string | null;
+  }>(
+    `SELECT
+      ${montarIdCotacaoSql('c')} AS id,
+      c.numero_documento,
+      c.codigo_chave,
+      COALESCE(e.codigo, c.status) AS etapa_codigo
+    FROM cotacoes_frete c
+    INNER JOIN transportadoras t
+      ON t.id = c.transportadora_pedido_id
+    LEFT JOIN etapas_kanban e
+      ON e.id = c.etapa_kanban_id
+    WHERE ${filtros.join('\n      AND ')}
+    ORDER BY c.numero_documento, c.codigo_chave`,
+    parametros
+  );
+
+  const erros: Array<{ cotacao_id: string; mensagem: string }> = [];
+  const escolhidas: Array<{ cotacao_id: string; resultado: unknown }> = [];
+  let ignoradas = 0;
+
+  for (const cotacao of cotacoes) {
+    try {
+      const resultado = await escolherAutomaticamenteTransportadoraDoPedido({
+        empresaId: dados.empresaId,
+        cotacaoId: cotacao.id,
+        usuarioId: dados.usuarioId
+      });
+
+      if (resultado) {
+        escolhidas.push({ cotacao_id: cotacao.id, resultado });
+      } else {
+        ignoradas += 1;
+      }
+    } catch (error) {
+      erros.push({
+        cotacao_id: cotacao.id,
+        mensagem: error instanceof Error ? error.message : 'Falha ao reprocessar escolha automatica.'
+      });
+    }
+  }
+
+  return {
+    total_analisado: cotacoes.length,
+    total_escolhido: escolhidas.length,
+    total_ignorado: ignoradas,
+    total_erros: erros.length,
+    escolhidas,
+    erros
+  };
+}
+
 export async function alterarValorFreteManual(dados: {
   empresaId: number;
   cotacaoTransportadoraId: string | number;

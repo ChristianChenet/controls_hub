@@ -297,6 +297,20 @@ export async function escolherTransportadora(
   });
 }
 
+export async function reprocessarEscolhaAutomaticaCotacao(cotacaoId: string | number) {
+  return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/reprocessar-escolha-automatica`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
+export async function reprocessarEscolhaAutomaticaEtapa(codigo: string) {
+  return requisitar<RegistroGenerico>(`/api/cotacao-frete/kanban/etapas/${encodeURIComponent(String(codigo))}/reprocessar-escolha-automatica`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
 export async function bloquearCotacaoErp(cotacaoId: string | number) {
   return requisitar<RegistroGenerico>(`/api/cotacao-frete/cotacoes/${codificarChaveCotacao(cotacaoId)}/bloquear-erp`, {
     method: 'POST',

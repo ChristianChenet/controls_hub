@@ -80,6 +80,7 @@ import {
   registrarVisualizacaoToken,
   listarCotacoesPendentesErp,
   receberCotacaoErp,
+  reprocessarEscolhasAutomaticasTransportadoraPedido,
   sincronizarStatusCotacoes
 } from './modulos/cotacao_frete/repositorioCotacaoFrete.js';
 import {
@@ -1948,6 +1949,37 @@ export async function criarApp() {
       descricao: 'Transportadora vencedora escolhida.',
       dadosNovos: resultado
     });
+
+    return sucesso(resultado);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cotacao-frete/cotacoes/:id/reprocessar-escolha-automatica', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirPermissao(request, reply, 'ESCOLHER_TRANSPORTADORA', 'Usuario sem permissao para reprocessar escolha automatica.');
+    if (!usuario) return;
+
+    const cotacaoId = obterChaveCotacaoParametro(request.params.id);
+    const resultado = await reprocessarEscolhasAutomaticasTransportadoraPedido({
+      empresaId: usuario.empresaAtivaId!,
+      usuarioId: usuario.id,
+      cotacaoId
+    });
+
+    await sincronizarStatusCotacoes(usuario.empresaAtivaId!, cotacaoId);
+
+    return sucesso(resultado);
+  });
+
+  app.post<{ Params: { codigo: string } }>('/api/cotacao-frete/kanban/etapas/:codigo/reprocessar-escolha-automatica', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirPermissao(request, reply, 'ESCOLHER_TRANSPORTADORA', 'Usuario sem permissao para reprocessar escolha automatica.');
+    if (!usuario) return;
+
+    const resultado = await reprocessarEscolhasAutomaticasTransportadoraPedido({
+      empresaId: usuario.empresaAtivaId!,
+      usuarioId: usuario.id,
+      etapaCodigo: obterChaveCotacaoParametro(request.params.codigo)
+    });
+
+    await sincronizarStatusCotacoes(usuario.empresaAtivaId!);
 
     return sucesso(resultado);
   });
