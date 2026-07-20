@@ -532,12 +532,12 @@ CROSS JOIN (
     ('Separados no Dia', 'Valor separado NF', 'KPI', 'BI - Separados no Dia', 3, 3, 2, '#80c0ff', 'PackageCheck', NULL::INTEGER, NULL::VARCHAR, 'DESC', 60),
     ('Faturados sem Inicio de Separacao KPI', 'Pedidos', 'KPI', 'BI - Faturados e Nao Separados KPI', 4, 3, 2, '#7d7db2', 'AlertCircle', NULL::INTEGER, NULL::VARCHAR, 'DESC', 60),
     ('Em Separacao KPI', 'Pedidos', 'KPI', 'BI - Em Separacao KPI', 5, 3, 2, '#ffe780', 'Clock', NULL::INTEGER, NULL::VARCHAR, 'DESC', 60),
-    ('Pendente Escolha da Transportadora', 'Transportadora', 'TABELA', 'BI - Pendente Escolha Transportadora', 6, 5, 4, '#1b3f66', 'Truck', 6, 'dias', 'DESC', 120),
-    ('Faturados sem Inicio de Separacao', 'Detalhe', 'TABELA', 'BI - Faturados e Nao Separados', 7, 5, 4, '#7d7db2', 'PackageOpen', 6, 'dias', 'DESC', 120),
-    ('Em Separacao', 'Detalhe', 'TABELA', 'BI - Em Separacao', 8, 5, 4, '#ffe780', 'Boxes', 6, 'dias', 'DESC', 120),
-    ('Sem Entrega Total', 'MO 3104', 'TABELA', 'BI - Sem Entrega Total', 9, 5, 4, '#f28b2d', 'Truck', 6, 'falt', 'DESC', 120),
-    ('Sem Envio > 2 Dias', 'Status criado/despachado', 'TABELA', 'BI - Sem Envio 2 Dias', 10, 5, 4, '#37b37e', 'Send', 6, 'dias', 'DESC', 120),
-    ('Nao Vinculados > 1 Dia', 'Transportadoras', 'TABELA', 'BI - Nao Vinculados 1 Dia', 11, 5, 4, '#37b37e', 'Link', 6, 'qtd', 'DESC', 120)
+    ('Pendente Escolha da Transportadora', 'Transportadora', 'TABELA', 'BI - Pendente Escolha Transportadora', 6, 5, 5, '#1b3f66', 'Truck', 10, 'dias', 'DESC', 120),
+    ('Faturados sem Inicio de Separacao', 'Detalhe', 'TABELA', 'BI - Faturados e Nao Separados', 7, 5, 5, '#7d7db2', 'PackageOpen', 10, 'dias', 'DESC', 120),
+    ('Em Separacao', 'Detalhe', 'TABELA', 'BI - Em Separacao', 8, 5, 5, '#ffe780', 'Boxes', 10, 'dias', 'DESC', 120),
+    ('Sem Entrega Total', 'MO 3104', 'TABELA', 'BI - Sem Entrega Total', 9, 5, 5, '#f28b2d', 'Truck', 10, 'falt', 'DESC', 120),
+    ('Sem Envio > 2 Dias', 'Status criado/despachado', 'TABELA', 'BI - Sem Envio 2 Dias', 10, 5, 5, '#37b37e', 'Send', 10, 'dias', 'DESC', 120),
+    ('Nao Vinculados > 1 Dia', 'Transportadoras', 'TABELA', 'BI - Nao Vinculados 1 Dia', 11, 5, 5, '#37b37e', 'Link', 10, 'qtd', 'DESC', 120)
 ) AS item(titulo, subtitulo, tipo_widget, item_consulta_nome, ordem, largura, altura, cor, icone, top_x, ordenar_por, direcao, intervalo)
 INNER JOIN bi_dashboard_paginas p ON p.dashboard_id = d.id AND p.nome = 'Visao Geral'
 INNER JOIN bi_consultas c ON c.empresa_id = d.empresa_id AND c.nome = item.item_consulta_nome
@@ -567,12 +567,12 @@ CROSS JOIN (
     ('Separados no Dia', 'Valor separado NF', 'KPI', 'BI - Separados no Dia', 3, 3, 2, '#80c0ff', 'PackageCheck', NULL::INTEGER, NULL::VARCHAR, 'DESC', 60),
     ('Faturados sem Inicio de Separacao KPI', 'Pedidos', 'KPI', 'BI - Faturados e Nao Separados KPI', 4, 3, 2, '#7d7db2', 'AlertCircle', NULL::INTEGER, NULL::VARCHAR, 'DESC', 60),
     ('Em Separacao KPI', 'Pedidos', 'KPI', 'BI - Em Separacao KPI', 5, 3, 2, '#ffe780', 'Clock', NULL::INTEGER, NULL::VARCHAR, 'DESC', 60),
-    ('Pendente Escolha da Transportadora', 'Transportadora', 'TABELA', 'BI - Pendente Escolha Transportadora', 6, 5, 4, '#1b3f66', 'Truck', 6, 'dias', 'DESC', 120),
-    ('Faturados sem Inicio de Separacao', 'Detalhe', 'TABELA', 'BI - Faturados e Nao Separados', 7, 5, 4, '#7d7db2', 'PackageOpen', 6, 'dias', 'DESC', 120),
-    ('Em Separacao', 'Detalhe', 'TABELA', 'BI - Em Separacao', 8, 5, 4, '#ffe780', 'Boxes', 6, 'dias', 'DESC', 120),
-    ('Sem Entrega Total', 'MO 3104', 'TABELA', 'BI - Sem Entrega Total', 9, 5, 4, '#f28b2d', 'Truck', 6, 'falt', 'DESC', 120),
-    ('Sem Envio > 2 Dias', 'Status criado/despachado', 'TABELA', 'BI - Sem Envio 2 Dias', 10, 5, 4, '#37b37e', 'Send', 6, 'dias', 'DESC', 120),
-    ('Nao Vinculados > 1 Dia', 'Transportadoras', 'TABELA', 'BI - Nao Vinculados 1 Dia', 11, 5, 4, '#37b37e', 'Link', 6, 'qtd', 'DESC', 120)
+    ('Pendente Escolha da Transportadora', 'Transportadora', 'TABELA', 'BI - Pendente Escolha Transportadora', 6, 5, 5, '#1b3f66', 'Truck', 10, 'dias', 'DESC', 120),
+    ('Faturados sem Inicio de Separacao', 'Detalhe', 'TABELA', 'BI - Faturados e Nao Separados', 7, 5, 5, '#7d7db2', 'PackageOpen', 10, 'dias', 'DESC', 120),
+    ('Em Separacao', 'Detalhe', 'TABELA', 'BI - Em Separacao', 8, 5, 5, '#ffe780', 'Boxes', 10, 'dias', 'DESC', 120),
+    ('Sem Entrega Total', 'MO 3104', 'TABELA', 'BI - Sem Entrega Total', 9, 5, 5, '#f28b2d', 'Truck', 10, 'falt', 'DESC', 120),
+    ('Sem Envio > 2 Dias', 'Status criado/despachado', 'TABELA', 'BI - Sem Envio 2 Dias', 10, 5, 5, '#37b37e', 'Send', 10, 'dias', 'DESC', 120),
+    ('Nao Vinculados > 1 Dia', 'Transportadoras', 'TABELA', 'BI - Nao Vinculados 1 Dia', 11, 5, 5, '#37b37e', 'Link', 10, 'qtd', 'DESC', 120)
 ) AS item(titulo, subtitulo, tipo_widget, item_consulta_nome, ordem, largura, altura, cor, icone, top_x, ordenar_por, direcao, intervalo)
 INNER JOIN bi_consultas c ON c.empresa_id = d.empresa_id AND c.nome = item.item_consulta_nome
 WHERE d.id = w.dashboard_id

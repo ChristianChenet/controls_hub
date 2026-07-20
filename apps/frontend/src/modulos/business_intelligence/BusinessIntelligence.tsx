@@ -66,6 +66,24 @@ function formatarValorBi(valor: unknown, monetario = false) {
   return String(valor ?? '-');
 }
 
+function colunaPedidoBi(coluna: string) {
+  const chave = normalizarChaveBi(coluna);
+  return chave === 'pedido' || chave === 'numero_pedido' || chave.endsWith('_pedido');
+}
+
+function colunaValorBi(coluna: string) {
+  const chave = normalizarChaveBi(coluna);
+  return chave === 'valor' || chave.includes('valor') || chave.includes('total');
+}
+
+function formatarCelulaBi(coluna: string, valor: unknown) {
+  if (colunaPedidoBi(coluna)) {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? String(Math.trunc(numero)) : String(valor ?? '-');
+  }
+  return formatarValorBi(valor, colunaValorBi(coluna));
+}
+
 function rotuloMetricaKpi(campo: string) {
   const rotulos: Record<string, string> = {
     pedidos_do_dia: 'Pedidos do dia',
@@ -240,6 +258,14 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
   const colunasBase = Array.from(new Set(registros.flatMap((registro) => Object.keys(registro).filter((coluna) => coluna !== 'detalhes_json'))));
   const colunas = (colunasConfiguradas.length ? colunasConfiguradas : colunasBase).slice(0, 10);
   const colunasDetalhe = Array.from(new Set(registrosDetalhe.flatMap((registro) => Object.keys(registro).filter((coluna) => coluna !== 'detalhes_json')))).slice(0, 14);
+  const colunasValorDetalhe = colunasDetalhe.filter(colunaValorBi);
+  const totaisDetalhe = colunasValorDetalhe.reduce<Record<string, number>>((acc, coluna) => {
+    acc[coluna] = registrosDetalhe.reduce((total, registro) => {
+      const valor = Number(registro[coluna]);
+      return total + (Number.isFinite(valor) ? valor : 0);
+    }, 0);
+    return acc;
+  }, {});
   const corWidget = String(widget.cor_principal ?? '#16a34a');
   const totalRegistros = Number(dados?.total_registros ?? registros.length);
   const registrosNaoExibidos = Number(dados?.registros_nao_exibidos ?? 0);
@@ -251,9 +277,12 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-    const cabecalho = colunasDetalhe.map((coluna) => `<th>${escaparHtml(coluna.replace(/_/g, ' '))}</th>`).join('');
-    const linhas = registrosDetalhe.map((registro) => `<tr>${colunasDetalhe.map((coluna) => `<td>${escaparHtml(formatarValorBi(registro[coluna], coluna === 'valor' || coluna.includes('valor')))}</td>`).join('')}</tr>`).join('');
-    const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table><thead><tr>${cabecalho}</tr></thead><tbody>${linhas}</tbody></table></body></html>`;
+    const cabecalho = `<th>#</th>${colunasDetalhe.map((coluna) => `<th>${escaparHtml(coluna.replace(/_/g, ' '))}</th>`).join('')}`;
+    const linhas = registrosDetalhe.map((registro, indice) => `<tr><td>${indice + 1}</td>${colunasDetalhe.map((coluna) => `<td>${escaparHtml(formatarCelulaBi(coluna, registro[coluna]))}</td>`).join('')}</tr>`).join('');
+    const rodape = colunasValorDetalhe.length > 0
+      ? `<tfoot><tr><td></td>${colunasDetalhe.map((coluna, indice) => `<td>${escaparHtml(colunasValorDetalhe.includes(coluna) ? formatarValorBi(totaisDetalhe[coluna], true) : indice === 0 ? 'Total' : '')}</td>`).join('')}</tr></tfoot>`
+      : '';
+    const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table><thead><tr>${cabecalho}</tr></thead><tbody>${linhas}</tbody>${rodape}</table></body></html>`;
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -302,7 +331,7 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
               <tbody>
                 {registros.map((registro, indice) => (
                   <tr key={indice} className={Number(registro.dias ?? 0) > 2 ? 'biLinhaCritica' : ''}>
-                    {colunas.map((coluna) => <td key={coluna}>{formatarValorBi(registro[coluna], coluna === 'valor')}</td>)}
+                    {colunas.map((coluna) => <td key={coluna}>{formatarCelulaBi(coluna, registro[coluna])}</td>)}
                   </tr>
                 ))}
               </tbody>
@@ -326,6 +355,7 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
                 <p>{String(widget.descricao ?? widget.subtitulo ?? 'Registros usados para compor este indicador.')}</p>
               </div>
               <div className="biModalControles">
+                <span className="biEtiquetaDetalhe" style={{ '--bi-cor': corWidget } as CSSProperties}>{String(widget.titulo ?? 'Widget')}</span>
                 <button type="button" onClick={exportarDetalheExcel} title="Exportar detalhe para Excel"><Download size={18} /></button>
                 <button type="button" onClick={() => setDetalheAberto(false)} title="Fechar detalhe"><X size={18} /></button>
               </div>
@@ -342,14 +372,27 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
             {!erro && registros.length > 0 && (
               <div className="biDetalheTabela">
                 <table>
-                  <thead><tr>{colunasDetalhe.map((coluna) => <th key={coluna}>{coluna.replace(/_/g, ' ')}</th>)}</tr></thead>
+                  <thead><tr><th className="biIndiceDetalhe">#</th>{colunasDetalhe.map((coluna) => <th key={coluna}>{coluna.replace(/_/g, ' ')}</th>)}</tr></thead>
                   <tbody>
                     {registrosDetalhe.map((registro, indice) => (
                       <tr key={indice}>
-                        {colunasDetalhe.map((coluna) => <td key={coluna}>{formatarValorBi(registro[coluna], coluna === 'valor' || coluna.includes('valor'))}</td>)}
+                        <td className="biIndiceDetalhe">{indice + 1}</td>
+                        {colunasDetalhe.map((coluna) => <td key={coluna}>{formatarCelulaBi(coluna, registro[coluna])}</td>)}
                       </tr>
                     ))}
                   </tbody>
+                  {colunasValorDetalhe.length > 0 && (
+                    <tfoot>
+                      <tr>
+                        <td className="biIndiceDetalhe" />
+                        {colunasDetalhe.map((coluna, indice) => (
+                          <td key={coluna} className={colunasValorDetalhe.includes(coluna) ? 'biTotalValor' : ''}>
+                            {colunasValorDetalhe.includes(coluna) ? formatarValorBi(totaisDetalhe[coluna], true) : indice === 0 ? 'Total' : ''}
+                          </td>
+                        ))}
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}

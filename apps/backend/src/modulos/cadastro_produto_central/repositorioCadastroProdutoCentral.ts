@@ -1755,6 +1755,7 @@ export async function consultarSqlServerPim(empresaId: number, dados: Record<str
   );
   return {
     colunas: resultado.colunas,
+    linhas: resultado.linhas,
     previa: resultado.linhas.slice(0, 20),
     total_linhas: resultado.total
   };

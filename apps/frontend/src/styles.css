@@ -5269,6 +5269,7 @@ h2 {
 }
 
 .biTabelaWidget table {
+  table-layout: fixed;
   width: 100%;
 }
 
@@ -5290,6 +5291,33 @@ h2 {
   color: #64748b;
   display: block;
   margin-top: 8px;
+}
+
+.biDashboardViewer .biWidget:not(.biWidgetKPI) {
+  min-height: 306px;
+}
+
+.biDashboardViewer .biWidget:not(.biWidgetKPI) header > div {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+}
+
+.biDashboardViewer .biWidget:not(.biWidgetKPI) header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.biDashboardViewer .biWidget:not(.biWidgetKPI) header h3 {
+  justify-self: end;
+  max-width: min(390px, 52vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .biWidgetDetalheBotao {
@@ -5387,10 +5415,10 @@ h2 {
   color: #0f172a;
   display: grid;
   gap: 14px;
-  max-height: min(84vh, 760px);
+  max-height: min(90vh, 920px);
   overflow: hidden;
   padding: 18px;
-  width: min(1120px, 92vw);
+  width: min(1500px, 96vw);
 }
 
 .biDetalheModal > header {
@@ -5433,6 +5461,23 @@ h2 {
   width: 36px;
 }
 
+.biEtiquetaDetalhe {
+  align-items: center;
+  background: var(--bi-cor, #2563eb);
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  max-width: min(420px, 32vw);
+  overflow: hidden;
+  padding: 8px 14px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .biDetalheResumo {
   display: grid;
   gap: 10px;
@@ -5467,7 +5512,7 @@ h2 {
 .biDetalheTabela {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  max-height: 430px;
+  max-height: min(58vh, 620px);
   overflow: auto;
 }
 
@@ -5495,6 +5540,24 @@ h2 {
   border-top: 1px solid #e5e7eb;
   color: #111827;
   padding: 8px;
+}
+
+.biDetalheTabela tfoot td {
+  background: #f8fafc;
+  border-top: 2px solid #cbd5e1;
+  bottom: 0;
+  color: #0f172a;
+  font-weight: 900;
+  position: sticky;
+}
+
+.biIndiceDetalhe {
+  text-align: center !important;
+  width: 44px;
+}
+
+.biTotalValor {
+  color: #14532d !important;
 }
 
 @media (max-width: 1180px) {
@@ -6094,7 +6157,7 @@ body:has(.biModoTv) {
 }
 
 .biModoTv .biWidget:not(.biWidgetKPI) {
-  height: 234px !important;
+  height: 304px !important;
 }
 
 .biModoTv .biWidget:not(.biWidgetKPI) header h3 {
@@ -6108,15 +6171,24 @@ body:has(.biModoTv) {
 
 .biModoTv .biWidget:not(.biWidgetKPI) header > div {
   align-items: center !important;
-  display: flex !important;
-  gap: 7px !important;
+  display: grid !important;
+  gap: 8px !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
   min-width: 0 !important;
+  width: 100% !important;
 }
 
 .biModoTv .biWidget:not(.biWidgetKPI) header span {
   color: #111827 !important;
-  flex: 0 0 auto !important;
-  max-width: 120px !important;
+  max-width: none !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.biModoTv .biWidget:not(.biWidgetKPI) header h3 {
+  justify-self: end !important;
+  max-width: min(380px, 56%) !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
@@ -6126,7 +6198,7 @@ body:has(.biModoTv) {
   border: 1px solid #e4e9ef !important;
   border-radius: 10px !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-  max-height: 170px !important;
+  max-height: 244px !important;
   overflow: hidden !important;
 }
 
