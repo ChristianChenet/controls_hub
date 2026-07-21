@@ -1793,6 +1793,7 @@ function KanbanCotacoes({
   const [dataInicial, setDataInicial] = useState('');
   const [dataFinal, setDataFinal] = useState('');
   const [chaveFiltro, setChaveFiltro] = useState('');
+  const [cidadeFiltro, setCidadeFiltro] = useState('');
   const [faturadoFiltro, setFaturadoFiltro] = useState('');
   const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
   const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
@@ -1814,6 +1815,7 @@ function KanbanCotacoes({
       data_inicial: dataInicial,
       data_final: dataFinal,
       faturado: faturadoFiltro || undefined,
+      cidade: cidadeFiltro || undefined,
       multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
       fluxo_logistico: fluxoLogisticoFiltro || undefined,
       frete_gratis: freteGratisFiltro || undefined,
@@ -1930,6 +1932,7 @@ function KanbanCotacoes({
         linha.codigo_chave,
         linha.numero_documento,
         linha.nome_destinatario,
+        linha.cidade_destino,
         linha.numeros_nfe,
         linha.numero_nfe_faturada,
         linha.numeros_cte,
@@ -1987,6 +1990,7 @@ function KanbanCotacoes({
         <input type="date" value={dataInicial} onChange={(evento) => setDataInicial(evento.target.value)} />
         <input type="date" value={dataFinal} onChange={(evento) => setDataFinal(evento.target.value)} />
         <input placeholder="Pedido, chave, cliente, NF-e, CT-e, transportadora ou vendedor" value={chaveFiltro} onChange={(evento) => setChaveFiltro(evento.target.value)} />
+        <input className="inputFiltroCidadeKanban" placeholder="Cidade entrega" value={cidadeFiltro} onChange={(evento) => setCidadeFiltro(evento.target.value)} />
         <label className="toggleLinha compacto" title="Mostra somente etapas em aberto, ocultando CT-e emitido e cotações canceladas.">
           <input type="checkbox" checked={somentePendentes} onChange={(evento) => setSomentePendentes(evento.target.checked)} />
           Pendentes
@@ -3166,6 +3170,16 @@ function obterTransportadoraEscolhidaReal(cotacao: RegistroGenerico, transportad
     return null;
   }
 
+  if (cotacao.escolhido_em || cotacao.escolhido_por_usuario_id || cotacao.transportadora_escolhida_id) {
+    const escolhidaCabecalho = transportadoras.find((item: any) =>
+      Number(item.transportadora_id ?? 0) === Number(cotacao.transportadora_escolhida_id ?? 0)
+    );
+
+    if (escolhidaCabecalho) {
+      return escolhidaCabecalho;
+    }
+  }
+
   const selecionada = transportadoras.find((item: any) =>
     Boolean(item.selecionada)
     || ['SELECIONADA', 'ESCOLHIDA'].includes(String(item.status ?? '').toUpperCase())
@@ -3173,10 +3187,6 @@ function obterTransportadoraEscolhidaReal(cotacao: RegistroGenerico, transportad
 
   if (selecionada) {
     return selecionada;
-  }
-
-  if (cotacao.escolhido_em || cotacao.escolhido_por_usuario_id) {
-    return transportadoras.find((item: any) => Number(item.transportadora_id ?? 0) === Number(cotacao.transportadora_escolhida_id ?? 0)) ?? null;
   }
 
   return null;

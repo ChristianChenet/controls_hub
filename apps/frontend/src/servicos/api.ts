@@ -267,7 +267,7 @@ export async function enviarCotacoesMassa(dados: {
   });
 }
 
-export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; frete_gratis?: string; cte_diferente_escolhido?: string }) {
+export async function listarKanbanCotacoes(filtros?: { data_inicial?: string; data_final?: string; etapa_codigo?: string; cidade?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; frete_gratis?: string; cte_diferente_escolhido?: string }) {
   return requisitar<RegistroGenerico[]>(`/api/cotacao-frete/kanban${montarQuery(filtros)}`);
 }
 

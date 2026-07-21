@@ -450,6 +450,44 @@ function normalizarFiltroFreteGratis(valor?: string | null) {
   return filtro === 'SIM' || filtro === 'NAO' ? filtro : null;
 }
 
+async function normalizarSelecaoTransportadoraEscolhida(
+  empresaId: number,
+  cotacaoId?: string | number | null
+) {
+  const chave = cotacaoId !== undefined && cotacaoId !== null
+    ? interpretarChaveCotacao(empresaId, cotacaoId)
+    : null;
+  const filtros: string[] = ['c.empresa_id = $1'];
+  const parametros: unknown[] = [empresaId];
+
+  if (chave?.tipoDocumento && chave.numeroDocumento && chave.codigoChave) {
+    filtros.push('c.tipo_documento = $2', 'c.numero_documento = $3', 'c.codigo_chave = $4');
+    parametros.push(chave.tipoDocumento, chave.numeroDocumento, chave.codigoChave);
+  }
+
+  await consultar(
+    `UPDATE cotacoes_frete_transportadoras cft
+    SET selecionada = FALSE,
+      escolhida_plataforma = FALSE,
+      alterado_em = NOW()
+    FROM cotacoes_frete c
+    WHERE cft.empresa_id = c.empresa_id
+      AND cft.tipo_documento = c.tipo_documento
+      AND cft.numero_documento = c.numero_documento
+      AND cft.codigo_chave = c.codigo_chave
+      AND ${filtros.join('\n      AND ')}
+      AND COALESCE(c.excluido, FALSE) = FALSE
+      AND c.transportadora_escolhida_id IS NOT NULL
+      AND cft.transportadora_id <> c.transportadora_escolhida_id
+      AND (
+        COALESCE(cft.selecionada, FALSE) = TRUE
+        OR COALESCE(cft.escolhida_plataforma, FALSE) = TRUE
+        OR UPPER(COALESCE(cft.status, '')) IN ('SELECIONADA', 'ESCOLHIDA')
+      )`,
+    parametros
+  );
+}
+
 export async function obterIndicadoresCotacao(empresaId: number, filtros: FiltrosDashboardCotacao = {}) {
   await garantirColunasOperacionaisCotacao();
 
@@ -768,6 +806,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       AND c.situacao_pedido = 'ATIVO'
       AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
       AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
+      AND ($10::VARCHAR IS NULL OR COALESCE(c.cidade_destino, '') ILIKE $10)
       AND (
         $5::VARCHAR IS NULL
         OR ($5 = 'SOMENTE' AND (c.faturado_em IS NOT NULL OR COALESCE(c.numero_nfe_faturada, '') <> '' OR EXISTS (
@@ -991,7 +1030,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       AND e.ativa = TRUE
       AND ($4::VARCHAR IS NULL OR e.codigo = $4)
     ORDER BY e.ordem ASC, c.criado_em ASC NULLS LAST`,
-    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true, normalizarFiltroFreteGratis(filtros.freteGratis)]
+    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true, normalizarFiltroFreteGratis(filtros.freteGratis), filtros.cidade ? `%${filtros.cidade}%` : null]
   );
 }
 
@@ -1206,6 +1245,7 @@ export async function obterCotacaoFrete(empresaId: number, cotacaoId: string | n
   );
 
   const chave = interpretarChaveCotacao(empresaId, cotacaoId);
+  await normalizarSelecaoTransportadoraEscolhida(empresaId, cotacaoId);
 
   const cotacao = await consultarUm(
     `SELECT
@@ -2202,6 +2242,7 @@ export async function escolherTransportadora(dados: {
     throw new Error('Nao foi possivel gravar a data da escolha da transportadora.');
   }
 
+  await normalizarSelecaoTransportadoraEscolhida(dados.empresaId, cotacaoBase.id);
   await sincronizarStatusCotacoes(dados.empresaId, cotacaoBase.id);
 
   await registrarTimelineCotacao({
@@ -2248,6 +2289,9 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
     numero_documento: string;
     codigo_chave: string;
     transportadora_pedido_id: number | null;
+    transportadora_escolhida_id: number | null;
+    escolhido_em: Date | string | null;
+    escolhido_por_usuario_id: number | null;
     bloqueado_para_alteracao: boolean;
     status: string | null;
   }>(
@@ -2258,6 +2302,9 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
       c.numero_documento,
       c.codigo_chave,
       c.transportadora_pedido_id,
+      c.transportadora_escolhida_id,
+      c.escolhido_em,
+      c.escolhido_por_usuario_id,
       COALESCE(c.bloqueado_para_alteracao, FALSE) AS bloqueado_para_alteracao,
       c.status
     FROM cotacoes_frete c
@@ -2272,7 +2319,17 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
     parametrosChave(interpretarChaveCotacao(dados.empresaId, dados.cotacaoId))
   );
 
-  if (!cotacao || !cotacao.transportadora_pedido_id || cotacao.bloqueado_para_alteracao || String(cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO') {
+  const possuiEscolhaManualOuOperacional = Boolean(cotacao?.transportadora_escolhida_id)
+    || Boolean(cotacao?.escolhido_em)
+    || Boolean(cotacao?.escolhido_por_usuario_id);
+
+  if (
+    !cotacao
+    || !cotacao.transportadora_pedido_id
+    || cotacao.bloqueado_para_alteracao
+    || String(cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO'
+    || possuiEscolhaManualOuOperacional
+  ) {
     return null;
   }
 
@@ -2388,6 +2445,9 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
     'COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE',
     "UPPER(COALESCE(c.status, '')) <> 'CTE_EMITIDO'",
     'c.transportadora_pedido_id IS NOT NULL',
+    'c.transportadora_escolhida_id IS NULL',
+    'c.escolhido_em IS NULL',
+    'c.escolhido_por_usuario_id IS NULL',
     'COALESCE(t.escolher_automaticamente_se_pedido, FALSE) = TRUE',
     'COALESCE(t.ativa, TRUE) = TRUE',
     'COALESCE(t.excluido, FALSE) = FALSE'
