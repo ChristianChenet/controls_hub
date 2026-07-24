@@ -162,6 +162,35 @@ import {
   salvarWidgetBi,
   testarFonteDadosBi
 } from './modulos/business_intelligence/repositorioBusinessIntelligence.js';
+import {
+  cancelarDespesasFrota,
+  excluirRegistroFrota,
+  importarDespesasFrota,
+  garantirEstruturaFrota,
+  listarConfiguracoesFrota,
+  listarDepartamentosFrota,
+  listarDespesasFrota,
+  listarDespesasTiposFrota,
+  listarFornecedoresFrota,
+  listarHistoricoDespesaFrota,
+  listarMotivosCancelamentoFrota,
+  listarMotoristasFrota,
+  listarTiposDespesasFrota,
+  listarVeiculosFrota,
+  obterIndicadoresFrota,
+  obterMapeamentoImportacaoFrota,
+  salvarConfiguracoesFrota,
+  salvarDepartamentoFrota,
+  salvarDespesaFrota,
+  salvarDespesaTipoFrota,
+  salvarFornecedorFrota,
+  salvarMapeamentoImportacaoFrota,
+  salvarMotivoCancelamentoFrota,
+  salvarMotoristaFrota,
+  salvarTipoDespesaFrota,
+  salvarVeiculoFrota,
+  validarDespesasFrota
+} from './modulos/frota/repositorioFrota.js';
 import { exigirSuperadmin, obterUsuarioSessao } from './seguranca/sessao.js';
 import { enviarEmail, testarConfiguracaoEmail } from './servicos/email.js';
 
@@ -234,6 +263,19 @@ export async function criarApp() {
 
   function obterChaveCotacaoParametro(id: string) {
     return decodeURIComponent(String(id ?? '')).trim();
+  }
+
+  function normalizarPrazoDias(valor: unknown) {
+    if (valor === undefined || valor === null || valor === '') {
+      return null;
+    }
+
+    const prazo = Number(valor);
+    if (!Number.isFinite(prazo) || prazo < 0 || prazo > 999) {
+      return NaN;
+    }
+
+    return Math.trunc(prazo);
   }
 
   async function exigirPermissao(request: any, reply: any, codigo: string, mensagem: string) {
@@ -1185,6 +1227,262 @@ export async function criarApp() {
     return sucesso(await listarAuditoriaPim(usuario.empresaAtivaId!));
   });
 
+  function montarFiltrosFrota(query: any, empresaId: number) {
+    const departamentosIds = String(query.departamentos_ids ?? '')
+      .split(',')
+      .map((item) => Number(item))
+      .filter(Boolean);
+
+    return {
+      empresaId,
+      departamentosIds,
+      fornecedorId: query.fornecedor_id ? Number(query.fornecedor_id) : null,
+      placa: query.placa ?? null,
+      motoristaId: query.motorista_id ? Number(query.motorista_id) : null,
+      dataInicial: query.data_inicial ?? null,
+      dataFinal: query.data_final ?? null,
+      validado: query.validado ?? null,
+      integrado: query.integrado ?? null,
+      tipoDespesaId: query.tipo_despesa_id ? Number(query.tipo_despesa_id) : null,
+      numeroDocumento: query.numero_documento ?? null,
+      fatura: query.fatura ?? null,
+      ativo: query.ativo ?? null
+    };
+  }
+
+  app.addHook('preHandler', async (request) => {
+    if (request.url.startsWith('/api/frota')) {
+      await garantirEstruturaFrota();
+    }
+  });
+
+  app.get('/api/frota/dashboard', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_ACESSAR', 'FROTA_CONSULTAR'], 'Usuario sem permissao para acessar o modulo Frota.');
+    if (!usuario) return;
+    return sucesso(await obterIndicadoresFrota(usuario.empresaAtivaId!));
+  });
+
+  app.get('/api/frota/departamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar departamentos.');
+    if (!usuario) return;
+    return sucesso(await listarDepartamentosFrota(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/frota/departamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_INCLUIR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar departamentos.');
+    if (!usuario) return;
+    const registro = await salvarDepartamentoFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_DEPARTAMENTOS', tipoEvento: 'SALVAR_DEPARTAMENTO', tabelaAfetada: 'frota_departamentos', registroId: Number((registro as any)?.id ?? 0), descricao: 'Departamento da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/departamentos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR'], 'Usuario sem permissao para excluir departamentos.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_departamentos', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/motoristas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar motoristas.');
+    if (!usuario) return;
+    return sucesso(await listarMotoristasFrota());
+  });
+
+  app.post('/api/frota/motoristas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_INCLUIR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar motoristas.');
+    if (!usuario) return;
+    const registro = await salvarMotoristaFrota(request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_MOTORISTAS', tipoEvento: 'SALVAR_MOTORISTA', tabelaAfetada: 'frota_motoristas', registroId: Number((registro as any)?.id ?? 0), descricao: 'Motorista da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/motoristas/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR'], 'Usuario sem permissao para excluir motoristas.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_motoristas', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/veiculos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar veiculos.');
+    if (!usuario) return;
+    return sucesso(await listarVeiculosFrota(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/frota/veiculos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_INCLUIR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar veiculos.');
+    if (!usuario) return;
+    const registro = await salvarVeiculoFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VEICULOS', tipoEvento: 'SALVAR_VEICULO', tabelaAfetada: 'frota_veiculos', registroId: Number((registro as any)?.id ?? 0), descricao: 'Veiculo da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/veiculos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR'], 'Usuario sem permissao para excluir veiculos.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_veiculos', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/tipos-despesas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar tipos de despesas.');
+    if (!usuario) return;
+    return sucesso(await listarTiposDespesasFrota());
+  });
+
+  app.post('/api/frota/tipos-despesas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_INCLUIR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar tipos de despesas.');
+    if (!usuario) return;
+    const registro = await salvarTipoDespesaFrota(request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_TIPOS_DESPESAS', tipoEvento: 'SALVAR_TIPO_DESPESA', tabelaAfetada: 'frota_tipos_despesas', registroId: Number((registro as any)?.id ?? 0), descricao: 'Tipo de despesa da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/tipos-despesas/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR'], 'Usuario sem permissao para excluir tipos de despesas.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_tipos_despesas', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/fornecedores', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar fornecedores.');
+    if (!usuario) return;
+    return sucesso(await listarFornecedoresFrota());
+  });
+
+  app.post('/api/frota/fornecedores', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_INCLUIR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar fornecedores.');
+    if (!usuario) return;
+    const registro = await salvarFornecedorFrota(request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_FORNECEDORES', tipoEvento: 'SALVAR_FORNECEDOR', tabelaAfetada: 'frota_fornecedores', registroId: Number((registro as any)?.id ?? 0), descricao: 'Fornecedor da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/fornecedores/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR'], 'Usuario sem permissao para excluir fornecedores.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_fornecedores', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/despesas-tipos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para configurar De/Para.');
+    if (!usuario) return;
+    return sucesso(await listarDespesasTiposFrota());
+  });
+
+  app.post('/api/frota/despesas-tipos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para salvar De/Para.');
+    if (!usuario) return;
+    const registro = await salvarDespesaTipoFrota(request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_DESPESA_TIPO', tipoEvento: 'SALVAR_DESPESA_TIPO', tabelaAfetada: 'frota_despesas_tipos', registroId: Number((registro as any)?.id ?? 0), descricao: 'De/Para de despesa da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/despesas-tipos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para excluir De/Para.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_despesas_tipos', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/motivos-cancelamento', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_CANCELAR_DESPESAS'], 'Usuario sem permissao para consultar motivos de cancelamento.');
+    if (!usuario) return;
+    return sucesso(await listarMotivosCancelamentoFrota());
+  });
+
+  app.post('/api/frota/motivos-cancelamento', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_CANCELAR_DESPESAS'], 'Usuario sem permissao para salvar motivos de cancelamento.');
+    if (!usuario) return;
+    const registro = await salvarMotivoCancelamentoFrota(request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_MOTIVOS_CANCELAMENTO', tipoEvento: 'SALVAR_MOTIVO_CANCELAMENTO', tabelaAfetada: 'frota_motivos_cancelamento', registroId: Number((registro as any)?.id ?? 0), descricao: 'Motivo de cancelamento da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/motivos-cancelamento/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_CANCELAR_DESPESAS'], 'Usuario sem permissao para excluir motivos de cancelamento.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_motivos_cancelamento', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/despesas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar despesas.');
+    if (!usuario) return;
+    return sucesso(await listarDespesasFrota(montarFiltrosFrota(request.query, usuario.empresaAtivaId!)));
+  });
+
+  app.post('/api/frota/despesas', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_INCLUIR'], 'Usuario sem permissao para incluir despesas.');
+    if (!usuario) return;
+    const registro = await salvarDespesaFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: 'SALVAR_DESPESA', tabelaAfetada: 'frota_despesas', registroId: Number((registro as any)?.id ?? 0), descricao: 'Despesa da frota salva manualmente.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/frota/despesas/:id/historico', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar historico.');
+    if (!usuario) return;
+    return sucesso(await listarHistoricoDespesaFrota(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post<{ Body: { ids?: number[]; validado?: boolean } }>('/api/frota/despesas/validar-lote', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_VALIDAR_DESPESAS'], 'Usuario sem permissao para validar despesas.');
+    if (!usuario) return;
+    const ids = Array.isArray(request.body.ids) ? request.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) {
+      return reply.status(400).send(falha('DESPESAS_OBRIGATORIAS', 'Selecione ao menos uma despesa.'));
+    }
+    const resultado = await validarDespesasFrota(usuario.empresaAtivaId!, ids, request.body.validado !== false, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: request.body.validado === false ? 'REMOVER_VALIDACAO' : 'VALIDAR_DESPESAS', tabelaAfetada: 'frota_despesas', registroId: 0, descricao: 'Validacao em lote executada.', dadosNovos: { ids, resultado } });
+    return sucesso(resultado);
+  });
+
+  app.post<{ Body: { ids?: number[]; motivo_id?: number; observacao?: string | null } }>('/api/frota/despesas/cancelar-lote', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CANCELAR_DESPESAS'], 'Usuario sem permissao para cancelar despesas.');
+    if (!usuario) return;
+    const ids = Array.isArray(request.body.ids) ? request.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) {
+      return reply.status(400).send(falha('DESPESAS_OBRIGATORIAS', 'Selecione ao menos uma despesa.'));
+    }
+    if (!request.body.motivo_id) {
+      return reply.status(400).send(falha('MOTIVO_CANCELAMENTO_OBRIGATORIO', 'Informe o motivo do cancelamento.'));
+    }
+    const resultado = await cancelarDespesasFrota(usuario.empresaAtivaId!, ids, Number(request.body.motivo_id), request.body.observacao ?? null, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: 'CANCELAR_DESPESAS', tabelaAfetada: 'frota_despesas', registroId: 0, descricao: 'Cancelamento em lote executado.', dadosNovos: { ids, resultado } });
+    return sucesso(resultado);
+  });
+
+  app.get<{ Params: { fornecedorId: string } }>('/api/frota/importacoes/mapeamento/:fornecedorId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_IMPORTAR_DESPESAS'], 'Usuario sem permissao para importar despesas.');
+    if (!usuario) return;
+    return sucesso(await obterMapeamentoImportacaoFrota(Number(request.params.fornecedorId)));
+  });
+
+  app.post<{ Params: { fornecedorId: string }; Body: { mapeamento?: Record<string, string> } }>('/api/frota/importacoes/mapeamento/:fornecedorId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_IMPORTAR_DESPESAS'], 'Usuario sem permissao para salvar mapeamento.');
+    if (!usuario) return;
+    return sucesso(await salvarMapeamentoImportacaoFrota(Number(request.params.fornecedorId), request.body.mapeamento ?? {}, usuario.id));
+  });
+
+  app.post('/api/frota/importacoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_IMPORTAR_DESPESAS'], 'Usuario sem permissao para importar despesas.');
+    if (!usuario) return;
+    const resultado = await importarDespesasFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_IMPORTACAO', tipoEvento: 'IMPORTAR_DESPESAS', tabelaAfetada: 'frota_lotes_importacao', registroId: Number(resultado.lote_id ?? 0), descricao: 'Importacao de despesas da frota processada.', dadosNovos: resultado });
+    return sucesso(resultado);
+  });
+
+  app.get('/api/frota/configuracoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para consultar configuracoes de frota.');
+    if (!usuario) return;
+    return sucesso(await listarConfiguracoesFrota(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/frota/configuracoes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para salvar configuracoes de frota.');
+    if (!usuario) return;
+    const resultado = await salvarConfiguracoesFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_CONFIGURACOES', tipoEvento: 'SALVAR_CONFIGURACOES_FROTA', tabelaAfetada: 'frota_configuracoes', registroId: 0, descricao: 'Configuracoes do modulo Frota salvas.', dadosNovos: resultado });
+    return sucesso(resultado);
+  });
+
   app.get('/api/business-intelligence/dashboards', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['VISUALIZAR_BUSINESS_INTELLIGENCE'], 'Usuario sem permissao para visualizar Business Intelligence.');
     if (!usuario) return;
@@ -2078,11 +2376,16 @@ export async function criarApp() {
       return reply.status(400).send(falha('VALOR_FRETE_INVALIDO', 'Informe um valor de frete valido.'));
     }
 
+    const prazoDias = normalizarPrazoDias(request.body.prazo_dias);
+    if (Number.isNaN(prazoDias)) {
+      return reply.status(400).send(falha('PRAZO_INVALIDO', 'Informe um prazo em dias entre 0 e 999.'));
+    }
+
     const resultado = await alterarValorFreteManual({
       empresaId: usuario!.empresaAtivaId!,
       cotacaoTransportadoraId: decodeURIComponent(request.params.id),
       valorFrete,
-      prazoDias: request.body.prazo_dias ? Number(request.body.prazo_dias) : null,
+      prazoDias,
       usuarioId: usuario!.id,
       observacao: request.body.observacao ?? null
     });
@@ -2380,9 +2683,11 @@ export async function criarApp() {
       return reply.status(400).send(falha('VALOR_FRETE_INVALIDO', 'Informe um valor de frete valido.'));
     }
 
-    const prazoDias = request.body.prazo_dias !== undefined && request.body.prazo_dias !== null
-      ? Number(request.body.prazo_dias)
-      : null;
+    const prazoDias = normalizarPrazoDias(request.body.prazo_dias);
+    if (Number.isNaN(prazoDias)) {
+      return reply.status(400).send(falha('PRAZO_INVALIDO', 'Informe um prazo em dias entre 0 e 999.'));
+    }
+
     if ((resumo as any).prazo_resposta_obrigatorio && (!prazoDias || prazoDias <= 0)) {
       return reply.status(400).send(falha('PRAZO_OBRIGATORIO', 'Informe o prazo de entrega para responder esta cotacao.'));
     }

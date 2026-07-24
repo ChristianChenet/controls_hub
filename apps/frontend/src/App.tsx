@@ -120,6 +120,13 @@ import {
   permissoesMenuBi,
   usuarioPodeBi
 } from './modulos/business_intelligence/BusinessIntelligence';
+import {
+  LogoFrota,
+  menusFrota,
+  ModuloFrota,
+  permissoesMenuFrota,
+  TelaFrota
+} from './modulos/frota/Frota';
 
 type TelaAtual =
   | 'dashboard'
@@ -156,9 +163,10 @@ type TelaAtual =
   | 'biFontesDados'
   | 'biConsultas'
   | 'biTemplates'
-  | 'biLogs';
+  | 'biLogs'
+  | TelaFrota;
 
-type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central' | 'business_intelligence';
+type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central' | 'business_intelligence' | 'frota';
 
 type DetalheCotacaoNormalizado = {
   cotacao: RegistroGenerico;
@@ -250,6 +258,8 @@ const permissoesMenuPim: Partial<Record<TelaAtual, string[]>> = {
   configuracoes: ['ADMINISTRAR_EMPRESAS']
 };
 
+const permissoesMenuFrotaTela: Partial<Record<TelaAtual, string[]>> = permissoesMenuFrota as Partial<Record<TelaAtual, string[]>>;
+
 function usuarioPodeVerMenu(usuario: UsuarioLogado, telaMenu: TelaAtual) {
   if (usuario.superadmin || usuario.administrador) {
     return true;
@@ -279,6 +289,18 @@ function usuarioPodeVerMenuBi(usuario: UsuarioLogado, telaMenu: TelaAtual) {
     return true;
   }
   const permissoesNecessarias = permissoesMenuBi[String(telaMenu)] ?? [];
+  if (!permissoesNecessarias.length) {
+    return true;
+  }
+  const permissoesUsuario = new Set(usuario.permissoes ?? []);
+  return permissoesNecessarias.some((permissao) => permissoesUsuario.has(permissao));
+}
+
+function usuarioPodeVerMenuFrota(usuario: UsuarioLogado, telaMenu: TelaAtual) {
+  if (usuario.superadmin || usuario.administrador) {
+    return true;
+  }
+  const permissoesNecessarias = permissoesMenuFrotaTela[telaMenu] ?? [];
   if (!permissoesNecessarias.length) {
     return true;
   }
@@ -322,7 +344,18 @@ const rotasPorTela: Record<TelaAtual, string> = {
   biFontesDados: '/Business_Intelligence/Fontes_Dados',
   biConsultas: '/Business_Intelligence/Consultas',
   biTemplates: '/Business_Intelligence/Templates',
-  biLogs: '/Business_Intelligence/Logs'
+  biLogs: '/Business_Intelligence/Logs',
+  frotaDashboard: '/Frota/Dashboard',
+  frotaDepartamentos: '/Frota/Departamentos',
+  frotaMotoristas: '/Frota/Motoristas',
+  frotaVeiculos: '/Frota/Veiculos',
+  frotaTiposDespesas: '/Frota/Tipos_Despesas',
+  frotaFornecedores: '/Frota/Fornecedores',
+  frotaDespesaTipo: '/Frota/Despesa_Tipo',
+  frotaMotivosCancelamento: '/Frota/Motivos_Cancelamento',
+  frotaImportacao: '/Frota/Importacao',
+  frotaValidacao: '/Frota/Validacao',
+  frotaConfiguracoes: '/Frota/Configuracoes'
 };
 
 const MODELO_EMAIL_TRANSPORTADORA_PADRAO = `<div style="font-family:Arial,sans-serif;color:#172033">
@@ -362,6 +395,9 @@ function obterModuloPelaRota(): ModuloAtual {
   }
   if (rota.startsWith('/business_intelligence')) {
     return 'business_intelligence';
+  }
+  if (rota.startsWith('/frota')) {
+    return 'frota';
   }
   return 'cotacao_frete';
 }
@@ -683,9 +719,16 @@ async function copiarTexto(texto: unknown) {
 const moduloCotacao = {
   id: 'cotacao_frete',
   nome: 'Cotação de Frete',
-  emoji: '🚚',
   descricao: 'Cotações por documento, transportadoras, kanban, tokens e integração banco x banco.'
 };
+
+function LogoCotacaoFrete({ pequeno = false }: { pequeno?: boolean }) {
+  return (
+    <span className={pequeno ? 'pimLogoAsset pequeno cotacaoLogoAsset' : 'pimLogoAsset cotacaoLogoAsset'} aria-hidden="true">
+      <img src="/brand/logo-cotacao-frete.png" alt="" />
+    </span>
+  );
+}
 
 const moduloCadastroProduto = {
   id: 'cadastro_produto_central',
@@ -698,6 +741,26 @@ const moduloBusinessIntelligence = {
   nome: 'Business Intelligence',
   descricao: 'Dashboards premium, consultas SQL, filtros, cache, logs e modo TV para decisões em tempo real.'
 };
+
+function LogoModuloTopo({ moduloAtual }: { moduloAtual: ModuloAtual }) {
+  if (moduloAtual === 'cadastro_produto_central') {
+    return <LogoProdutoCentral />;
+  }
+  if (moduloAtual === 'business_intelligence') {
+    return <span className="pimLogoAsset biLogoAsset" aria-hidden="true"><BarChart3 size={44} /></span>;
+  }
+  if (moduloAtual === 'frota') {
+    return <LogoFrota />;
+  }
+  return <LogoCotacaoFrete />;
+}
+
+function nomeModuloTopo(moduloAtual: ModuloAtual) {
+  if (moduloAtual === 'cadastro_produto_central') return 'Cadastro de Produto Central';
+  if (moduloAtual === 'business_intelligence') return 'Business Intelligence';
+  if (moduloAtual === 'frota') return 'Frota';
+  return 'Cotacao de Frete';
+}
 
 function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: EmpresaUsuario[]) => void }) {
   const [email, setEmail] = useState('');
@@ -2575,10 +2638,15 @@ function CotacoesOperacional({
       return;
     }
     const prazo = window.prompt('Informe o prazo em dias, se houver:', String(transportadora.prazo_dias ?? '')) ?? '';
+    const prazoNumero = normalizarPrazoDiasTela(prazo);
+    if (Number.isNaN(prazoNumero)) {
+      setErro('Informe um prazo em dias entre 0 e 999.');
+      return;
+    }
     const observacao = window.prompt('Observacao da alteracao manual:', 'Ajuste manual pelo usuario') ?? '';
 
     try {
-      await alterarValorFreteManual(String(transportadora.id), Number(valor.replace(',', '.')), observacao, prazo ? Number(prazo) : null);
+      await alterarValorFreteManual(String(transportadora.id), Number(valor.replace(',', '.')), observacao, prazoNumero);
       setMensagem('Valor alterado manualmente com rastreabilidade.');
       setDetalhe(normalizarDetalheCotacao(await obterCotacao(String(detalhe.cotacao.id))));
     } catch (error) {
@@ -2824,6 +2892,20 @@ function interpretarMoedaBrasileira(valor: unknown) {
     .replace(',', '.');
   const numero = Number(normalizado);
   return Number.isFinite(numero) ? numero : NaN;
+}
+
+function normalizarPrazoDiasTela(valor: unknown) {
+  const texto = String(valor ?? '').trim();
+  if (!texto) {
+    return null;
+  }
+
+  const numero = Number(texto.replace(',', '.'));
+  if (!Number.isFinite(numero) || numero < 0 || numero > 999) {
+    return NaN;
+  }
+
+  return Math.trunc(numero);
 }
 
 function compararValorFreteRanking(a: RegistroGenerico, b: RegistroGenerico) {
@@ -3635,7 +3717,7 @@ function AbaTransportadoras({
             <div className="rodapeLinkLocal">
               <div className="formCadastro formLinkLocal">
                 <label>Valor manual<input value={valorLinkLocal} onChange={(evento) => setValorLinkLocal(evento.target.value)} placeholder="0,00" /></label>
-                <label>Prazo em dias<input type="number" value={prazoLinkLocal} onChange={(evento) => setPrazoLinkLocal(evento.target.value)} /></label>
+                <label>Prazo em dias<input type="number" min="0" max="999" step="1" value={prazoLinkLocal} onChange={(evento) => setPrazoLinkLocal(evento.target.value)} /></label>
                 <label className="campoLargo">Observação<input value={observacaoLinkLocal} onChange={(evento) => setObservacaoLinkLocal(evento.target.value)} /></label>
               </div>
               <footer>
@@ -3649,7 +3731,12 @@ function AbaTransportadoras({
                     if (!valor || valor <= 0) {
                       return;
                     }
-                    await editarValorManual(linkLocal, valor, prazoLinkLocal ? Number(prazoLinkLocal) : null, observacaoLinkLocal || 'Valor informado manualmente pela visualização local do link.');
+                    const prazoValidado = normalizarPrazoDiasTela(prazoLinkLocal);
+                    if (Number.isNaN(prazoValidado)) {
+                      window.alert('Informe um prazo em dias entre 0 e 999.');
+                      return;
+                    }
+                    await editarValorManual(linkLocal, valor, prazoValidado, observacaoLinkLocal || 'Valor informado manualmente pela visualização local do link.');
                     setLinkLocal(null);
                   }}
                 >
@@ -4024,7 +4111,11 @@ function DetalheCotacaoConteudo({
       }
       valorNumero = Number(valor.replace(/\./g, '').replace(',', '.'));
       const prazo = window.prompt('Informe o prazo em dias, se houver:', String(transportadora.prazo_dias ?? '')) ?? '';
-      prazoNumero = prazo ? Number(prazo) : null;
+      prazoNumero = normalizarPrazoDiasTela(prazo);
+      if (Number.isNaN(prazoNumero)) {
+        setErroLink('Informe um prazo em dias entre 0 e 999.');
+        return;
+      }
       observacao = window.prompt('Observação da alteração manual:', 'Ajuste manual pelo usuário') ?? '';
     }
 
@@ -4403,7 +4494,12 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
         setErro('Informe um valor de frete válido. Exemplo: 1.200,50.');
         return;
       }
-      const resposta = await responderCotacaoPublica(token, valorInformado, observacao, prazoDias ? Number(prazoDias) : null, numeroCotacaoTransportadora.trim() || null);
+      const prazoValidado = normalizarPrazoDiasTela(prazoDias);
+      if (Number.isNaN(prazoValidado)) {
+        setErro('Informe um prazo em dias entre 0 e 999.');
+        return;
+      }
+      const resposta = await responderCotacaoPublica(token, valorInformado, observacao, prazoValidado, numeroCotacaoTransportadora.trim() || null);
       setMensagem(String((resposta as any).mensagem ?? 'Operação concluída.'));
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao responder cotação.');
@@ -4516,7 +4612,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
               {resumo.exige_prazo_resposta !== false && (
                 <label>
                   Prazo em dias{resumo.prazo_resposta_obrigatorio ? ' *' : ''}
-                  <input type="number" value={prazoDias} onChange={(evento) => setPrazoDias(evento.target.value)} placeholder="Ex.: 3" />
+                  <input type="number" min="0" max="999" step="1" value={prazoDias} onChange={(evento) => setPrazoDias(evento.target.value)} placeholder="Ex.: 3" />
                 </label>
               )}
               {resumo.solicita_numero_cotacao && (
@@ -6013,9 +6109,15 @@ function SelecaoModulo({
   aoAbrirModulo: (modulo: ModuloAtual) => void;
   aoSair: () => void;
 }) {
+  const moduloFrota = {
+    id: 'frota',
+    nome: 'Frota',
+    descricao: 'Gestao de veiculos, despesas, importacao, validacao, auditoria e integracao com ERP.'
+  };
   const podeCotacao = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('UTILIZA_COTACAO_FRETE');
   const podePim = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_CADASTRO_PRODUTO_CENTRAL') || usuario.permissoes?.includes('PIM_VISUALIZAR_DASHBOARD');
   const podeBi = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_BUSINESS_INTELLIGENCE');
+  const podeFrota = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('FROTA_ACESSAR');
 
   return (
     <main className="selecaoModulo">
@@ -6035,21 +6137,26 @@ function SelecaoModulo({
         </div>
       </section>
       <section className="modulosGrid">
-        <button className="moduloCard" disabled={!podeCotacao} onClick={() => aoAbrirModulo('cotacao_frete')}>
-          <strong>{moduloCotacao.emoji}</strong>
+        {podeCotacao && <button className="moduloCard" onClick={() => aoAbrirModulo('cotacao_frete')}>
+          <strong><LogoCotacaoFrete /></strong>
           <span>{moduloCotacao.nome}</span>
           <small>{podeCotacao ? moduloCotacao.descricao : 'Sem permissão: UTILIZA_COTACAO_FRETE'}</small>
-        </button>
-        <button className="moduloCard" disabled={!podePim} onClick={() => aoAbrirModulo('cadastro_produto_central')}>
+        </button>}
+        {podePim && <button className="moduloCard" onClick={() => aoAbrirModulo('cadastro_produto_central')}>
           <strong><LogoProdutoCentral /></strong>
           <span>{moduloCadastroProduto.nome}</span>
           <small>{podePim ? moduloCadastroProduto.descricao : 'Sem permissao: VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'}</small>
-        </button>
-        <button className="moduloCard moduloCardBi" disabled={!podeBi} onClick={() => aoAbrirModulo('business_intelligence')}>
+        </button>}
+        {podeBi && <button className="moduloCard moduloCardBi" onClick={() => aoAbrirModulo('business_intelligence')}>
           <strong><BarChart3 size={42} /></strong>
           <span>{moduloBusinessIntelligence.nome}</span>
           <small>{podeBi ? moduloBusinessIntelligence.descricao : 'Sem permissao: VISUALIZAR_BUSINESS_INTELLIGENCE'}</small>
-        </button>
+        </button>}
+        {podeFrota && <button className="moduloCard" onClick={() => aoAbrirModulo('frota')}>
+          <strong><LogoFrota /></strong>
+          <span>{moduloFrota.nome}</span>
+          <small>{podeFrota ? moduloFrota.descricao : 'Sem permissao: FROTA_ACESSAR'}</small>
+        </button>}
       </section>
     </main>
   );
@@ -6167,7 +6274,9 @@ export function App() {
     ? menusCadastroProduto
     : moduloAtual === 'business_intelligence'
       ? menusBusinessIntelligence as { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[]
-      : menus;
+      : moduloAtual === 'frota'
+        ? menusFrota as { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[]
+        : menus;
   const podeVerMenuAtual = (item: { id: TelaAtual }) => {
     if (!usuario) {
       return true;
@@ -6177,6 +6286,9 @@ export function App() {
     }
     if (moduloAtual === 'business_intelligence') {
       return usuarioPodeVerMenuBi(usuario, item.id);
+    }
+    if (moduloAtual === 'frota') {
+      return usuarioPodeVerMenuFrota(usuario, item.id);
     }
     return usuarioPodeVerMenu(usuario, item.id);
   };
@@ -6214,7 +6326,7 @@ export function App() {
         empresas={empresas}
         aoTrocarEmpresa={alterarEmpresaAtiva}
         aoAbrirModulo={(modulo) => {
-          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : modulo === 'business_intelligence' ? 'biDashboards' : 'dashboard';
+          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : modulo === 'business_intelligence' ? 'biDashboards' : modulo === 'frota' ? 'frotaDashboard' : 'dashboard';
           setModuloAtual(modulo);
           setTela(telaInicial);
           setModuloAberto(true);
@@ -6278,17 +6390,19 @@ export function App() {
       <main>
         <header className="topbar">
           <div className="topbarTitulo">
-            <img src="/brand/logo-s-novo.jpg" alt="Control S Hub" />
+            <LogoModuloTopo moduloAtual={moduloAtual} />
             <div>
-              <span className="eyebrow linhaMonitorHub">Control S Hub <SemaforoN8n /></span>
+              <span className="eyebrow linhaMonitorHub">Control S Hub - {nomeModuloTopo(moduloAtual)} <SemaforoN8n /></span>
               <h1>{titulo}</h1>
             </div>
           </div>
-          <select value={empresaAtiva?.id ?? ''} onChange={(evento) => alterarEmpresaAtiva(Number(evento.target.value))}>
-            {empresas.map((empresa) => (
-              <option key={empresa.id} value={empresa.id}>{empresa.nome_exibido ?? empresa.nome_fantasia}</option>
-            ))}
-          </select>
+          {empresas.length > 1 && (
+            <select value={empresaAtiva?.id ?? ''} onChange={(evento) => alterarEmpresaAtiva(Number(evento.target.value))}>
+              {empresas.map((empresa) => (
+                <option key={empresa.id} value={empresa.id}>{empresa.nome_exibido ?? empresa.nome_fantasia}</option>
+              ))}
+            </select>
+          )}
           <div className="empresaTopo">
             <img src={empresaAtiva?.caminho_logo || '/brand/logo-s-novo.jpg'} alt={empresaAtiva?.nome_fantasia ?? 'Empresa'} />
             <div>
@@ -6303,6 +6417,7 @@ export function App() {
           </button>
           <button className="ghost" onClick={() => { setModuloAberto(false); window.history.pushState(null, '', '/'); }}>Módulos</button>
         </header>
+        {String(tela).startsWith('frota') && <ModuloFrota tela={tela as TelaFrota} />}
         {tela === 'pimDashboard' && <DashboardPim />}
         {tela === 'pimProdutos' && <ProdutosPim />}
         {tela === 'pimConjuntos' && <ProdutosPim modo="conjuntos" />}

@@ -13,6 +13,581 @@
   --nav-soft: #111c2e;
 }
 
+.frotaLogoAsset {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.frotaLogoAsset img {
+  object-fit: contain;
+}
+
+.frotaPainel .tabelaWrap,
+.frotaGridWrap {
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.frotaMetrics article,
+.frotaTotalizadores article {
+  border-color: rgba(45, 212, 191, .18);
+}
+
+.modalInterno {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dbe7f3;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .12);
+  color: #172033;
+}
+
+.modalInterno label {
+  display: grid;
+  gap: 6px;
+  color: var(--texto);
+}
+
+.frotaHero {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(240, 253, 250, .96), rgba(239, 246, 255, .98)),
+    #ffffff;
+  border: 1px solid #cfe4f3;
+  border-radius: 10px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .08);
+  color: #102033;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.frotaHero h2 {
+  letter-spacing: 0;
+  color: #102033;
+}
+
+.frotaHero p,
+.frotaHero small {
+  color: #52657a;
+}
+
+.frotaHero svg {
+  color: #0f766e;
+  flex-shrink: 0;
+}
+
+.frotaHeroAcoes {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.frotaImportacaoPasso {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .07);
+  margin-top: 14px;
+}
+
+.frotaImportacaoTela .aviso {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1e3a8a;
+  font-weight: 700;
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+
+.frotaProgressoLeitura {
+  background: #ffffff;
+  border: 1px solid #bfd7ee;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.frotaProgressoLeitura div {
+  align-items: center;
+  color: #12304a;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.frotaProgressoLeitura progress {
+  accent-color: #16a34a;
+  height: 12px;
+  width: 100%;
+}
+
+.frotaProgressoLeitura small {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.frotaLeituraArquivo {
+  align-items: end;
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .07);
+  color: #172033;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 1fr) repeat(4, minmax(120px, 170px));
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.frotaLeituraArquivo div {
+  display: grid;
+  gap: 3px;
+}
+
+.frotaLeituraArquivo span {
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.frotaLeituraArquivo strong {
+  color: #102033;
+}
+
+.frotaLeituraArquivo small {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.frotaLeituraArquivo label {
+  color: #23324a;
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 5px;
+  text-transform: uppercase;
+}
+
+.frotaLeituraArquivo input {
+  background: #f8fbfe;
+  border: 1px solid #cbd8e6;
+  border-radius: 7px;
+  color: #172033;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.frotaVinculoVeiculo {
+  align-items: end;
+  background: #f8fbfe;
+  border: 1px solid #d8e4ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 240px) minmax(180px, 240px);
+  padding: 12px;
+}
+
+.frotaVinculoVeiculo strong {
+  color: #102033;
+}
+
+.frotaVinculoVeiculo label {
+  color: #23324a;
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 5px;
+  text-transform: uppercase;
+}
+
+.frotaVinculoVeiculo select {
+  background: #ffffff;
+  border: 1px solid #cbd8e6;
+  border-radius: 7px;
+  color: #172033;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.frotaMesa {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+  margin-top: 14px;
+}
+
+.frotaMesa.filtrosFechados {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.frotaFiltrosPainel,
+.frotaDetalhePainel,
+.frotaGridArea {
+  background: rgba(255, 255, 255, .98);
+  border: 1px solid #d8e4ef;
+  border-radius: 10px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, .09);
+  color: #172033;
+  min-width: 0;
+  padding: 12px;
+}
+
+.frotaFiltrosPainel {
+  display: grid;
+  gap: 9px;
+  align-content: start;
+}
+
+.frotaFiltrosPainel strong,
+.frotaDetalhePainel > strong {
+  align-items: center;
+  color: #12304a;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.frotaFiltrosPainel label {
+  color: #203047;
+  display: grid;
+  font-size: 11px;
+  font-weight: 850;
+  gap: 4px;
+  text-transform: uppercase;
+}
+
+.frotaFiltrosPainel input,
+.frotaFiltrosPainel select {
+  background: #ffffff;
+  border: 1px solid #cbd8e6;
+  color: #172033;
+  min-width: 0;
+  width: 100%;
+}
+
+.frotaGridArea {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.frotaBarraLote {
+  align-items: center;
+  background: linear-gradient(90deg, #eefcf5, #eef7ff);
+  border: 1px solid #b9e6d2;
+  border-radius: 8px;
+  color: #102033;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 10px;
+}
+
+.frotaBarraLote div {
+  margin-right: auto;
+}
+
+.frotaBarraLote small {
+  color: #047857;
+  display: block;
+}
+
+.frotaColunas {
+  background: #f8fbfe;
+  border: 1px solid #d8e4ef;
+  border-radius: 8px;
+  color: #172033;
+  padding: 8px 10px;
+}
+
+.frotaColunas summary {
+  color: #102033;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.frotaColunas div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.frotaColunas label {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd8e6;
+  border-radius: 999px;
+  color: #25364a;
+  display: inline-flex;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.frotaGridPremium {
+  max-height: 64vh;
+}
+
+.frotaGridPremium table {
+  min-width: 980px;
+}
+
+.frotaGridPremium thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.frotaGridPremium tr.linhaAtiva td {
+  background: #eafaf6;
+}
+
+.frotaGridPremium tr.linhaCancelada td {
+  background: #fff1f0;
+  color: #9f1f16;
+}
+
+.frotaGridPremium tr.linhaCancelada td .frotaChip {
+  border: 1px solid rgba(180, 35, 24, .28);
+}
+
+.frotaChip {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 850;
+  padding: 4px 9px;
+}
+
+.frotaChip.sucesso {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.frotaChip.alerta {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.frotaChip.info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.frotaChip.neutro {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.frotaChip.perigo {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+button.ghost.perigo,
+button.primary.perigo {
+  border-color: #fecaca;
+  color: #b42318;
+}
+
+button.primary.perigo {
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  color: #ffffff;
+}
+
+.textoApoio {
+  color: #52627a;
+  margin: 0;
+}
+
+.frotaDetalhePainel {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+}
+
+.frotaDetalhePainel h3 {
+  margin: 0;
+}
+
+.frotaDetalhePainel p {
+  border-bottom: 1px solid #e3ebf3;
+  color: #172033;
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-bottom: 8px;
+}
+
+.frotaDetalhePainel span {
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.frotaHistoricoMini {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.frotaTotalizadoresCompactos {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.frotaTotalizadoresCompactos article {
+  min-height: 74px;
+  padding: 10px 12px;
+}
+
+.frotaTotalizadoresCompactos article span {
+  font-size: 11px;
+}
+
+.frotaTotalizadoresCompactos article strong {
+  font-size: clamp(18px, 2vw, 24px);
+}
+
+.frotaModalOverlay {
+  align-items: center;
+  background: rgba(6, 18, 32, .48);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.frotaModalFundo {
+  background: transparent;
+  border: 0;
+  inset: 0;
+  position: absolute;
+}
+
+.frotaModalDetalhe {
+  background: #ffffff;
+  border: 1px solid #d8e4ef;
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, .28);
+  color: #172033;
+  display: grid;
+  gap: 14px;
+  max-height: 86vh;
+  max-width: 980px;
+  overflow: auto;
+  padding: 16px;
+  position: relative;
+  width: min(980px, 100%);
+  z-index: 1;
+}
+
+.frotaModalDetalhe.frotaModalCompacto {
+  max-width: 680px;
+  width: min(680px, 100%);
+}
+
+.frotaModalDetalhe label {
+  color: #203047;
+  display: grid;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.frotaModalDetalhe select,
+.frotaModalDetalhe textarea {
+  background: #ffffff;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  color: #172033;
+  min-height: 38px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.frotaModalDetalhe textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.frotaModalDetalhe header {
+  align-items: center;
+  border-bottom: 1px solid #e3ebf3;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 12px;
+}
+
+.frotaModalDetalhe header span,
+.frotaDetalheGrid span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.frotaModalDetalhe header h3 {
+  margin: 4px 0 0;
+}
+
+.frotaDetalheGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.frotaDetalheGrid p {
+  background: #f8fbfe;
+  border: 1px solid #e3ebf3;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px;
+}
+
+@media (max-width: 1180px) {
+  .frotaMesa {
+    grid-template-columns: 1fr;
+  }
+
+  .frotaDetalhePainel {
+    order: 3;
+  }
+
+  .frotaTotalizadoresCompactos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .frotaDetalheGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .frotaLeituraArquivo {
+    grid-template-columns: 1fr;
+  }
+
+  .frotaVinculoVeiculo {
+    grid-template-columns: 1fr;
+  }
+}
+
 .pimLogoAsset {
   width: 44px;
   height: 44px;
@@ -35,6 +610,17 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.biLogoAsset {
+  background: linear-gradient(135deg, #0f766e, #2563eb);
+  border: 0;
+  color: #ffffff;
+}
+
+.cotacaoLogoAsset {
+  background: rgba(219, 234, 254, .7);
+  border-color: rgba(37, 99, 235, .24);
 }
 
 .pimDashboardGrid {
@@ -714,6 +1300,11 @@ button.miniBotao.perigo {
   box-shadow: none;
 }
 
+.moduloCard .frotaLogoAsset {
+  width: 96px;
+  height: 72px;
+}
+
 .moduloCard span {
   color: #101827;
   font-size: 22px;
@@ -1311,11 +1902,48 @@ button.miniBotao.perigo {
 }
 
 .topbarTitulo img {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
   object-fit: cover;
   box-shadow: 0 0 18px rgba(46, 230, 111, .22);
+}
+
+.topbarTitulo .pimLogoAsset {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  height: 72px;
+  overflow: visible;
+  width: 96px;
+}
+
+.topbarTitulo .pimLogoAsset img {
+  border-radius: 0;
+  box-shadow: none;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.topbarTitulo .frotaLogoAsset {
+  height: 72px;
+  width: 96px;
+}
+
+.topbarTitulo .cotacaoLogoAsset {
+  height: 72px;
+  width: 96px;
+}
+
+.topbarTitulo .biLogoAsset {
+  align-items: center;
+  color: #1d6fd4;
+  display: inline-flex;
+  height: 72px;
+  justify-content: center;
+  width: 96px;
 }
 
 .linhaMonitorHub {
@@ -1388,27 +2016,27 @@ button.miniBotao.perigo {
 }
 
 .empresaTopo {
-  min-height: 48px;
+  min-height: 58px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border: 1px solid var(--linha);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, .82);
+  gap: 12px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .empresaTopo img {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
 .empresaTopo small,
 .empresaTopo strong {
   display: block;
-  max-width: 190px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1416,14 +2044,14 @@ button.miniBotao.perigo {
 
 .empresaTopo small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .empresaTopo strong {
   color: #101827;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .loginPanel label {
@@ -2596,6 +3224,17 @@ h2 {
 
 .fonteTela {
   position: relative;
+}
+
+.fonteTela > button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.fonteTela > button svg {
+  width: 13px;
+  height: 13px;
 }
 
 .fontePainel {

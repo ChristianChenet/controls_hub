@@ -47,6 +47,16 @@ function montarCondicaoChave(alias = 'c') {
   return `${alias}.empresa_id = $1 AND ${alias}.tipo_documento = $2 AND ${alias}.numero_documento = $3 AND ${alias}.codigo_chave = $4`;
 }
 
+function validarPrazoOperacional(prazoDias?: number | null) {
+  if (prazoDias === undefined || prazoDias === null) {
+    return;
+  }
+
+  if (!Number.isFinite(Number(prazoDias)) || Number(prazoDias) < 0 || Number(prazoDias) > 999) {
+    throw new Error('Informe um prazo em dias entre 0 e 999.');
+  }
+}
+
 async function garantirColunasOperacionaisCotacao() {
   await consultar(
     `CREATE TABLE IF NOT EXISTS motivos_prejuizo_logistico (
@@ -1817,6 +1827,8 @@ export async function registrarRespostaTransportadora(dados: {
   ip?: string | null;
   agenteUsuario?: string | null;
 }) {
+  validarPrazoOperacional(dados.prazoDias);
+
   const cotacao = await resolverCotacaoBase(0, dados.cotacaoId);
   if (!cotacao) {
     return null;
@@ -2530,6 +2542,8 @@ export async function alterarValorFreteManual(dados: {
   usuarioId: number;
   observacao?: string | null;
 }) {
+  validarPrazoOperacional(dados.prazoDias);
+
   const identificador = decodeURIComponent(String(dados.cotacaoTransportadoraId ?? '')).trim();
   const partes = identificador.split('|');
   const chaveInformada = partes.length >= 4

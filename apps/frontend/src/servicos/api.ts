@@ -832,3 +832,134 @@ export async function listarLogsBi() {
 export async function listarTemplatesBi() {
   return requisitar<RegistroGenerico[]>('/api/business-intelligence/templates');
 }
+
+export async function buscarDashboardFrota() {
+  return requisitar<RegistroGenerico>('/api/frota/dashboard');
+}
+
+export async function listarDepartamentosFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/departamentos');
+}
+
+export async function salvarDepartamentoFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/departamentos', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirDepartamentoFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/departamentos/${id}`, { method: 'DELETE' });
+}
+
+export async function listarMotoristasFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/motoristas');
+}
+
+export async function salvarMotoristaFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/motoristas', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirMotoristaFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/motoristas/${id}`, { method: 'DELETE' });
+}
+
+export async function listarVeiculosFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/veiculos');
+}
+
+export async function salvarVeiculoFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/veiculos', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirVeiculoFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/veiculos/${id}`, { method: 'DELETE' });
+}
+
+export async function listarTiposDespesasFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/tipos-despesas');
+}
+
+export async function salvarTipoDespesaFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/tipos-despesas', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirTipoDespesaFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/tipos-despesas/${id}`, { method: 'DELETE' });
+}
+
+export async function listarFornecedoresFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/fornecedores');
+}
+
+export async function salvarFornecedorFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/fornecedores', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirFornecedorFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/fornecedores/${id}`, { method: 'DELETE' });
+}
+
+export async function listarDespesasTiposFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/despesas-tipos');
+}
+
+export async function salvarDespesaTipoFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/despesas-tipos', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirDespesaTipoFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/despesas-tipos/${id}`, { method: 'DELETE' });
+}
+
+export async function listarMotivosCancelamentoFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/motivos-cancelamento');
+}
+
+export async function salvarMotivoCancelamentoFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/motivos-cancelamento', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirMotivoCancelamentoFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/motivos-cancelamento/${id}`, { method: 'DELETE' });
+}
+
+export async function listarDespesasFrota(filtros?: RegistroGenerico) {
+  return requisitar<{ linhas: RegistroGenerico[]; totalizadores: RegistroGenerico }>(`/api/frota/despesas${montarQuery(filtros)}`);
+}
+
+export async function salvarDespesaFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/despesas', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function validarDespesasFrota(ids: number[], validado = true) {
+  return requisitar<RegistroGenerico>('/api/frota/despesas/validar-lote', { method: 'POST', body: JSON.stringify({ ids, validado }) });
+}
+
+export async function cancelarDespesasFrota(ids: number[], motivo_id: number, observacao?: string) {
+  return requisitar<RegistroGenerico>('/api/frota/despesas/cancelar-lote', { method: 'POST', body: JSON.stringify({ ids, motivo_id, observacao }) });
+}
+
+export async function listarHistoricoDespesaFrota(id: number) {
+  return requisitar<RegistroGenerico[]>(`/api/frota/despesas/${id}/historico`);
+}
+
+export async function obterMapeamentoImportacaoFrota(fornecedorId: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/importacoes/mapeamento/${fornecedorId}`);
+}
+
+export async function salvarMapeamentoImportacaoFrota(fornecedorId: number, mapeamento: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/frota/importacoes/mapeamento/${fornecedorId}`, {
+    method: 'POST',
+    body: JSON.stringify({ mapeamento })
+  });
+}
+
+export async function importarDespesasFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/importacoes', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function listarConfiguracoesFrota() {
+  return requisitar<RegistroGenerico>('/api/frota/configuracoes');
+}
+
+export async function salvarConfiguracoesFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/configuracoes', { method: 'POST', body: JSON.stringify(dados) });
+}
