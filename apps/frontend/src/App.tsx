@@ -3046,6 +3046,17 @@ function formatarDataHoraBrasileira(valor: unknown) {
   return data.toLocaleString('pt-BR');
 }
 
+function formatarDataHoraComFusoBrasileiro(valor: unknown) {
+  if (!valor) {
+    return '0';
+  }
+  const data = new Date(String(valor));
+  if (Number.isNaN(data.getTime())) {
+    return String(valor);
+  }
+  return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
 function obterPartesDataOperacional(valor: unknown) {
   const texto = String(valor ?? '').trim();
   const partes = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
@@ -3227,6 +3238,8 @@ const rotulosCampos: Record<string, string> = {
   total_ctes: 'Total CT-e',
   valor_frete_cte_total: 'Frete CT-e',
   ultimo_cte_em: 'Último CT-e em',
+  data_nfe: 'Data/Hora faturamento',
+  data_cte: 'Data/Hora CT-e',
   tipo_documento: 'Tipo documento',
   numero_documento: 'Documento',
   numero_pedido: 'Número pedido',
@@ -3293,6 +3306,7 @@ const camposPercentuais = new Set([
 
 const camposData = new Set(['data_documento', 'data_pedido', 'data_nfe', 'data_cte']);
 const camposDataHora = new Set(['criado_em', 'alterado_em', 'aprovado_em', 'escolhido_em', 'ultimo_cte_em', 'respondida_em', 'enviado_em']);
+const camposDataHoraComFuso = new Set(['aprovado_em', 'escolhido_em', 'respondida_em', 'cotada_em', 'criada_em', 'enviado_em', 'data_nfe', 'data_cte', 'ultimo_cte_em']);
 const camposDecimais = new Set(['peso_real', 'cubagem_total', 'cubagem_item', 'largura', 'altura', 'comprimento', 'volumes_total']);
 const camposDias = new Set(['prazo_informado_venda_dias', 'prazo_pedido_dias', 'prazo_final_dias', 'prazo_dias', 'prazo_cte', 'prazo_cotado', 'prazo_final']);
 
@@ -3307,6 +3321,10 @@ function renderizarValorCampo(campo: string, valor: unknown, opcoes?: { semMoeda
 
   if (valor === null || valor === undefined || valor === '') {
     return camposMoeda.has(campo) ? (opcoes?.semMoeda ? '0,00' : formatarMoeda(0)) : '0';
+  }
+
+  if (camposDataHoraComFuso.has(campo)) {
+    return formatarDataHoraComFusoBrasileiro(valor);
   }
 
   if (camposDataHora.has(campo)) {
@@ -3724,7 +3742,7 @@ function AbaTransportadoras({
               {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
               <div className="metadadosRetornoTransportadora">
                 {transportadora.numero_cotacao_transportadora && <small className="numeroCotacaoTransportadora">Nº cotação transportadora: {String(transportadora.numero_cotacao_transportadora)}</small>}
-                {(transportadora.respondida_em || transportadora.data_hora_cotacao || transportadora.alterado_em) && <small className="dataRespostaTransportadora">Resposta em: {formatarDataHoraBrasileira(transportadora.respondida_em ?? transportadora.data_hora_cotacao ?? transportadora.alterado_em)}</small>}
+                {(transportadora.cotada_em || transportadora.respondida_em || transportadora.data_hora_cotacao) && <small className="dataRespostaTransportadora">Resposta em: {formatarDataHoraComFusoBrasileiro(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao)}</small>}
                 {transportadora.observacao && <small className="observacaoTransportadoraDestaque" title={String(transportadora.observacao)}>Observação: {String(transportadora.observacao)}</small>}
                 {transportadora.url_publica && <small className="linkQuebra">Link: {String(transportadora.url_publica)}</small>}
               </div>
@@ -3932,8 +3950,8 @@ function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes, outra
           </table>
         </div>
       </div>
-      <TabelaDocumentosFiscais titulo="Notas fiscais vinculadas" dados={notasFiscais ?? []} colunas={['numero_nfe', 'chave_nfe', 'data_nfe', 'finalidade_nfe', 'valorfrete_nfe', 'alterado_em']} />
-      <TabelaDocumentosFiscais titulo="CT-es vinculados" dados={ctes ?? []} colunas={['numero_cte', 'chave_cte', 'transportadora_cte_nome', 'data_cte', 'finalidade_cte', 'valorfrete_cte', 'alterado_em']} />
+      <TabelaDocumentosFiscais titulo="Notas fiscais vinculadas" dados={notasFiscais ?? []} colunas={['numero_nfe', 'chave_nfe', 'data_nfe', 'finalidade_nfe', 'valorfrete_nfe']} />
+      <TabelaDocumentosFiscais titulo="CT-es vinculados" dados={ctes ?? []} colunas={['numero_cte', 'chave_cte', 'transportadora_cte_nome', 'data_cte', 'finalidade_cte', 'valorfrete_cte']} />
       <TabelaDocumentosFiscais titulo="Outras cotações do Pedido" dados={outrasCotacoes ?? []} colunas={['tipo_documento', 'numero_documento', 'codigo_chave', 'lote_fluxo_logistico', 'criado_em', 'status', 'etapa_nome', 'valor_mercadoria']} />
     </details>
   );
