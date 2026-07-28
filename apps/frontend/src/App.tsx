@@ -3763,7 +3763,7 @@ function AbaTransportadoras({
                 {(transportadora.cotada_em || transportadora.respondida_em || transportadora.data_hora_cotacao) && (
                   <small className="dataRespostaTransportadora">
                     Resposta em: {ehCotacaoAutomatica(transportadora)
-                      ? formatarDataHoraOperacionalComAjuste(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao, -3)
+                      ? formatarDataHoraBrasileira(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao)
                       : formatarDataHoraComFusoBrasileiro(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao)}
                   </small>
                 )}
