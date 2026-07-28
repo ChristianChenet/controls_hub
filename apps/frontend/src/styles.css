@@ -2703,6 +2703,164 @@ h2 {
   line-height: 1.4;
 }
 
+.rankingPainelAmplo {
+  grid-column: span 2;
+}
+
+.graficoBarrasFrota {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.barraGraficoFrota div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.barraGraficoFrota strong {
+  color: #0b1f3b;
+  font-size: 13px;
+}
+
+.barraGraficoFrota b {
+  color: #0c7a3d;
+  font-size: 13px;
+}
+
+.barraGraficoFrota i {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #18d34f, #1683d8);
+  box-shadow: 0 8px 18px rgba(22, 131, 216, .18);
+}
+
+.filtrosDashboardFrota label,
+.grupoChecksDashboard {
+  min-width: 190px;
+}
+
+.grupoChecksDashboard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.grupoChecksDashboard span {
+  width: 100%;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.grupoChecksDashboard label {
+  min-width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+}
+
+.botaoOrdenacaoTabela {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.consultaTabelaFrota {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 20px;
+  padding: 9px 12px;
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .88);
+}
+
+.consultaTabelaFrota input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0b1f3b;
+  font-weight: 700;
+}
+
+.frotaModalAviso {
+  max-width: 520px;
+}
+
+.frotaModalAviso p {
+  margin: 12px 0 18px;
+  color: #344054;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.frotaAvisoValidacaoImportacao {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #fec84b;
+  border-radius: 8px;
+  background: #fffaeb;
+  color: #7a2e0e;
+}
+
+.frotaAvisoValidacaoImportacao strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #93370d;
+}
+
+.frotaAvisoValidacaoImportacao p {
+  margin: 0 0 6px;
+  line-height: 1.45;
+}
+
+.frotaAvisoValidacaoImportacao small {
+  display: block;
+  color: #7a2e0e;
+  font-weight: 700;
+}
+
+.frotaLogListaMelhorada {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.frotaLogListaMelhorada p {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #344054;
+}
+
+.metrics article small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .filtrosLinha {
   display: flex;
   gap: 10px;
@@ -3966,14 +4124,43 @@ h2 {
 }
 
 .kanbanFiltrosPremium {
-  display: grid;
-  grid-template-columns: 140px 140px minmax(280px, 1fr) minmax(130px, 170px) auto auto auto auto auto auto;
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  overflow: visible;
+}
+
+.kanbanFiltrosPremium input[type="date"] {
+  flex: 0 0 112px;
+  min-width: 112px;
+}
+
+.kanbanFiltrosPremium > input:not([type="date"]):not(.inputFiltroCidadeKanban) {
+  flex: 1 1 310px;
+  min-width: 220px;
 }
 
 .kanbanFiltrosPremium .inputFiltroCidadeKanban {
-  min-width: 130px;
+  flex: 0 0 120px;
+  min-width: 120px;
+}
+
+.kanbanFiltrosPremium select {
+  flex: 0 0 132px;
+  min-width: 132px;
+}
+
+.kanbanFiltrosPremium .selectFiltroCompacto {
+  width: 132px !important;
+}
+
+.kanbanFiltrosPremium .toggleLinha.compacto {
+  flex: 0 0 auto;
+}
+
+.kanbanFiltrosPremium button {
+  flex: 0 0 auto;
 }
 
 .toggleLinha.compacto {
@@ -4221,6 +4408,11 @@ h2 {
 
 .metadadosRetornoTransportadora .numeroCotacaoTransportadora {
   color: #172033;
+  font-size: 12px;
+}
+
+.metadadosRetornoTransportadora .dataRespostaTransportadora {
+  color: #0f766e;
   font-size: 12px;
 }
 

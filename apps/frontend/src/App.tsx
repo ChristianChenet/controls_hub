@@ -12,7 +12,7 @@ import {
   Users
 } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, UIEvent } from 'react';
 
 
 
@@ -418,6 +418,60 @@ function BotaoAtualizar({ carregando, aoAtualizar }: { carregando: boolean; aoAt
       </span>
       {carregando ? 'Atualizando...' : 'Atualizar'}
     </button>
+  );
+}
+
+function ModalCarregamento({ aberto, mensagem = 'Carregando dados...' }: { aberto: boolean; mensagem?: string }) {
+  if (!aberto) {
+    return null;
+  }
+
+  const estiloFundo: CSSProperties = {
+    alignItems: 'center',
+    background: 'rgba(9, 18, 32, 0.48)',
+    backdropFilter: 'blur(3px)',
+    display: 'flex',
+    inset: 0,
+    justifyContent: 'center',
+    position: 'fixed',
+    zIndex: 9999
+  };
+  const estiloCaixa: CSSProperties = {
+    alignItems: 'center',
+    background: '#FFFFFF',
+    border: '1px solid #D7E2EF',
+    borderRadius: 10,
+    boxShadow: '0 18px 52px rgba(15, 23, 42, 0.28)',
+    color: '#172033',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    minWidth: 280,
+    padding: '24px 28px',
+    textAlign: 'center'
+  };
+  const estiloGauge: CSSProperties = {
+    alignItems: 'center',
+    animation: 'girarGaugeAtualizacao 1s linear infinite',
+    border: '4px solid #DDE9F6',
+    borderTopColor: '#16A34A',
+    borderRadius: '999px',
+    display: 'flex',
+    height: 54,
+    justifyContent: 'center',
+    width: 54
+  };
+
+  return (
+    <div style={estiloFundo} role="alert" aria-live="assertive" aria-busy="true">
+      <div style={estiloCaixa}>
+        <span style={estiloGauge}>
+          <RefreshCw size={24} color="#16A34A" />
+        </span>
+        <strong>{mensagem}</strong>
+        <small>Aguarde enquanto o Control S Hub atualiza as informacoes.</small>
+      </div>
+    </div>
   );
 }
 
@@ -1324,6 +1378,7 @@ function Dashboard() {
 
   return (
     <section>
+      <ModalCarregamento aberto={carregando} mensagem="Carregando dashboard..." />
       <div className="barraAcoesTela">
         <div>
           <span>Dashboard</span>
@@ -1851,6 +1906,7 @@ function KanbanCotacoes({
   const [erro, setErro] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [etapaReprocessando, setEtapaReprocessando] = useState('');
+  const [carregando, setCarregando] = useState(false);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [colunaArrastada, setColunaArrastada] = useState('');
   const [dataInicial, setDataInicial] = useState('');
@@ -1863,6 +1919,7 @@ function KanbanCotacoes({
   const [freteGratisFiltro, setFreteGratisFiltro] = useState('');
   const [cteDiferenteEscolhidoFiltro, setCteDiferenteEscolhidoFiltro] = useState(false);
   const [somentePendentes, setSomentePendentes] = useState(true);
+  const [limitesKanbanPorEtapa, setLimitesKanbanPorEtapa] = useState<Record<string, number>>({});
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     const salvas = localStorage.getItem('controlSHubKanbanEtapas');
     return salvas ? JSON.parse(salvas) : [];
@@ -1874,18 +1931,26 @@ function KanbanCotacoes({
   });
 
   async function carregarKanban() {
-    await listarKanbanCotacoes({
-      data_inicial: dataInicial,
-      data_final: dataFinal,
-      faturado: faturadoFiltro || undefined,
-      cidade: cidadeFiltro || undefined,
-      multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
-      fluxo_logistico: fluxoLogisticoFiltro || undefined,
-      frete_gratis: freteGratisFiltro || undefined,
-      cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined
-    })
-      .then(setLinhas)
-      .catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.'));
+    setCarregando(true);
+    setErro('');
+    try {
+      const dados = await listarKanbanCotacoes({
+        data_inicial: dataInicial,
+        data_final: dataFinal,
+        faturado: faturadoFiltro || undefined,
+        cidade: cidadeFiltro || undefined,
+        multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
+        fluxo_logistico: fluxoLogisticoFiltro || undefined,
+        frete_gratis: freteGratisFiltro || undefined,
+        cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined
+      });
+      setLinhas(Array.isArray(dados) ? dados : []);
+      setLimitesKanbanPorEtapa({});
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
   useEffect(() => {
@@ -1981,7 +2046,7 @@ function KanbanCotacoes({
     carregarKanban().catch(() => undefined);
   }
 
-  const linhasFiltradas = linhas.filter((linha: any) => {
+  const linhasFiltradas = useMemo(() => linhas.filter((linha: any) => {
     const codigoEtapa = String(linha.etapa_codigo ?? '');
     if (etapasSelecionadas.length && !etapasSelecionadas.includes(codigoEtapa)) {
       return false;
@@ -2011,9 +2076,9 @@ function KanbanCotacoes({
       }
     }
     return true;
-  });
+  }), [linhas, etapasSelecionadas, somentePendentes, chaveFiltro]);
 
-  const etapas = linhasFiltradas.reduce<Record<string, { etapa: RegistroGenerico; cards: RegistroGenerico[] }>>((acc, linha) => {
+  const etapas = useMemo(() => linhasFiltradas.reduce<Record<string, { etapa: RegistroGenerico; cards: RegistroGenerico[] }>>((acc, linha) => {
     const codigo = String(linha.etapa_codigo);
     if (!acc[codigo]) {
       acc[codigo] = { etapa: linha, cards: [] };
@@ -2022,15 +2087,26 @@ function KanbanCotacoes({
       acc[codigo].cards.push(linha);
     }
     return acc;
-  }, {});
-  const listaEtapas = Object.values(etapas).sort((a, b) => {
+  }, {}), [linhasFiltradas]);
+  const listaEtapas = useMemo(() => Object.values(etapas).sort((a, b) => {
     const ia = ordemColunas.indexOf(String(a.etapa.etapa_codigo));
     const ib = ordemColunas.indexOf(String(b.etapa.etapa_codigo));
     if (ia === -1 && ib === -1) {
       return Number(a.etapa.etapa_ordem ?? 0) - Number(b.etapa.etapa_ordem ?? 0);
     }
     return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-  });
+  }), [etapas, ordemColunas]);
+
+  function carregarMaisCardsKanban(codigoEtapa: string, evento: UIEvent<HTMLDivElement>) {
+    const alvo = evento.currentTarget;
+    if (alvo.scrollHeight - alvo.scrollTop - alvo.clientHeight > 180) {
+      return;
+    }
+    setLimitesKanbanPorEtapa((atuais) => ({
+      ...atuais,
+      [codigoEtapa]: (atuais[codigoEtapa] ?? 50) + 50
+    }));
+  }
 
   function reordenarColuna(destino: string) {
     if (!colunaArrastada || colunaArrastada === destino) {
@@ -2047,6 +2123,7 @@ function KanbanCotacoes({
 
   return (
     <>
+      <ModalCarregamento aberto={carregando} mensagem="Carregando Kanban..." />
       {erro && <div className="alerta">{erro}</div>}
       {mensagem && <div className="sucesso">{mensagem}</div>}
       <div className="filtrosLinha kanbanFiltros kanbanFiltrosPremium">
@@ -2106,21 +2183,26 @@ function KanbanCotacoes({
         })}
       </div>
       <section className="kanban kanbanPremium">
-        {listaEtapas.map(({ etapa, cards }) => (
+        {listaEtapas.map(({ etapa, cards }) => {
+          const codigoEtapa = String(etapa.etapa_codigo);
+          const limiteEtapa = limitesKanbanPorEtapa[codigoEtapa] ?? 50;
+          const cardsRenderizados = cards.slice(0, limiteEtapa);
+          return (
           <div
           className="coluna"
           style={{ '--cor-etapa': String(etapa.etapa_cor ?? '#22c55e') } as CSSProperties}
           draggable
-          key={String(etapa.etapa_codigo)}
+          key={codigoEtapa}
+          onScroll={(evento) => carregarMaisCardsKanban(codigoEtapa, evento)}
           onDragStart={(evento) => {
             if ((evento.target as HTMLElement).className === 'coluna') {
-              setColunaArrastada(String(etapa.etapa_codigo));
+              setColunaArrastada(codigoEtapa);
             }
           }}
           onDragOver={(evento) => evento.preventDefault()}
           onDrop={() => {
             if (colunaArrastada) {
-              reordenarColuna(String(etapa.etapa_codigo));
+              reordenarColuna(codigoEtapa);
             } else if (arrastandoId && etapa.etapa_id) {
               moverCotacao(arrastandoId, Number(etapa.etapa_id));
             }
@@ -2146,7 +2228,7 @@ function KanbanCotacoes({
               <span>{cards.length}</span>
             </div>
           </header>
-          {cards.map((card) => (
+          {cardsRenderizados.map((card) => (
             <article
               className="cartao"
               style={{ '--cor-etapa': String(card.etapa_cor ?? etapa.etapa_cor ?? '#22c55e') } as CSSProperties}
@@ -2184,8 +2266,10 @@ function KanbanCotacoes({
               {card.bloqueado_para_alteracao && <em>Bloqueada Banco</em>}
             </article>
           ))}
+          {cards.length > cardsRenderizados.length && <small className="hintCarregamentoKanban">Carregando mais conforme a rolagem...</small>}
           </div>
-        ))}
+        );
+        })}
       </section>
       <PainelContextual
         aberto={Boolean(detalheKanban)}
@@ -2750,6 +2834,7 @@ function CotacoesOperacional({
 
   return (
     <>
+      <ModalCarregamento aberto={carregando} mensagem="Carregando cotacoes..." />
       <div className="barraAcoesTela">
         <div>
           <span>Cotação de Frete</span>
@@ -2935,22 +3020,62 @@ function formatarDataBrasileira(valor: unknown) {
   if (!valor) {
     return '0';
   }
+  const partes = obterPartesDataOperacional(valor);
+  if (partes) {
+    return `${partes.dia}/${partes.mes}/${partes.ano}`;
+  }
   const data = new Date(String(valor));
   if (Number.isNaN(data.getTime())) {
     return String(valor);
   }
-  return data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return data.toLocaleDateString('pt-BR');
 }
 
 function formatarDataHoraBrasileira(valor: unknown) {
   if (!valor) {
     return '0';
   }
+  const partes = obterPartesDataOperacional(valor);
+  if (partes) {
+    return `${partes.dia}/${partes.mes}/${partes.ano}, ${partes.hora}:${partes.minuto}:${partes.segundo}`;
+  }
   const data = new Date(String(valor));
   if (Number.isNaN(data.getTime())) {
     return String(valor);
   }
-  return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return data.toLocaleString('pt-BR');
+}
+
+function obterPartesDataOperacional(valor: unknown) {
+  const texto = String(valor ?? '').trim();
+  const partes = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!partes) {
+    return null;
+  }
+  return {
+    ano: partes[1],
+    mes: partes[2],
+    dia: partes[3],
+    hora: partes[4] ?? '00',
+    minuto: partes[5] ?? '00',
+    segundo: partes[6] ?? '00'
+  };
+}
+
+function obterDataOperacional(valor: unknown) {
+  const partes = obterPartesDataOperacional(valor);
+  if (partes) {
+    return new Date(
+      Number(partes.ano),
+      Number(partes.mes) - 1,
+      Number(partes.dia),
+      Number(partes.hora),
+      Number(partes.minuto),
+      Number(partes.segundo)
+    );
+  }
+  const data = new Date(String(valor ?? ''));
+  return Number.isNaN(data.getTime()) ? null : data;
 }
 
 function obterMinutosHorario(valor: unknown, padrao: string) {
@@ -2985,8 +3110,8 @@ function calcularSemaforoSlaCotacao(cotacao: RegistroGenerico | null | undefined
     return { cor: 'cinza', titulo: 'SLA não calculado: cotação sem data de criação.', prazo: null as Date | null };
   }
 
-  const criado = new Date(String(criadoEm));
-  if (Number.isNaN(criado.getTime())) {
+  const criado = obterDataOperacional(criadoEm);
+  if (!criado || Number.isNaN(criado.getTime())) {
     return { cor: 'cinza', titulo: 'SLA não calculado: data de criação inválida.', prazo: null as Date | null };
   }
 
@@ -3001,10 +3126,11 @@ function calcularSemaforoSlaCotacao(cotacao: RegistroGenerico | null | undefined
     ? proximoDiaExpediente(criado, diasExpediente)
     : proximoDiaExpediente(proximoDiaExpediente(criado, diasExpediente), diasExpediente);
   const prazo = ajustarHorario(base, corte);
-  const agora = new Date();
-  const horasRestantes = (prazo.getTime() - agora.getTime()) / 36e5;
+  const escolhidoEm = cotacao?.escolhido_em ? obterDataOperacional(cotacao.escolhido_em) : null;
+  const referencia = escolhidoEm && !Number.isNaN(escolhidoEm.getTime()) ? escolhidoEm : new Date();
+  const horasRestantes = (prazo.getTime() - referencia.getTime()) / 36e5;
   const cor = horasRestantes < 0 ? 'vermelho' : horasRestantes <= 2 ? 'amarelo' : 'verde';
-  const titulo = `SLA de envio/retorno: ${cor === 'vermelho' ? 'vencido' : cor === 'amarelo' ? 'próximo do corte' : 'dentro do prazo'}. Prazo: ${formatarDataHoraBrasileira(prazo.toISOString())}. Expediente: ${String(parametros.HORA_INICIAL_EXPEDIENTE_COTACAO ?? '08:00')} às ${String(parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30')}. Corte: ${String(parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00')}.`;
+  const titulo = `SLA de envio/retorno: ${cor === 'vermelho' ? 'vencido' : cor === 'amarelo' ? 'próximo do corte' : 'dentro do prazo'}. Prazo: ${formatarDataHoraBrasileira(prazo)}. ${escolhidoEm ? `Apurado até a escolha: ${formatarDataHoraBrasileira(escolhidoEm)}. ` : ''}Expediente: ${String(parametros.HORA_INICIAL_EXPEDIENTE_COTACAO ?? '08:00')} às ${String(parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30')}. Corte: ${String(parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00')}.`;
   return { cor, titulo, prazo };
 }
 
@@ -3598,6 +3724,7 @@ function AbaTransportadoras({
               {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
               <div className="metadadosRetornoTransportadora">
                 {transportadora.numero_cotacao_transportadora && <small className="numeroCotacaoTransportadora">Nº cotação transportadora: {String(transportadora.numero_cotacao_transportadora)}</small>}
+                {(transportadora.respondida_em || transportadora.data_hora_cotacao || transportadora.alterado_em) && <small className="dataRespostaTransportadora">Resposta em: {formatarDataHoraBrasileira(transportadora.respondida_em ?? transportadora.data_hora_cotacao ?? transportadora.alterado_em)}</small>}
                 {transportadora.observacao && <small className="observacaoTransportadoraDestaque" title={String(transportadora.observacao)}>Observação: {String(transportadora.observacao)}</small>}
                 {transportadora.url_publica && <small className="linkQuebra">Link: {String(transportadora.url_publica)}</small>}
               </div>
@@ -4734,6 +4861,7 @@ function EnvioMassaCotacoes() {
   });
   const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(false);
   const [parametrosSla, setParametrosSla] = useState<Record<string, string>>({});
   const [emailEnvioConfigurado, setEmailEnvioConfigurado] = useState(false);
   const [emailEnvioAviso, setEmailEnvioAviso] = useState('Validando configuração de e-mail do usuário...');
@@ -4741,10 +4869,10 @@ function EnvioMassaCotacoes() {
   const [seletorEnvioAberto, setSeletorEnvioAberto] = useState(false);
   const [erroSeletorEnvio, setErroSeletorEnvio] = useState('');
   const [logSelecao, setLogSelecao] = useState('');
-  const pedidosLista = Array.isArray(pedidos) ? pedidos : [];
-  const preparacaoLista = Array.isArray(preparacao) ? preparacao : [];
-  const colunasVisiveis = colunasEnvio.filter((coluna) => coluna.visivel);
-  const pedidosFiltrados = pedidosLista.filter((pedido: any) => {
+  const pedidosLista = useMemo(() => Array.isArray(pedidos) ? pedidos : [], [pedidos]);
+  const preparacaoLista = useMemo(() => Array.isArray(preparacao) ? preparacao : [], [preparacao]);
+  const colunasVisiveis = useMemo(() => colunasEnvio.filter((coluna) => coluna.visivel), [colunasEnvio]);
+  const pedidosFiltrados = useMemo(() => pedidosLista.filter((pedido: any) => {
     if (sugestaoFiltro === 'SOMENTE_SUGESTAO' && !pedido.sugestao_cotacao) {
       return false;
     }
@@ -4755,11 +4883,11 @@ function EnvioMassaCotacoes() {
       return false;
     }
     return true;
-  });
-  const pedidosOrdenados = [...pedidosFiltrados].sort((a: any, b: any) => compararValorOrdenacaoEnvio(a[ordenacaoEnvio.chave], b[ordenacaoEnvio.chave], ordenacaoEnvio.direcao));
-  const totalPaginas = Math.max(1, Math.ceil(pedidosOrdenados.length / limite));
+  }), [pedidosLista, sugestaoFiltro, semaforoFiltro, parametrosSla]);
+  const pedidosOrdenados = useMemo(() => [...pedidosFiltrados].sort((a: any, b: any) => compararValorOrdenacaoEnvio(a[ordenacaoEnvio.chave], b[ordenacaoEnvio.chave], ordenacaoEnvio.direcao)), [pedidosFiltrados, ordenacaoEnvio]);
+  const totalPaginas = useMemo(() => Math.max(1, Math.ceil(pedidosOrdenados.length / limite)), [pedidosOrdenados.length, limite]);
   const paginaCorrigida = Math.min(pagina, totalPaginas);
-  const pedidosPagina = pedidosOrdenados.slice((paginaCorrigida - 1) * limite, paginaCorrigida * limite);
+  const pedidosPagina = useMemo(() => pedidosOrdenados.slice((paginaCorrigida - 1) * limite, paginaCorrigida * limite), [pedidosOrdenados, paginaCorrigida, limite]);
   const pedidoSemOfertaBloqueante = (pedido: RegistroGenerico) => Boolean(pedido.sem_oferta_disponivel) && Number(pedido.fornecedores_vinculados ?? 0) <= 0;
 
   useEffect(() => {
@@ -4844,24 +4972,33 @@ function EnvioMassaCotacoes() {
   }
 
   async function carregar() {
-    const retorno = await listarPedidosEnvioMassa({
-      situacao: 'ATIVOS',
-      envio,
-      status: statusFiltro || undefined,
-      busca,
-      vendedor: vendedorFiltro,
-      transportadora: transportadoraFiltro,
-      faturado: faturadoFiltro || undefined,
-      fluxo_logistico: fluxoLogisticoFiltro || undefined,
-      frete_gratis: freteGratisFiltro || undefined,
-      cotacao_criada_inicio: cotacaoCriadaInicio || undefined,
-      cotacao_criada_fim: cotacaoCriadaFim || undefined,
-      data_documento_inicio: dataDocumentoInicio || undefined,
-      data_documento_fim: dataDocumentoFim || undefined
-    });
-    const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
-    setPedidos(dados);
-    setPagina(1);
+    setCarregando(true);
+    setErro('');
+    try {
+      const retorno = await listarPedidosEnvioMassa({
+        situacao: 'ATIVOS',
+        envio,
+        status: statusFiltro || undefined,
+        busca,
+        vendedor: vendedorFiltro,
+        transportadora: transportadoraFiltro,
+        faturado: faturadoFiltro || undefined,
+        fluxo_logistico: fluxoLogisticoFiltro || undefined,
+        frete_gratis: freteGratisFiltro || undefined,
+        cotacao_criada_inicio: cotacaoCriadaInicio || undefined,
+        cotacao_criada_fim: cotacaoCriadaFim || undefined,
+        data_documento_inicio: dataDocumentoInicio || undefined,
+        data_documento_fim: dataDocumentoFim || undefined
+      });
+      const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
+      setPedidos(dados);
+      setPagina(1);
+    } catch (error) {
+      setPedidos([]);
+      setErro(error instanceof Error ? error.message : 'Falha ao carregar envio de cotações.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
   useEffect(() => {
@@ -4883,6 +5020,8 @@ function EnvioMassaCotacoes() {
       setErro(emailEnvioAviso || 'Configure o e-mail do usuário antes de enviar cotações por e-mail.');
       return;
     }
+    setCarregando(true);
+    try {
     const retorno = await prepararEnvioMassa(selecionados);
     const dados = Array.isArray(retorno) ? retorno : Array.isArray((retorno as any)?.itens) ? (retorno as any).itens : [];
     const dadosFiltradosPorEnvio = dados.filter((item: any) => {
@@ -4909,6 +5048,11 @@ function EnvioMassaCotacoes() {
     }
     setPreparacao(filtrados);
     setEmailsPorTransportadora(criarEmailsPadraoPorTransportadora(filtrados));
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao preparar envio.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
   async function abrirDetalheEnvio(cotacaoId: string | number) {
@@ -5153,6 +5297,7 @@ function EnvioMassaCotacoes() {
 
   return (
     <section className="painelTabela envioMassa">
+      <ModalCarregamento aberto={carregando} mensagem="Processando envio de cotacao..." />
       <header>
         <div>
           <span>Operação em massa</span>
