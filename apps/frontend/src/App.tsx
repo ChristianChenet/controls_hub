@@ -3057,6 +3057,15 @@ function formatarDataHoraComFusoBrasileiro(valor: unknown) {
   return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
+function formatarDataHoraOperacionalComAjuste(valor: unknown, horas: number) {
+  const data = obterDataOperacional(valor);
+  if (!data || Number.isNaN(data.getTime())) {
+    return valor ? String(valor) : '0';
+  }
+  data.setHours(data.getHours() + horas);
+  return data.toLocaleString('pt-BR');
+}
+
 function obterPartesDataOperacional(valor: unknown) {
   const texto = String(valor ?? '').trim();
   const partes = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
@@ -3306,7 +3315,8 @@ const camposPercentuais = new Set([
 
 const camposData = new Set(['data_documento', 'data_pedido', 'data_nfe', 'data_cte']);
 const camposDataHora = new Set(['criado_em', 'alterado_em', 'aprovado_em', 'escolhido_em', 'ultimo_cte_em', 'respondida_em', 'enviado_em']);
-const camposDataHoraComFuso = new Set(['aprovado_em', 'escolhido_em', 'respondida_em', 'cotada_em', 'criada_em', 'enviado_em', 'data_nfe', 'data_cte', 'ultimo_cte_em']);
+const camposDataHoraOperacional = new Set(['data_nfe', 'data_cte']);
+const camposDataHoraComFuso = new Set(['aprovado_em', 'escolhido_em', 'respondida_em', 'cotada_em', 'enviado_em', 'ultimo_cte_em']);
 const camposDecimais = new Set(['peso_real', 'cubagem_total', 'cubagem_item', 'largura', 'altura', 'comprimento', 'volumes_total']);
 const camposDias = new Set(['prazo_informado_venda_dias', 'prazo_pedido_dias', 'prazo_final_dias', 'prazo_dias', 'prazo_cte', 'prazo_cotado', 'prazo_final']);
 
@@ -3321,6 +3331,14 @@ function renderizarValorCampo(campo: string, valor: unknown, opcoes?: { semMoeda
 
   if (valor === null || valor === undefined || valor === '') {
     return camposMoeda.has(campo) ? (opcoes?.semMoeda ? '0,00' : formatarMoeda(0)) : '0';
+  }
+
+  if (camposDataHoraOperacional.has(campo)) {
+    return formatarDataHoraBrasileira(valor);
+  }
+
+  if (campo === 'criada_em') {
+    return formatarDataHoraOperacionalComAjuste(valor, -3);
   }
 
   if (camposDataHoraComFuso.has(campo)) {
@@ -3742,7 +3760,13 @@ function AbaTransportadoras({
               {motivoBloqueio && <small className="pillDivergencia neutro">{motivoBloqueio}</small>}
               <div className="metadadosRetornoTransportadora">
                 {transportadora.numero_cotacao_transportadora && <small className="numeroCotacaoTransportadora">Nº cotação transportadora: {String(transportadora.numero_cotacao_transportadora)}</small>}
-                {(transportadora.cotada_em || transportadora.respondida_em || transportadora.data_hora_cotacao) && <small className="dataRespostaTransportadora">Resposta em: {formatarDataHoraComFusoBrasileiro(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao)}</small>}
+                {(transportadora.cotada_em || transportadora.respondida_em || transportadora.data_hora_cotacao) && (
+                  <small className="dataRespostaTransportadora">
+                    Resposta em: {ehCotacaoAutomatica(transportadora)
+                      ? formatarDataHoraOperacionalComAjuste(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao, -3)
+                      : formatarDataHoraComFusoBrasileiro(transportadora.cotada_em ?? transportadora.respondida_em ?? transportadora.data_hora_cotacao)}
+                  </small>
+                )}
                 {transportadora.observacao && <small className="observacaoTransportadoraDestaque" title={String(transportadora.observacao)}>Observação: {String(transportadora.observacao)}</small>}
                 {transportadora.url_publica && <small className="linkQuebra">Link: {String(transportadora.url_publica)}</small>}
               </div>
