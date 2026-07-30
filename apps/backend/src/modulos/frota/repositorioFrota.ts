@@ -18,6 +18,13 @@ export type FiltrosDespesasFrota = {
   ativo?: string | null;
 };
 
+export type FiltrosDashboardFrota = {
+  periodo?: string | null;
+  motoristaId?: number | null;
+  placa?: string | null;
+  situacoes?: string | null;
+};
+
 let promessaEstruturaFrota: Promise<void> | null = null;
 
 async function lerMigrationFrota() {
@@ -188,74 +195,175 @@ async function registrarHistoricoFrota(dados: {
   );
 }
 
-export async function obterIndicadoresFrota(empresaId: number) {
+function montarFiltrosDashboardFrota(empresaId: number, filtros: FiltrosDashboardFrota = {}) {
+  const params: unknown[] = [empresaId];
+  const condicoes = ['d.empresa_id = $1', 'd.excluido = FALSE'];
+  const periodo = texto(filtros.periodo || 'MES_ATUAL').toUpperCase();
+
+  if (periodo === '15_DIAS') {
+    condicoes.push(`d.data_hora::DATE >= (CURRENT_DATE - INTERVAL '15 DAYS')::DATE`);
+  } else if (periodo === 'MES_ANTERIOR') {
+    condicoes.push(`d.data_hora >= (DATE_TRUNC('MONTH', CURRENT_DATE) - INTERVAL '1 MONTH')`);
+    condicoes.push(`d.data_hora < DATE_TRUNC('MONTH', CURRENT_DATE)`);
+  } else if (periodo === '3_MESES') {
+    condicoes.push(`d.data_hora::DATE >= (CURRENT_DATE - INTERVAL '3 MONTHS')::DATE`);
+  } else {
+    condicoes.push(`d.data_hora::DATE >= DATE_TRUNC('MONTH', CURRENT_DATE)::DATE`);
+  }
+
+  if (filtros.motoristaId) {
+    params.push(Number(filtros.motoristaId));
+    condicoes.push(`d.motorista_id = $${params.length}::BIGINT`);
+  }
+
+  const placa = placaNormalizada(filtros.placa);
+  if (placa) {
+    params.push(placa);
+    condicoes.push(`d.placa = $${params.length}`);
+  }
+
+  const situacoes = texto(filtros.situacoes)
+    .split(',')
+    .map((situacao) => situacao.trim().toUpperCase())
+    .filter((situacao) => ['PENDENTE', 'VALIDADO', 'INTEGRADO'].includes(situacao));
+  const situacoesUnicas = [...new Set(situacoes)];
+  if (situacoesUnicas.length > 0 && situacoesUnicas.length < 3) {
+    const condicoesSituacao = situacoesUnicas.map((situacao) => {
+      if (situacao === 'VALIDADO') return 'd.validado = TRUE';
+      if (situacao === 'INTEGRADO') return 'd.integrado = TRUE';
+      return '(d.validado = FALSE AND d.integrado = FALSE)';
+    });
+    condicoes.push(`(${condicoesSituacao.join(' OR ')})`);
+  }
+
+  return { where: condicoes.join('\n      AND '), params };
+}
+
+export async function obterIndicadoresFrota(empresaId: number, filtros: FiltrosDashboardFrota = {}) {
+  const configuracoes = await listarConfiguracoesFrota(empresaId);
+  const tipoDespesaAbastecimentoId = Number(configuracoes.tipo_despesa_abastecimento_id);
+  const tipoAbastecimentoValido = Number.isFinite(tipoDespesaAbastecimentoId) && tipoDespesaAbastecimentoId > 0;
+  const filtroDashboard = montarFiltrosDashboardFrota(empresaId, filtros);
+
   const resumo = await consultarUm(
     `SELECT
-      COUNT(*)::INTEGER AS despesas_periodo,
-      COALESCE(SUM(total), 0) AS valor_total,
-      COUNT(*) FILTER (WHERE validado = FALSE)::INTEGER AS despesas_pendentes_validacao,
-      COUNT(*) FILTER (WHERE validado = TRUE)::INTEGER AS despesas_validadas,
-      COUNT(*) FILTER (WHERE integrado = TRUE)::INTEGER AS despesas_integradas,
-      COUNT(*) FILTER (WHERE integrado = FALSE)::INTEGER AS despesas_nao_integradas
-    FROM frota_despesas
-    WHERE empresa_id = $1
-      AND excluido = FALSE
-      AND data_hora::DATE >= DATE_TRUNC('MONTH', CURRENT_DATE)::DATE`,
-    [empresaId]
+      COUNT(*) FILTER (WHERE cancelado = FALSE)::INTEGER AS despesas_periodo,
+      COUNT(*) FILTER (WHERE cancelado = TRUE)::INTEGER AS despesas_canceladas,
+      COALESCE(SUM(total) FILTER (WHERE cancelado = FALSE), 0) AS valor_total,
+      COALESCE(SUM(desconto) FILTER (WHERE cancelado = FALSE), 0) AS desconto_total_periodo,
+      COUNT(*) FILTER (WHERE validado = FALSE AND cancelado = FALSE)::INTEGER AS despesas_pendentes_validacao,
+      COUNT(*) FILTER (WHERE validado = TRUE AND cancelado = FALSE)::INTEGER AS despesas_validadas,
+      COUNT(*) FILTER (WHERE integrado = TRUE AND cancelado = FALSE)::INTEGER AS despesas_integradas,
+      COUNT(*) FILTER (WHERE integrado = FALSE AND cancelado = FALSE)::INTEGER AS despesas_nao_integradas
+    FROM frota_despesas d
+    WHERE ${filtroDashboard.where}`,
+    filtroDashboard.params
+  );
+
+  const paramsAbastecimento = [...filtroDashboard.params, tipoDespesaAbastecimentoId];
+  const indiceTipoAbastecimento = paramsAbastecimento.length;
+  const custoMedioAbastecimentos = tipoAbastecimentoValido
+    ? await consultar(
+      `SELECT
+        d.descricao_despesa AS descricao,
+        COUNT(*)::INTEGER AS quantidade_lancamentos,
+        COALESCE(SUM(d.quantidade), 0) AS quantidade_total,
+        COALESCE(SUM(d.total), 0) AS valor_total,
+        COALESCE(AVG(NULLIF(d.valor_unitario_liquido, 0)), 0) AS valor_unitario_liquido_medio,
+        COALESCE(AVG(CASE WHEN d.quantidade > 0 THEN d.desconto / d.quantidade ELSE NULL END), 0) AS desconto_unitario_medio
+      FROM frota_despesas d
+      WHERE ${filtroDashboard.where}
+        AND d.cancelado = FALSE
+        AND d.tipo_despesa_id = $${indiceTipoAbastecimento}::BIGINT
+      GROUP BY d.descricao_despesa
+      ORDER BY valor_total DESC, d.descricao_despesa ASC
+      LIMIT 12`,
+      paramsAbastecimento
+    )
+    : [];
+
+  const descontosPorTipo = await consultar(
+    `SELECT
+      COALESCE(td.descricao, 'Sem tipo') AS descricao,
+      COALESCE(SUM(d.desconto), 0) AS valor_total
+    FROM frota_despesas d
+    LEFT JOIN frota_tipos_despesas td ON td.id = d.tipo_despesa_id
+    WHERE ${filtroDashboard.where}
+      AND d.cancelado = FALSE
+    GROUP BY COALESCE(td.descricao, 'Sem tipo')
+    HAVING COALESCE(SUM(d.desconto), 0) <> 0
+    ORDER BY valor_total DESC
+    LIMIT 8`,
+    filtroDashboard.params
   );
 
   const veiculosMaiorDespesa = await consultar(
     `SELECT placa, COALESCE(SUM(total), 0) AS valor_total
-    FROM frota_despesas
-    WHERE empresa_id = $1
-      AND excluido = FALSE
+    FROM frota_despesas d
+    WHERE ${filtroDashboard.where}
+      AND d.cancelado = FALSE
     GROUP BY placa
     ORDER BY valor_total DESC
     LIMIT 5`,
-    [empresaId]
+    filtroDashboard.params
   );
 
   const despesasPorTipo = await consultar(
     `SELECT COALESCE(td.descricao, 'Sem tipo') AS descricao, COALESCE(SUM(d.total), 0) AS valor_total
     FROM frota_despesas d
     LEFT JOIN frota_tipos_despesas td ON td.id = d.tipo_despesa_id
-    WHERE d.empresa_id = $1
-      AND d.excluido = FALSE
+    WHERE ${filtroDashboard.where}
+      AND d.cancelado = FALSE
     GROUP BY COALESCE(td.descricao, 'Sem tipo')
     ORDER BY valor_total DESC
     LIMIT 8`,
-    [empresaId]
+    filtroDashboard.params
   );
 
   const despesasPorDepartamento = await consultar(
     `SELECT COALESCE(dep.descricao, 'Sem departamento') AS descricao, COALESCE(SUM(d.total), 0) AS valor_total
     FROM frota_despesas d
     LEFT JOIN frota_departamentos dep ON dep.id = d.departamento_id
-    WHERE d.empresa_id = $1
-      AND d.excluido = FALSE
+    WHERE ${filtroDashboard.where}
+      AND d.cancelado = FALSE
     GROUP BY COALESCE(dep.descricao, 'Sem departamento')
     ORDER BY valor_total DESC
     LIMIT 8`,
-    [empresaId]
+    filtroDashboard.params
+  );
+
+  const despesasPorMotorista = await consultar(
+    `SELECT COALESCE(mot.nome, 'Sem motorista') AS descricao, COALESCE(SUM(d.total), 0) AS valor_total
+    FROM frota_despesas d
+    LEFT JOIN frota_motoristas mot ON mot.id = d.motorista_id
+    WHERE ${filtroDashboard.where}
+      AND d.cancelado = FALSE
+    GROUP BY COALESCE(mot.nome, 'Sem motorista')
+    ORDER BY valor_total DESC
+    LIMIT 8`,
+    filtroDashboard.params
   );
 
   const evolucaoMensal = await consultar(
     `SELECT TO_CHAR(DATE_TRUNC('MONTH', data_hora), 'YYYY-MM') AS mes,
       COALESCE(SUM(total), 0) AS valor_total
-    FROM frota_despesas
-    WHERE empresa_id = $1
-      AND excluido = FALSE
-      AND data_hora >= (CURRENT_DATE - INTERVAL '12 MONTHS')
-    GROUP BY DATE_TRUNC('MONTH', data_hora)
+    FROM frota_despesas d
+    WHERE ${filtroDashboard.where}
+      AND d.cancelado = FALSE
+    GROUP BY DATE_TRUNC('MONTH', d.data_hora)
     ORDER BY mes ASC`,
-    [empresaId]
+    filtroDashboard.params
   );
 
   return {
     ...(resumo ?? {}),
+    tipo_despesa_abastecimento_id: tipoAbastecimentoValido ? tipoDespesaAbastecimentoId : null,
+    custo_medio_abastecimentos: custoMedioAbastecimentos,
+    descontos_por_tipo: descontosPorTipo,
     veiculos_maior_despesa: veiculosMaiorDespesa,
     despesas_por_tipo: despesasPorTipo,
     despesas_por_departamento: despesasPorDepartamento,
+    despesas_por_motorista: despesasPorMotorista,
     evolucao_mensal: evolucaoMensal
   };
 }
@@ -323,7 +431,7 @@ export async function salvarMotoristaFrota(dados: Record<string, unknown>, usuar
 
 export async function listarTiposDespesasFrota() {
   return consultar(
-    `SELECT id, codigo_decis, descricao, natureza_credito_decis, ativo
+    `SELECT id, codigo_decis, descricao, natureza_credito_decis, conf_custo_decis, ativo
     FROM frota_tipos_despesas
     WHERE excluido = FALSE
     ORDER BY descricao ASC`
@@ -332,16 +440,17 @@ export async function listarTiposDespesasFrota() {
 
 export async function salvarTipoDespesaFrota(dados: Record<string, unknown>, usuarioId: number) {
   const registro = await consultarUm(
-    `INSERT INTO frota_tipos_despesas (codigo_decis, descricao, natureza_credito_decis, ativo, criado_por_usuario_id)
-    VALUES ($1, $2, COALESCE(NULLIF($3, ''), '2'), COALESCE($4, TRUE), $5)
+    `INSERT INTO frota_tipos_despesas (codigo_decis, descricao, natureza_credito_decis, conf_custo_decis, ativo, criado_por_usuario_id)
+    VALUES ($1, $2, COALESCE(NULLIF($3, ''), '2'), NULLIF($4, ''), COALESCE($5, TRUE), $6)
     ON CONFLICT (codigo_decis) DO UPDATE SET
       descricao = EXCLUDED.descricao,
       natureza_credito_decis = EXCLUDED.natureza_credito_decis,
+      conf_custo_decis = EXCLUDED.conf_custo_decis,
       ativo = EXCLUDED.ativo,
       alterado_em = NOW(),
-      alterado_por_usuario_id = $5
+      alterado_por_usuario_id = $6
     RETURNING *`,
-    [dados.codigo_decis, dados.descricao, dados.natureza_credito_decis ?? '2', dados.ativo ?? true, usuarioId]
+    [dados.codigo_decis, dados.descricao, dados.natureza_credito_decis ?? '2', dados.conf_custo_decis ?? null, dados.ativo ?? true, usuarioId]
   );
   await registrarHistoricoFrota({ usuarioId, operacao: 'SALVAR_TIPO_DESPESA', tabelaAfetada: 'frota_tipos_despesas', registroId: registro?.id, valorPosterior: registro });
   return registro;
@@ -550,19 +659,22 @@ async function resolverOrganizacaoDespesa(empresaId: number, fornecedorId: numbe
     : null;
 
   const descricaoDespesa = texto(linha.descricao_despesa).toUpperCase();
-  const tipo = await consultarUm<{ tipo_despesa_id: number }>(
-    `SELECT tipo_despesa_id
-    FROM frota_despesas_tipos
-    WHERE UPPER(descricao_despesa) = $1
-      AND ativo = TRUE
-      AND excluido = FALSE
-      AND (fornecedor_id = $2 OR fornecedor_id IS NULL)
-    ORDER BY fornecedor_id NULLS LAST
+  const tipo = await consultarUm<{ tipo_despesa_id: number; conf_custo_decis: string | null }>(
+    `SELECT
+      dt.tipo_despesa_id,
+      td.conf_custo_decis
+    FROM frota_despesas_tipos dt
+    INNER JOIN frota_tipos_despesas td ON td.id = dt.tipo_despesa_id
+    WHERE UPPER(dt.descricao_despesa) = $1
+      AND dt.ativo = TRUE
+      AND dt.excluido = FALSE
+      AND (dt.fornecedor_id = $2 OR dt.fornecedor_id IS NULL)
+    ORDER BY dt.fornecedor_id NULLS LAST
     LIMIT 1`,
     [descricaoDespesa, fornecedorId]
   );
   const fornecedor = await consultarUm<Record<string, unknown>>(
-    `SELECT codigo_forma_pagamento_decis, descricao_forma_pagamento, dia_vencimento
+    `SELECT codigo_forma_pagamento_decis, descricao_forma_pagamento, dia_vencimento, conf_custo_decis
     FROM frota_fornecedores
     WHERE id = $1
       AND excluido = FALSE`,
@@ -579,6 +691,7 @@ async function resolverOrganizacaoDespesa(empresaId: number, fornecedorId: numbe
     empresa_id: veiculo?.empresa_id ? Number(veiculo.empresa_id) : empresaId,
     tipo_despesa_id: tipo?.tipo_despesa_id ?? null,
     descricao_despesa: descricaoDespesa,
+    conf_custo_decis: texto(tipo?.conf_custo_decis) || texto(fornecedor?.conf_custo_decis) || null,
     codigo_forma_pagamento_decis: fornecedor?.codigo_forma_pagamento_decis ?? null,
     descricao_forma_pagamento: fornecedor?.descricao_forma_pagamento ?? null,
     dia_vencimento: fornecedor?.dia_vencimento ? Number(fornecedor.dia_vencimento) : null,
@@ -718,6 +831,7 @@ export async function listarDespesasFrota(filtros: FiltrosDespesasFrota) {
       dep.descricao AS departamento_descricao,
       mot.nome AS motorista_nome,
       td.descricao AS tipo_despesa_descricao,
+      COALESCE(NULLIF(td.conf_custo_decis, ''), NULLIF(f.conf_custo_decis, '')) AS conf_custo_decis,
       COALESCE(f.nome_fantasia, f.nome) AS fornecedor_nome,
       uval.nome AS usuario_validacao_nome,
       mc.descricao AS motivo_cancelamento_descricao,
@@ -775,7 +889,7 @@ export async function validarDespesasFrota(empresaId: number, ids: number[], val
       WHERE d.empresa_id = $1
         AND d.id = ANY($2::BIGINT[])
         AND d.excluido = FALSE
-      FOR UPDATE`,
+      FOR UPDATE OF d`,
       [empresaId, ids]
     );
 
@@ -805,30 +919,39 @@ export async function validarDespesasFrota(empresaId: number, ids: number[], val
       }
 
       await cliente.query(
-        `UPDATE frota_despesas d
-        SET veiculo_id = v.id,
-          departamento_id = v.departamento_id,
-          motorista_id = v.motorista_id,
+        `WITH vinculos AS (
+          SELECT
+            d.id AS despesa_id,
+            v.id AS veiculo_id,
+            v.departamento_id,
+            v.motorista_id
+          FROM frota_despesas d
+          INNER JOIN frota_veiculos v ON v.placa = d.placa
+          WHERE d.empresa_id = $1
+            AND d.id = ANY($3::BIGINT[])
+            AND v.excluido = FALSE
+            AND v.departamento_id IS NOT NULL
+            AND v.motorista_id IS NOT NULL
+        )
+        UPDATE frota_despesas d
+        SET veiculo_id = vinculos.veiculo_id,
+          departamento_id = vinculos.departamento_id,
+          motorista_id = vinculos.motorista_id,
           usuario_ultima_alteracao_id = $2,
           data_hora_ultima_alteracao = NOW()
-        FROM frota_veiculos v
-        WHERE d.empresa_id = $1
-          AND d.id = ANY($3::BIGINT[])
-          AND v.placa = d.placa
-          AND v.excluido = FALSE
-          AND v.departamento_id IS NOT NULL
-          AND v.motorista_id IS NOT NULL
-          AND (d.veiculo_id IS DISTINCT FROM v.id OR d.departamento_id IS DISTINCT FROM v.departamento_id OR d.motorista_id IS DISTINCT FROM v.motorista_id)`,
+        FROM vinculos
+        WHERE d.id = vinculos.despesa_id
+          AND (d.veiculo_id IS DISTINCT FROM vinculos.veiculo_id OR d.departamento_id IS DISTINCT FROM vinculos.departamento_id OR d.motorista_id IS DISTINCT FROM vinculos.motorista_id)`,
         [empresaId, usuarioId, ids]
       );
     }
 
     const resultado = await cliente.query(
       `UPDATE frota_despesas
-      SET validado = $3,
-        usuario_validacao_id = CASE WHEN $3 THEN $2 ELSE NULL END,
-        data_hora_validacao = CASE WHEN $3 THEN NOW() ELSE NULL END,
-        usuario_ultima_alteracao_id = $2,
+      SET validado = $3::BOOLEAN,
+        usuario_validacao_id = CASE WHEN $3::BOOLEAN THEN $2::BIGINT ELSE NULL::BIGINT END,
+        data_hora_validacao = CASE WHEN $3::BOOLEAN THEN NOW() ELSE NULL::TIMESTAMPTZ END,
+        usuario_ultima_alteracao_id = $2::BIGINT,
         data_hora_ultima_alteracao = NOW()
       WHERE empresa_id = $1
         AND id = ANY($4::BIGINT[])
@@ -897,14 +1020,14 @@ export async function cancelarDespesasFrota(empresaId: number, ids: number[], mo
     const resultado = await cliente.query(
       `UPDATE frota_despesas
       SET cancelado = TRUE,
-        motivo_cancelamento_id = $3,
+        motivo_cancelamento_id = $3::BIGINT,
         motivo_cancelamento_texto = NULLIF($4, ''),
-        usuario_cancelamento_id = $2,
+        usuario_cancelamento_id = $2::BIGINT,
         data_hora_cancelamento = NOW(),
         validado = FALSE,
         usuario_validacao_id = NULL,
         data_hora_validacao = NULL,
-        usuario_ultima_alteracao_id = $2,
+        usuario_ultima_alteracao_id = $2::BIGINT,
         data_hora_ultima_alteracao = NOW()
       WHERE empresa_id = $1
         AND id = ANY($5::BIGINT[])
@@ -1020,6 +1143,8 @@ export async function importarDespesasFrota(empresaId: number, dados: Record<str
     resultado.lote_id = Number(lote.rows[0].id);
 
     for (const [indice, linha] of linhas.entries()) {
+      const pontoSalvamento = `sp_importacao_frota_${indice + 1}`;
+      await cliente.query(`SAVEPOINT ${pontoSalvamento}`);
       try {
         const organizacao = await resolverOrganizacaoDespesa(empresaId, fornecedorId, linha);
         const dataHora = linha.data_hora;
@@ -1033,36 +1158,57 @@ export async function importarDespesasFrota(empresaId: number, dados: Record<str
         if (!dataHora || !dataValida(dataHora) || !documento || !organizacao.descricao_despesa || !temValor(linha.quantidade) || !numeroValido(linha.quantidade) || !temValor(linha.total) || !numeroValido(linha.total)) {
           resultado.com_erro += 1;
           resultado.mensagens.push(`Linha ${indice + 1}: documento, data/hora, descricao da despesa, quantidade e total sao obrigatorios.`);
+          await cliente.query(`RELEASE SAVEPOINT ${pontoSalvamento}`);
           continue;
         }
 
         if (!organizacao.tipo_despesa_id) {
           resultado.com_erro += 1;
           resultado.mensagens.push(`Linha ${indice + 1}: despesa sem De/Para para ${organizacao.descricao_despesa}.`);
-          continue;
-        }
-
-        const existente = await cliente.query(
-          `SELECT *
-          FROM frota_despesas
-          WHERE empresa_id = $1
-            AND fornecedor_id = $2
-            AND numero_documento = $3
-            AND COALESCE(placa, '') = COALESCE($4::VARCHAR, '')
-            AND data_despesa = $5::DATE
-            AND descricao_despesa = $6
-            AND excluido = FALSE
-          FOR UPDATE`,
-          [organizacao.empresa_id, fornecedorId, documento, organizacao.placa, calcularDataDespesa(dataHora), organizacao.descricao_despesa]
-        );
-        const atual = existente.rows[0];
-        if (atual?.validado || atual?.integrado) {
-          resultado.ignoradas += 1;
-          resultado.mensagens.push(`Linha ${indice + 1}: documento ${documento} ignorado por estar validado ou integrado.`);
+          await cliente.query(`RELEASE SAVEPOINT ${pontoSalvamento}`);
           continue;
         }
 
         const valoresDespesa = calcularValoresDespesa(linha);
+        const existenteExato = await cliente.query(
+          `SELECT *
+          FROM frota_despesas
+          WHERE empresa_id = $1::BIGINT
+            AND fornecedor_id = $2::BIGINT
+            AND numero_documento = $3
+            AND COALESCE(placa, '') = COALESCE($4::VARCHAR, '')
+            AND data_despesa = $5::DATE
+            AND descricao_despesa = $6
+            AND COALESCE(fatura, '') = COALESCE($7::VARCHAR, '')
+            AND quantidade = $8::NUMERIC
+            AND total = $9::NUMERIC
+            AND excluido = FALSE
+            AND integrado = FALSE
+            AND validado = FALSE
+          ORDER BY id ASC
+          LIMIT 1
+          FOR UPDATE`,
+          [
+            organizacao.empresa_id,
+            fornecedorId,
+            documento,
+            organizacao.placa,
+            calcularDataDespesa(dataHora),
+            organizacao.descricao_despesa,
+            texto(linha.fatura) || null,
+            valoresDespesa.quantidade,
+            valoresDespesa.total
+          ]
+        );
+        const atual = existenteExato.rows[0];
+
+        if (atual?.validado || atual?.integrado) {
+          resultado.ignoradas += 1;
+          resultado.mensagens.push(`Linha ${indice + 1}: documento ${documento} ignorado por estar validado ou integrado.`);
+          await cliente.query(`RELEASE SAVEPOINT ${pontoSalvamento}`);
+          continue;
+        }
+
         const valores = [
           organizacao.empresa_id,
           organizacao.departamento_id,
@@ -1098,9 +1244,13 @@ export async function importarDespesasFrota(empresaId: number, dados: Record<str
             SET departamento_id = $2,
               motorista_id = $3,
               tipo_despesa_id = $4,
+              fornecedor_id = $5,
               veiculo_id = $6,
+              placa = $7,
+              data_hora = $8::TIMESTAMPTZ,
               data_despesa = $9,
               hodometro = $10,
+              numero_documento = $11,
               fatura = $12,
               descricao_despesa = $13,
               quantidade = $14,
@@ -1119,12 +1269,16 @@ export async function importarDespesasFrota(empresaId: number, dados: Record<str
               origem_lancamento = 'IMPORTACAO',
               lote_importacao_id = $26
             WHERE id = $27
+              AND empresa_id = $1::BIGINT
               AND integrado = FALSE
               AND validado = FALSE
             RETURNING *`,
             [...valores, atual.id]
           );
           resultado.atualizadas += atualizado.rowCount ?? 0;
+          if ((atualizado.rowCount ?? 0) > 0) {
+            resultado.mensagens.push(`Linha ${indice + 1}: documento ${documento} atualizado (${organizacao.descricao_despesa}, total ${valoresDespesa.total}).`);
+          }
         } else {
           await cliente.query(
             `INSERT INTO frota_despesas (
@@ -1138,8 +1292,12 @@ export async function importarDespesasFrota(empresaId: number, dados: Record<str
             valores
           );
           resultado.importadas += 1;
+          resultado.mensagens.push(`Linha ${indice + 1}: documento ${documento} importado (${organizacao.descricao_despesa}, total ${valoresDespesa.total}).`);
         }
+        await cliente.query(`RELEASE SAVEPOINT ${pontoSalvamento}`);
       } catch (erro) {
+        await cliente.query(`ROLLBACK TO SAVEPOINT ${pontoSalvamento}`).catch(() => undefined);
+        await cliente.query(`RELEASE SAVEPOINT ${pontoSalvamento}`).catch(() => undefined);
         resultado.com_erro += 1;
         resultado.mensagens.push(`Linha ${indice + 1}: ${erro instanceof Error ? erro.message : 'erro nao identificado'}.`);
       }
@@ -1174,6 +1332,68 @@ export async function importarDespesasFrota(empresaId: number, dados: Record<str
   } finally {
     cliente.release();
   }
+}
+
+export async function registrarStatusIntegracaoFrota(empresaId: number, dados: Record<string, unknown>, usuarioId?: number | null) {
+  return consultarUm(
+    `INSERT INTO frota_integracoes_status (
+      empresa_id,
+      workflow_nome,
+      ultima_consulta_em,
+      ultima_integracao_em,
+      status,
+      mensagem,
+      quantidade_lida,
+      quantidade_integrada,
+      quantidade_erro,
+      detalhes,
+      criado_por_usuario_id
+    )
+    VALUES ($1, COALESCE($2, 'CONTROL S - Integracao DECIS x Control S Hub - Frota'), COALESCE($3::TIMESTAMPTZ, NOW()), $4::TIMESTAMPTZ, COALESCE($5, 'OK'), $6, COALESCE($7::INTEGER, 0), COALESCE($8::INTEGER, 0), COALESCE($9::INTEGER, 0), COALESCE($10::JSONB, '{}'::JSONB), $11)
+    RETURNING *`,
+    [
+      empresaId,
+      texto(dados.workflow_nome) || null,
+      dados.ultima_consulta_em ?? null,
+      dados.ultima_integracao_em ?? null,
+      texto(dados.status) || 'OK',
+      texto(dados.mensagem) || null,
+      dados.quantidade_lida ?? 0,
+      dados.quantidade_integrada ?? 0,
+      dados.quantidade_erro ?? 0,
+      JSON.stringify(dados.detalhes ?? {}),
+      usuarioId ?? null
+    ]
+  );
+}
+
+export async function obterResumoIntegracaoFrota(empresaId: number) {
+  const ultimoStatus = await consultarUm<Record<string, unknown>>(
+    `SELECT *
+    FROM frota_integracoes_status
+    WHERE empresa_id = $1
+    ORDER BY COALESCE(ultima_consulta_em, criado_em) DESC, id DESC
+    LIMIT 1`,
+    [empresaId]
+  );
+
+  const resumo = await consultarUm<Record<string, unknown>>(
+    `SELECT
+      MAX(data_hora_integracao) FILTER (WHERE integrado = TRUE) AS ultima_integracao_despesas_em,
+      COUNT(*) FILTER (WHERE validado = TRUE AND integrado = FALSE AND cancelado = FALSE AND excluido = FALSE) AS despesas_validadas_pendentes,
+      COUNT(*) FILTER (WHERE integrado = TRUE AND COALESCE(data_hora_integracao, data_hora_ultima_alteracao, data_hora_inclusao)::DATE = CURRENT_DATE AND excluido = FALSE) AS despesas_integradas_hoje,
+      COUNT(*) FILTER (WHERE integrado = TRUE AND excluido = FALSE) AS despesas_integradas_total,
+      COUNT(*) FILTER (WHERE validado = TRUE AND excluido = FALSE) AS despesas_validadas_total,
+      COUNT(*) FILTER (WHERE cancelado = TRUE AND excluido = FALSE) AS despesas_canceladas_total
+    FROM frota_despesas
+    WHERE empresa_id = $1`,
+    [empresaId]
+  );
+
+  return {
+    ultimo_status: ultimoStatus ?? null,
+    resumo: resumo ?? {}
+  };
 }
 
 export async function listarConfiguracoesFrota(empresaId: number) {
@@ -1223,9 +1443,13 @@ export async function excluirRegistroFrota(tabela: string, id: number, usuarioId
       excluido_em = NOW(),
       excluido_por_usuario_id = $2
     WHERE id = $1
+      AND excluido = FALSE
     RETURNING id`,
     [id, usuarioId]
   );
+  if (!resultado) {
+    throw new Error('Registro nao encontrado ou ja excluido.');
+  }
   await registrarHistoricoFrota({ empresaId, usuarioId, operacao: 'EXCLUSAO', tabelaAfetada: tabela, registroId: id, valorPosterior: resultado });
   return resultado;
 }

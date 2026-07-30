@@ -94,6 +94,10 @@ export async function obterStatusN8n() {
   return requisitar<RegistroGenerico>('/api/integracoes/n8n/status');
 }
 
+export async function obterStatusIntegracaoFrota() {
+  return requisitar<RegistroGenerico>('/api/frota/integracao/status');
+}
+
 export async function trocarEmpresa(empresa_id: number) {
   return requisitar<{ token: string; empresa: EmpresaUsuario; permissoes: string[] }>('/api/auth/trocar-empresa', {
     method: 'POST',
@@ -833,8 +837,8 @@ export async function listarTemplatesBi() {
   return requisitar<RegistroGenerico[]>('/api/business-intelligence/templates');
 }
 
-export async function buscarDashboardFrota() {
-  return requisitar<RegistroGenerico>('/api/frota/dashboard');
+export async function buscarDashboardFrota(filtros?: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/frota/dashboard${montarQuery(filtros)}`);
 }
 
 export async function listarDepartamentosFrota() {

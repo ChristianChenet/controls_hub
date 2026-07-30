@@ -53,6 +53,10 @@ call "%RAIZ%ATUALIZAR_SERVIDOR_SEM_PERDER_DADOS.bat"
 if errorlevel 1 goto :falha
 
 call :log "Atualizacao por ZIP concluida."
+call :log "IMPORTANTE: reinicie o sistema para carregar o backend atualizado."
+echo.
+echo Atualizacao aplicada.
+echo Execute REINICIAR_SISTEMA.bat para carregar as novas rotas do backend.
 exit /b 0
 
 :falha

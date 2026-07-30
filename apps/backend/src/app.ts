@@ -179,6 +179,8 @@ import {
   listarVeiculosFrota,
   obterIndicadoresFrota,
   obterMapeamentoImportacaoFrota,
+  obterResumoIntegracaoFrota,
+  registrarStatusIntegracaoFrota,
   salvarConfiguracoesFrota,
   salvarDepartamentoFrota,
   salvarDespesaFrota,
@@ -1256,10 +1258,96 @@ export async function criarApp() {
     }
   });
 
-  app.get('/api/frota/dashboard', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { periodo?: string; motorista_id?: string; placa?: string; situacoes?: string } }>('/api/frota/dashboard', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['FROTA_ACESSAR', 'FROTA_CONSULTAR'], 'Usuario sem permissao para acessar o modulo Frota.');
     if (!usuario) return;
-    return sucesso(await obterIndicadoresFrota(usuario.empresaAtivaId!));
+    return sucesso(await obterIndicadoresFrota(usuario.empresaAtivaId!, {
+      periodo: request.query.periodo,
+      motoristaId: request.query.motorista_id ? Number(request.query.motorista_id) : null,
+      placa: request.query.placa,
+      situacoes: request.query.situacoes
+    }));
+  });
+
+  app.get('/api/frota/integracao/status', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_ACESSAR', 'FROTA_CONSULTAR'], 'Usuario sem permissao para consultar integracao Frota.');
+    if (!usuario) return;
+    await garantirEstruturaFrota();
+
+    const urlMonitorConfigurada = (await obterValorParametroSistema('URL_MONITOR_N8N', 'http://192.168.1.70:5678/')).trim();
+    const urlMonitor = urlMonitorConfigurada && !/^https?:\/\//i.test(urlMonitorConfigurada)
+      ? `http://${urlMonitorConfigurada}`
+      : urlMonitorConfigurada;
+    const intervaloMinutos = Number(await obterValorParametroSistema('INTERVALO_MONITOR_N8N_MINUTOS', '15')) || 15;
+    const limiteSemIntegracaoMinutos = Number(await obterValorParametroSistema('LIMITE_ALERTA_INTEGRACAO_FROTA_N8N_MINUTOS', '60')) || 60;
+    const consultaEm = new Date();
+    let n8nOnline = false;
+    let detalheTecnico = '';
+
+    if (urlMonitor) {
+      n8nOnline = await testarPortaTcp(urlMonitor);
+      detalheTecnico = n8nOnline ? 'Porta TCP respondendo' : 'Porta TCP sem resposta';
+    }
+
+    const resumoIntegracao = await obterResumoIntegracaoFrota(usuario.empresaAtivaId!);
+    const ultimoStatus = resumoIntegracao.ultimo_status as Record<string, any> | null;
+    const resumo = resumoIntegracao.resumo as Record<string, any>;
+    const ultimaIntegracaoBase = ultimoStatus?.ultima_integracao_em ?? resumo.ultima_integracao_despesas_em ?? null;
+    const ultimaIntegracaoEm = ultimaIntegracaoBase ? new Date(ultimaIntegracaoBase) : null;
+    const ultimaConsultaEm = ultimoStatus?.ultima_consulta_em ? new Date(ultimoStatus.ultima_consulta_em) : consultaEm;
+    const minutosSemIntegracao = ultimaIntegracaoEm
+      ? Math.floor((consultaEm.getTime() - ultimaIntegracaoEm.getTime()) / 60000)
+      : null;
+    const statusN8n = String(ultimoStatus?.status ?? 'SEM_BATIMENTO').toUpperCase();
+    const quantidadeErro = Number(ultimoStatus?.quantidade_erro ?? 0);
+    const pendentesIntegracao = Number(resumo.despesas_validadas_pendentes ?? 0);
+    const semIntegracao = minutosSemIntegracao === null || minutosSemIntegracao > limiteSemIntegracaoMinutos;
+    const cor = !n8nOnline || statusN8n === 'ERRO'
+      ? 'VERMELHO'
+      : semIntegracao || quantidadeErro > 0 || pendentesIntegracao > 0
+        ? 'AMARELO'
+        : 'VERDE';
+    const mensagem = !n8nOnline
+      ? 'n8n offline ou inacessivel para a integracao Frota.'
+      : statusN8n === 'ERRO'
+        ? `Workflow Frota registrou erro: ${String(ultimoStatus?.mensagem ?? 'sem detalhe')}`
+        : semIntegracao
+          ? `n8n online, mas sem integracao Frota recente ha mais de ${limiteSemIntegracaoMinutos} minuto(s).`
+          : pendentesIntegracao > 0
+            ? `n8n online. Existem ${pendentesIntegracao} despesa(s) validadas pendentes de integracao.`
+            : 'n8n online e integracao Frota operacional.';
+
+    return sucesso({
+      cor,
+      modulo: 'FROTA',
+      workflow_nome: String(ultimoStatus?.workflow_nome ?? 'CONTROL S - Integracao DECIS x Control S Hub - Frota'),
+      n8n_online: n8nOnline,
+      url_monitor: urlMonitor,
+      ultima_consulta_em: ultimaConsultaEm.toISOString(),
+      ultima_integracao_em: ultimaIntegracaoEm?.toISOString() ?? null,
+      minutos_sem_integracao: minutosSemIntegracao,
+      limite_sem_integracao_minutos: limiteSemIntegracaoMinutos,
+      intervalo_monitor_minutos: intervaloMinutos,
+      mensagem,
+      detalhe_tecnico: detalheTecnico,
+      status_workflow: statusN8n,
+      quantidade_lida: Number(ultimoStatus?.quantidade_lida ?? 0),
+      quantidade_integrada: Number(ultimoStatus?.quantidade_integrada ?? resumo.despesas_integradas_hoje ?? 0),
+      quantidade_erro: quantidadeErro,
+      despesas_validadas_pendentes: pendentesIntegracao,
+      despesas_integradas_hoje: Number(resumo.despesas_integradas_hoje ?? 0),
+      despesas_integradas_total: Number(resumo.despesas_integradas_total ?? 0),
+      despesas_validadas_total: Number(resumo.despesas_validadas_total ?? 0)
+    });
+  });
+
+  app.post('/api/frota/integracao/status', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_VALIDAR_DESPESAS', 'FROTA_IMPORTAR_DESPESAS'], 'Usuario sem permissao para registrar integracao Frota.');
+    if (!usuario) return;
+    await garantirEstruturaFrota();
+    const registro = await registrarStatusIntegracaoFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_CONFIGURACOES', tipoEvento: 'STATUS_INTEGRACAO_FROTA', tabelaAfetada: 'frota_integracoes_status', registroId: Number((registro as any)?.id ?? 0), descricao: 'Status da integracao Frota registrado.', dadosNovos: registro });
+    return sucesso(registro);
   });
 
   app.get('/api/frota/departamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
@@ -1363,13 +1451,13 @@ export async function criarApp() {
   });
 
   app.get('/api/frota/despesas-tipos', { preHandler: (app as any).autenticar }, async (request, reply) => {
-    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para configurar De/Para.');
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_IMPORTAR_DESPESAS'], 'Usuario sem permissao para consultar De/Para.');
     if (!usuario) return;
     return sucesso(await listarDespesasTiposFrota());
   });
 
   app.post('/api/frota/despesas-tipos', { preHandler: (app as any).autenticar }, async (request, reply) => {
-    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR'], 'Usuario sem permissao para salvar De/Para.');
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_IMPORTAR_DESPESAS'], 'Usuario sem permissao para salvar De/Para.');
     if (!usuario) return;
     const registro = await salvarDespesaTipoFrota(request.body as any, usuario.id);
     await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_DESPESA_TIPO', tipoEvento: 'SALVAR_DESPESA_TIPO', tabelaAfetada: 'frota_despesas_tipos', registroId: Number((registro as any)?.id ?? 0), descricao: 'De/Para de despesa da frota salvo.', dadosNovos: registro });
@@ -1429,8 +1517,8 @@ export async function criarApp() {
     if (!ids.length) {
       return reply.status(400).send(falha('DESPESAS_OBRIGATORIAS', 'Selecione ao menos uma despesa.'));
     }
-    const resultado = await validarDespesasFrota(usuario.empresaAtivaId!, ids, request.body.validado !== false, usuario.id);
-    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: request.body.validado === false ? 'REMOVER_VALIDACAO' : 'VALIDAR_DESPESAS', tabelaAfetada: 'frota_despesas', registroId: 0, descricao: 'Validacao em lote executada.', dadosNovos: { ids, resultado } });
+    const resultado = await validarDespesasFrota(Number(usuario.empresaAtivaId), ids, request.body.validado !== false, Number(usuario.id));
+    await registrarAuditoria({ empresaId: Number(usuario.empresaAtivaId), usuarioId: Number(usuario.id), moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: request.body.validado === false ? 'REMOVER_VALIDACAO' : 'VALIDAR_DESPESAS', tabelaAfetada: 'frota_despesas', registroId: 0, descricao: 'Validacao em lote executada.', dadosNovos: { ids, resultado } });
     return sucesso(resultado);
   });
 
@@ -1444,8 +1532,8 @@ export async function criarApp() {
     if (!request.body.motivo_id) {
       return reply.status(400).send(falha('MOTIVO_CANCELAMENTO_OBRIGATORIO', 'Informe o motivo do cancelamento.'));
     }
-    const resultado = await cancelarDespesasFrota(usuario.empresaAtivaId!, ids, Number(request.body.motivo_id), request.body.observacao ?? null, usuario.id);
-    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: 'CANCELAR_DESPESAS', tabelaAfetada: 'frota_despesas', registroId: 0, descricao: 'Cancelamento em lote executado.', dadosNovos: { ids, resultado } });
+    const resultado = await cancelarDespesasFrota(Number(usuario.empresaAtivaId), ids, Number(request.body.motivo_id), request.body.observacao ?? null, Number(usuario.id));
+    await registrarAuditoria({ empresaId: Number(usuario.empresaAtivaId), usuarioId: Number(usuario.id), moduloCodigo: 'FROTA', telaCodigo: 'FROTA_VALIDACAO', tipoEvento: 'CANCELAR_DESPESAS', tabelaAfetada: 'frota_despesas', registroId: 0, descricao: 'Cancelamento em lote executado.', dadosNovos: { ids, resultado } });
     return sucesso(resultado);
   });
 

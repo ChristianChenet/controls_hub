@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS frota_tipos_despesas (
   codigo_decis VARCHAR(60) NOT NULL,
   descricao VARCHAR(180) NOT NULL,
   natureza_credito_decis VARCHAR(20) NOT NULL DEFAULT '2',
+  conf_custo_decis VARCHAR(60),
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   criado_por_usuario_id BIGINT REFERENCES usuarios(id),
@@ -84,7 +85,8 @@ CREATE TABLE IF NOT EXISTS frota_tipos_despesas (
 );
 
 ALTER TABLE frota_tipos_despesas
-  ADD COLUMN IF NOT EXISTS natureza_credito_decis VARCHAR(20) NOT NULL DEFAULT '2';
+  ADD COLUMN IF NOT EXISTS natureza_credito_decis VARCHAR(20) NOT NULL DEFAULT '2',
+  ADD COLUMN IF NOT EXISTS conf_custo_decis VARCHAR(60);
 
 CREATE TABLE IF NOT EXISTS frota_fornecedores (
   id BIGSERIAL PRIMARY KEY,
@@ -202,6 +204,22 @@ CREATE TABLE IF NOT EXISTS frota_lotes_importacao (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS frota_integracoes_status (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id BIGINT REFERENCES empresas(id),
+  workflow_nome VARCHAR(180) NOT NULL DEFAULT 'CONTROL S - Integracao DECIS x Control S Hub - Frota',
+  ultima_consulta_em TIMESTAMPTZ,
+  ultima_integracao_em TIMESTAMPTZ,
+  status VARCHAR(40) NOT NULL DEFAULT 'PENDENTE',
+  mensagem TEXT,
+  quantidade_lida INTEGER NOT NULL DEFAULT 0,
+  quantidade_integrada INTEGER NOT NULL DEFAULT 0,
+  quantidade_erro INTEGER NOT NULL DEFAULT 0,
+  detalhes JSONB NOT NULL DEFAULT '{}'::JSONB,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  criado_por_usuario_id BIGINT REFERENCES usuarios(id)
+);
+
 CREATE TABLE IF NOT EXISTS frota_despesas (
   id BIGSERIAL PRIMARY KEY,
   empresa_id BIGINT NOT NULL REFERENCES empresas(id),
@@ -282,7 +300,7 @@ ALTER TABLE frota_despesas
 
 DROP INDEX IF EXISTS idx_frota_despesas_duplicidade;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_frota_despesas_duplicidade
+CREATE INDEX IF NOT EXISTS idx_frota_despesas_duplicidade
 ON frota_despesas (empresa_id, fornecedor_id, numero_documento, COALESCE(placa, ''), data_despesa, descricao_despesa)
 WHERE excluido = FALSE;
 
@@ -319,31 +337,8 @@ ON frota_despesas
 FOR EACH ROW
 EXECUTE FUNCTION fn_frota_atualizar_odometro();
 
-CREATE OR REPLACE FUNCTION fn_frota_bloquear_reducao_odometro()
-RETURNS TRIGGER AS $$
-DECLARE
-  maior_hodometro NUMERIC(15, 2);
-BEGIN
-  SELECT COALESCE(MAX(hodometro), 0)
-  INTO maior_hodometro
-  FROM frota_despesas
-  WHERE veiculo_id = NEW.id
-    AND excluido = FALSE;
-
-  IF NEW.odometro_atual < maior_hodometro THEN
-    RAISE EXCEPTION 'Odometro atual nao pode ser inferior ao maior hodometro lancado (%).', maior_hodometro;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
 DROP TRIGGER IF EXISTS trg_frota_bloquear_reducao_odometro ON frota_veiculos;
-CREATE TRIGGER trg_frota_bloquear_reducao_odometro
-BEFORE INSERT OR UPDATE OF odometro_atual
-ON frota_veiculos
-FOR EACH ROW
-EXECUTE FUNCTION fn_frota_bloquear_reducao_odometro();
+DROP FUNCTION IF EXISTS fn_frota_bloquear_reducao_odometro();
 
 CREATE INDEX IF NOT EXISTS idx_frota_departamentos_empresa ON frota_departamentos(empresa_id, descricao);
 CREATE INDEX IF NOT EXISTS idx_frota_motoristas_nome ON frota_motoristas(nome);
@@ -357,6 +352,7 @@ CREATE INDEX IF NOT EXISTS idx_frota_despesas_integrado ON frota_despesas(integr
 CREATE INDEX IF NOT EXISTS idx_frota_despesas_cancelado ON frota_despesas(cancelado);
 CREATE INDEX IF NOT EXISTS idx_frota_historicos_registro ON frota_historicos(tabela_afetada, registro_id, criado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_frota_motivos_cancelamento_descricao ON frota_motivos_cancelamento(descricao);
+CREATE INDEX IF NOT EXISTS idx_frota_integracoes_status_empresa ON frota_integracoes_status(empresa_id, criado_em DESC);
 
 INSERT INTO frota_motivos_cancelamento (codigo_decis, descricao, ativo)
 VALUES

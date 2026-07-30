@@ -52,6 +52,16 @@
   color: var(--texto);
 }
 
+.avisoModalVinculo {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
 .frotaHero {
   align-items: center;
   background:
@@ -122,6 +132,18 @@
   display: flex;
   gap: 12px;
   justify-content: space-between;
+}
+
+.frotaProgressoLeitura strong {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.frotaProgressoLeitura .gaugeAtualizacao {
+  animation: girarGaugeAtualizacao .8s linear infinite;
+  height: 20px;
+  width: 20px;
 }
 
 .frotaProgressoLeitura progress {

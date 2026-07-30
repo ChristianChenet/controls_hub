@@ -74,6 +74,7 @@ import {
   obterCotacao,
   obterMinhaConfiguracaoEmail,
   obterStatusN8n,
+  obterStatusIntegracaoFrota,
   prepararEnvioMassa,
   RegistroGenerico,
   registrarTimelineCotacao,
@@ -3035,6 +3036,23 @@ function formatarDataHoraBrasileira(valor: unknown) {
   if (!valor) {
     return '0';
   }
+  const textoValor = String(valor);
+  const possuiFusoExplicito = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(textoValor.trim());
+  if (valor instanceof Date || possuiFusoExplicito) {
+    const dataComFuso = valor instanceof Date ? valor : new Date(textoValor);
+    if (!Number.isNaN(dataComFuso.getTime())) {
+      return dataComFuso.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: 'America/Sao_Paulo'
+      });
+    }
+  }
   const partes = obterPartesDataOperacional(valor);
   if (partes) {
     return `${partes.dia}/${partes.mes}/${partes.ano}, ${partes.hora}:${partes.minuto}:${partes.segundo}`;
@@ -3054,7 +3072,16 @@ function formatarDataHoraComFusoBrasileiro(valor: unknown) {
   if (Number.isNaN(data.getTime())) {
     return String(valor);
   }
-  return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return data.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'America/Sao_Paulo'
+  });
 }
 
 function formatarDataHoraOperacionalComAjuste(valor: unknown, horas: number) {
@@ -3164,30 +3191,34 @@ function SemaforoSlaCotacao({ cotacao, parametros, compacto = false }: { cotacao
   );
 }
 
-function SemaforoN8n() {
+function SemaforoN8n({ moduloAtual }: { moduloAtual: ModuloAtual }) {
   const [status, setStatus] = useState<RegistroGenerico | null>(null);
   const [erro, setErro] = useState('');
 
   useEffect(() => {
     let cancelado = false;
     let timeoutId: number | undefined;
+    setStatus(null);
+    setErro('');
 
     async function consultar() {
       try {
-        const retorno = await obterStatusN8n();
+        const retorno = moduloAtual === 'frota' ? await obterStatusIntegracaoFrota() : await obterStatusN8n();
         if (cancelado) {
           return;
         }
         setStatus(retorno);
         setErro('');
-        const intervalo = Math.max(1, Number(retorno.intervalo_monitor_minutos ?? 15) || 15);
+        const intervalo = moduloAtual === 'frota'
+          ? 3
+          : Math.max(1, Number(retorno.intervalo_monitor_minutos ?? 15) || 15);
         timeoutId = window.setTimeout(consultar, intervalo * 60000);
       } catch (error) {
         if (cancelado) {
           return;
         }
         setErro(error instanceof Error ? error.message : 'Falha ao consultar o monitor n8n.');
-        timeoutId = window.setTimeout(consultar, 15 * 60000);
+        timeoutId = window.setTimeout(consultar, (moduloAtual === 'frota' ? 3 : 15) * 60000);
       }
     }
 
@@ -3198,9 +3229,22 @@ function SemaforoN8n() {
         window.clearTimeout(timeoutId);
       }
     };
-  }, []);
+  }, [moduloAtual]);
 
   const cor = erro ? 'vermelho' : String(status?.cor ?? 'CINZA').toLowerCase();
+  const tituloFrota = erro
+    ? `Monitor Frota: falha na consulta. ${erro}`
+    : [
+        `Integração Frota: ${status?.mensagem ?? 'consultando...'}`,
+        `Workflow: ${status?.workflow_nome ?? 'CONTROL S - Integração DECIS x Control S Hub - Frota'}`,
+        `URL n8n: ${status?.url_monitor ?? '-'}`,
+        `Última consulta: ${formatarDataHoraBrasileira(status?.ultima_consulta_em)}`,
+        `Última integração Frota: ${status?.ultima_integracao_em ? formatarDataHoraBrasileira(status.ultima_integracao_em) : 'sem registro'}`,
+        `Despesas validadas pendentes: ${status?.despesas_validadas_pendentes ?? '-'}`,
+        `Integradas hoje: ${status?.despesas_integradas_hoje ?? '-'}`,
+        `Status workflow: ${status?.status_workflow ?? '-'}`,
+        `Detalhe: ${status?.detalhe_tecnico ?? '-'}`
+      ].join('\n');
   const titulo = erro
     ? `Monitor n8n: falha na consulta. ${erro}`
     : [
@@ -3213,7 +3257,7 @@ function SemaforoN8n() {
       ].join('\n');
 
   return (
-    <span className={`semaforoN8n ${cor}`} title={titulo} aria-label="Monitor n8n">
+    <span className={`semaforoN8n ${cor}`} title={moduloAtual === 'frota' ? tituloFrota : titulo} aria-label={moduloAtual === 'frota' ? 'Monitor integração Frota' : 'Monitor n8n'}>
       <i />
     </span>
   );
@@ -6579,7 +6623,7 @@ export function App() {
           <div className="topbarTitulo">
             <LogoModuloTopo moduloAtual={moduloAtual} />
             <div>
-              <span className="eyebrow linhaMonitorHub">Control S Hub - {nomeModuloTopo(moduloAtual)} <SemaforoN8n /></span>
+              <span className="eyebrow linhaMonitorHub">Control S Hub - {nomeModuloTopo(moduloAtual)} <SemaforoN8n moduloAtual={moduloAtual} /></span>
               <h1>{titulo}</h1>
             </div>
           </div>
