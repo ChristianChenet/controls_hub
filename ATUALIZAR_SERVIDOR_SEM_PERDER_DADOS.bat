@@ -55,7 +55,7 @@ popd
 
 call :log ""
 if "%APLICAR_SQL_PREDEFINIDO%"=="" (
-  set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 029 no banco? (S/N): "
+  set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 034 no banco? (S/N): "
 ) else (
   set "APLICAR_SQL=%APLICAR_SQL_PREDEFINIDO%"
   call :log "Opcao de banco recebida do aplicador ZIP: %APLICAR_SQL%"
@@ -126,6 +126,18 @@ if /I "%APLICAR_SQL%"=="S" (
   if errorlevel 1 goto :falha_popd
   call :log "Aplicando migration 030_parametros_monitor_n8n.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\030_parametros_monitor_n8n.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 031_bi_acompanhamento_logistico_top10.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\031_bi_acompanhamento_logistico_top10.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 032_normalizar_transportadora_escolhida.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\032_normalizar_transportadora_escolhida.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 033_modulo_frota.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\033_modulo_frota.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 034_alterar_frete_apos_cte.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\034_alterar_frete_apos_cte.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."

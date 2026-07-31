@@ -2541,6 +2541,7 @@ export async function alterarValorFreteManual(dados: {
   prazoDias?: number | null;
   usuarioId: number;
   observacao?: string | null;
+  permiteAlterarAposCte?: boolean;
 }) {
   validarPrazoOperacional(dados.prazoDias);
 
@@ -2569,6 +2570,8 @@ export async function alterarValorFreteManual(dados: {
     valor_frete: string;
     prazo_dias: number | null;
     origem_cotacao: string;
+    status: string | null;
+    bloqueado_para_alteracao: boolean;
   }>(
     `SELECT
       cft.empresa_id,
@@ -2577,7 +2580,9 @@ export async function alterarValorFreteManual(dados: {
       cft.codigo_chave,
       cft.valor_frete,
       COALESCE(cft.prazo_dias, 0) AS prazo_dias,
-      cft.origem_cotacao
+      cft.origem_cotacao,
+      c.status,
+      COALESCE(c.bloqueado_para_alteracao, FALSE) AS bloqueado_para_alteracao
     FROM cotacoes_frete_transportadoras cft
     INNER JOIN cotacoes_frete c
       ON c.empresa_id = cft.empresa_id
@@ -2590,7 +2595,6 @@ export async function alterarValorFreteManual(dados: {
       AND ($4::VARCHAR IS NULL OR cft.tipo_documento = $4)
       AND ($5::VARCHAR IS NULL OR cft.numero_documento = $5)
       AND ($6::VARCHAR IS NULL OR cft.codigo_chave = $6)
-      AND c.bloqueado_para_alteracao = FALSE
       AND COALESCE(c.excluido, FALSE) = FALSE
       AND cft.origem_cotacao NOT IN ('ERP', 'AUTOMATICA')`,
     [
@@ -2604,6 +2608,13 @@ export async function alterarValorFreteManual(dados: {
   );
 
   if (!anterior) {
+    return null;
+  }
+
+  const cotacaoFinalizada = String(anterior.status ?? '').toUpperCase() === 'CTE_EMITIDO';
+  const permiteAlterarFinalizada = Boolean(dados.permiteAlterarAposCte) && cotacaoFinalizada;
+
+  if (anterior.bloqueado_para_alteracao && !permiteAlterarFinalizada) {
     return null;
   }
 

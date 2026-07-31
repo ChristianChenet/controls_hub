@@ -6166,7 +6166,8 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         { chave: 'LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS', valor: parametros.LIMITE_ALERTA_INTEGRACAO_N8N_MINUTOS ?? '30' },
         { chave: 'ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO', valor: parametros.ORIGENS_OBRIGAM_TRANSPORTADORA_PEDIDO ?? '' },
         { chave: 'MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID', valor: parametros.MOTIVO_PADRAO_TRANSPORTADORA_PEDIDO_ID ?? '' },
-        { chave: 'CHECKLIST_TROCA_TRANSPORTADORA_FATURADA', valor: parametros.CHECKLIST_TROCA_TRANSPORTADORA_FATURADA ?? '' }
+        { chave: 'CHECKLIST_TROCA_TRANSPORTADORA_FATURADA', valor: parametros.CHECKLIST_TROCA_TRANSPORTADORA_FATURADA ?? '' },
+        { chave: 'PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE', valor: parametros.PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE ?? 'SIM' }
       ]);
       setMensagem('Configurações salvas com sucesso.');
     } catch (error) {
@@ -6221,6 +6222,12 @@ function ConfiguracoesSistema({ empresaAtiva }: { empresaAtiva: EmpresaUsuario |
         <label>% diferença frete cotado aut.<input value={parametros.PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT ?? ''} onChange={(evento) => setParametros({ ...parametros, PERCENTUAL_DIFERENCA_FRETE_COTADO_AUT: evento.target.value })} /></label>
         <label>Dias aceitáveis prazo pedido x cotação<input value={parametros.DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO ?? ''} onChange={(evento) => setParametros({ ...parametros, DIAS_ACEITAVEL_DIFERENCA_PRAZO_PEDIDO_COTACAO: evento.target.value })} /></label>
         <label>% frete cotado com o total<input value={parametros.PERCENTUAL_FRETE_COTADO_TOTAL ?? ''} onChange={(evento) => setParametros({ ...parametros, PERCENTUAL_FRETE_COTADO_TOTAL: evento.target.value })} /></label>
+        <label>Permite alterar frete cotado apÃ³s CT-e
+          <select value={parametros.PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE ?? 'SIM'} onChange={(evento) => setParametros({ ...parametros, PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE: evento.target.value })}>
+            <option value="SIM">SIM</option>
+            <option value="NAO">NAO</option>
+          </select>
+        </label>
         <label>Hora inicial expediente<input type="time" value={parametros.HORA_INICIAL_EXPEDIENTE_COTACAO ?? '08:00'} onChange={(evento) => setParametros({ ...parametros, HORA_INICIAL_EXPEDIENTE_COTACAO: evento.target.value })} /></label>
         <label>Hora final expediente<input type="time" value={parametros.HORA_FINAL_EXPEDIENTE_COTACAO ?? '17:30'} onChange={(evento) => setParametros({ ...parametros, HORA_FINAL_EXPEDIENTE_COTACAO: evento.target.value })} /></label>
         <label>Hora de corte diário<input type="time" value={parametros.HORA_CORTE_DIARIA_COTACAO ?? '09:00'} onChange={(evento) => setParametros({ ...parametros, HORA_CORTE_DIARIA_COTACAO: evento.target.value })} /></label>

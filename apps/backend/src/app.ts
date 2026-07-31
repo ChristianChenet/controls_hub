@@ -2469,13 +2469,18 @@ export async function criarApp() {
       return reply.status(400).send(falha('PRAZO_INVALIDO', 'Informe um prazo em dias entre 0 e 999.'));
     }
 
+    const permiteAlterarAposCte = String(
+      await obterValorParametroSistema('PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE', 'SIM')
+    ).toUpperCase() !== 'NAO';
+
     const resultado = await alterarValorFreteManual({
       empresaId: usuario!.empresaAtivaId!,
       cotacaoTransportadoraId: decodeURIComponent(request.params.id),
       valorFrete,
       prazoDias,
       usuarioId: usuario!.id,
-      observacao: request.body.observacao ?? null
+      observacao: request.body.observacao ?? null,
+      permiteAlterarAposCte
     });
 
     if (!resultado) {
