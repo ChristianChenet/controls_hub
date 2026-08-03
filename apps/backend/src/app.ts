@@ -1833,7 +1833,7 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string; frete_gratis?: string; cotacao_criada_inicio?: string; cotacao_criada_fim?: string; data_documento_inicio?: string; data_documento_fim?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { situacao?: string; busca?: string; envio?: string; status?: string; vendedor?: string; transportadora?: string; faturado?: string; fluxo_logistico?: string; frete_gratis?: string; cotacao_criada_inicio?: string; cotacao_criada_fim?: string; data_documento_inicio?: string; data_documento_fim?: string; somente_top3?: string } }>('/api/cotacao-frete/envio-massa/pedidos', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
@@ -2469,9 +2469,10 @@ export async function criarApp() {
       return reply.status(400).send(falha('PRAZO_INVALIDO', 'Informe um prazo em dias entre 0 e 999.'));
     }
 
-    const permiteAlterarAposCte = String(
-      await obterValorParametroSistema('PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE', 'SIM')
-    ).toUpperCase() !== 'NAO';
+    const permissoesUsuario = usuario!.superadmin || usuario!.administrador
+      ? ['ALTERAR_FRETE_COTADO_APOS_CTE']
+      : await listarCodigosPermissaoUsuario(usuario!.id, usuario!.empresaAtivaId!);
+    const permiteAlterarAposCte = permissoesUsuario.includes('ALTERAR_FRETE_COTADO_APOS_CTE');
 
     const resultado = await alterarValorFreteManual({
       empresaId: usuario!.empresaAtivaId!,

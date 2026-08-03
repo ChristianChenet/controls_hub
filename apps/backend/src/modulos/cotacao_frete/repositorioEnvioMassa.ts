@@ -101,6 +101,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
   cotacao_criada_fim?: string;
   data_documento_inicio?: string;
   data_documento_fim?: string;
+  somente_top3?: string | boolean;
 }) {
   const situacao = filtros.situacao ?? 'ATIVOS';
   const busca = `%${String(filtros.busca ?? '').toLowerCase()}%`;
@@ -110,6 +111,7 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
     ? 'SOMENTE'
     : String(filtros.fluxo_logistico ?? '').trim().toUpperCase() || null;
   const filtroFreteGratis = normalizarFiltroFreteGratis(filtros.frete_gratis);
+  const somenteTop3 = String(filtros.somente_top3 ?? '').toLowerCase() === 'true';
 
   return consultar(
     `SELECT
@@ -208,6 +210,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       e.nome AS etapa_nome,
       COUNT(DISTINCT cft.transportadora_id) AS fornecedores_vinculados,
       COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') AS fornecedores_enviados,
+      COALESCE(envio_stats.total_transportadoras_envio, 0) AS total_transportadoras_envio,
+      COALESCE(envio_stats.total_enviadas_envio, 0) AS total_enviadas_envio,
+      COALESCE(envio_stats.total_pendentes_envio, 0) AS total_pendentes_envio,
       COALESCE(melhor.nome_fantasia, c.transportadora_pedido_nome, 'Sem transportadora') AS transportadora_referencia,
       melhor.transportadora_id AS transportadora_cotacao_automatica_id,
       melhor.nome_fantasia AS transportadora_cotacao_automatica,
@@ -289,6 +294,43 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       ORDER BY cftr.valor_frete ASC NULLS LAST, COALESCE(cftr.ranking_frete, 999999) ASC, cftr.transportadora_id ASC
       LIMIT 1
     ) melhor ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) AS total_transportadoras_envio,
+        COUNT(*) FILTER (WHERE elegivel.ja_enviado) AS total_enviadas_envio,
+        COUNT(*) FILTER (WHERE NOT elegivel.ja_enviado) AS total_pendentes_envio
+      FROM (
+        SELECT
+          base.transportadora_id,
+          base.posicao_cotacao,
+          EXISTS (
+            SELECT 1
+            FROM cotacoes_frete_envios_fornecedores ef_envio
+            WHERE ef_envio.empresa_id = c.empresa_id
+              AND ef_envio.tipo_documento = c.tipo_documento
+              AND ef_envio.numero_documento = c.numero_documento
+              AND ef_envio.codigo_chave = c.codigo_chave
+              AND ef_envio.transportadora_id = base.transportadora_id
+              AND ef_envio.status_envio = 'ENVIADO'
+          ) AS ja_enviado
+        FROM (
+          SELECT
+            cft_envio.transportadora_id,
+            RANK() OVER (
+              ORDER BY cft_envio.valor_frete ASC NULLS LAST,
+                COALESCE(cft_envio.ranking_frete, 999999) ASC,
+                cft_envio.transportadora_id ASC
+            ) AS posicao_cotacao
+          FROM cotacoes_frete_transportadoras cft_envio
+          WHERE cft_envio.empresa_id = c.empresa_id
+            AND cft_envio.tipo_documento = c.tipo_documento
+            AND cft_envio.numero_documento = c.numero_documento
+            AND cft_envio.codigo_chave = c.codigo_chave
+            AND COALESCE(cft_envio.valor_frete, 0) > 0
+        ) base
+        WHERE ($15::BOOLEAN = FALSE OR base.posicao_cotacao <= 3)
+      ) elegivel
+    ) envio_stats ON TRUE
     CROSS JOIN LATERAL (
       SELECT
         MAX(CASE WHEN chave = 'VALOR_FRETE_COTADO_AUT_MAIOR_QUE' AND valor ~ '^-?[0-9]+([,.][0-9]+)?$' THEN REPLACE(valor, ',', '.')::NUMERIC END) AS limite_valor_auto,
@@ -379,6 +421,9 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       nfes.numeros_nfe,
       nfes.total_nfes,
       outras.total_outras_cotacoes,
+      envio_stats.total_transportadoras_envio,
+      envio_stats.total_enviadas_envio,
+      envio_stats.total_pendentes_envio,
       c.bloqueado_para_alteracao,
       c.criado_em,
       e.nome,
@@ -394,8 +439,8 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       params.limite_dias_prazo
     HAVING (
       $4 = 'TODOS'
-      OR ($4 = 'NAO_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') = 0)
-      OR ($4 = 'JA_ENVIADOS' AND COUNT(DISTINCT ef.transportadora_id) FILTER (WHERE ef.status_envio = 'ENVIADO') > 0)
+      OR ($4 = 'NAO_ENVIADOS' AND COALESCE(envio_stats.total_pendentes_envio, 0) > 0)
+      OR ($4 = 'JA_ENVIADOS' AND COALESCE(envio_stats.total_enviadas_envio, 0) > 0)
     )
     ORDER BY c.criado_em DESC`,
     [
@@ -412,7 +457,8 @@ export async function listarPedidosAptosEnvioMassa(empresaId: number, filtros: {
       filtros.cotacao_criada_fim || null,
       filtros.data_documento_inicio || null,
       filtros.data_documento_fim || null,
-      filtroFreteGratis
+      filtroFreteGratis,
+      somenteTop3
     ]
   );
 }

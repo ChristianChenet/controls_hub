@@ -1,0 +1,47 @@
+-- CONTROL S HUB
+-- Permissao por perfil para alterar frete cotado mesmo apos CT-e emitido.
+
+INSERT INTO ACOES (
+  CODIGO,
+  NOME,
+  DESCRICAO,
+  ATIVO
+)
+VALUES (
+  'ALTERAR_FRETE_COTADO_APOS_CTE',
+  'Alterar Frete Cotado Apos CT-e',
+  'Permite alterar manualmente valor e prazo do frete cotado mesmo quando a cotacao estiver com CT-e emitido.',
+  TRUE
+)
+ON CONFLICT (CODIGO) DO UPDATE SET
+  NOME = EXCLUDED.NOME,
+  DESCRICAO = EXCLUDED.DESCRICAO,
+  ATIVO = TRUE;
+
+INSERT INTO PERFIS_PERMISSOES (
+  PERFIL_ID,
+  EMPRESA_ID,
+  MODULO_ID,
+  ACAO_ID,
+  PERMITIDO
+)
+SELECT
+  P.ID,
+  E.ID,
+  M.ID,
+  A.ID,
+  TRUE
+FROM PERFIS P
+CROSS JOIN EMPRESAS E
+INNER JOIN MODULOS M
+  ON M.CODIGO = 'COTACAO_FRETE'
+INNER JOIN ACOES A
+  ON A.CODIGO = 'ALTERAR_FRETE_COTADO_APOS_CTE'
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM PERFIS_PERMISSOES PP
+  WHERE PP.PERFIL_ID = P.ID
+    AND PP.EMPRESA_ID = E.ID
+    AND PP.MODULO_ID = M.ID
+    AND PP.ACAO_ID = A.ID
+);

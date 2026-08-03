@@ -1,22 +1,11 @@
 -- CONTROL S HUB
--- Permite configurar alteracao manual do frete cotado mesmo apos CT-e emitido.
-
-INSERT INTO parametros_sistema (chave, valor, descricao)
-VALUES (
-  'PERMITE_ALTERAR_FRETE_COTADO_APOS_CTE',
-  'SIM',
-  'Permite alterar valor e prazo do frete cotado manualmente mesmo quando a cotacao estiver com CT-e emitido.'
-)
-ON CONFLICT (chave) DO UPDATE SET
-  valor = COALESCE(NULLIF(parametros_sistema.valor, ''), EXCLUDED.valor),
-  descricao = EXCLUDED.descricao,
-  alterado_em = NOW();
+-- Permissao base para alteracao manual do frete cotado.
 
 INSERT INTO acoes (codigo, nome, descricao, ativo)
 VALUES (
   'ALTERAR_COTACAO_MANUAL',
   'Alterar Cotacao Manual',
-  'Permite alterar manualmente valor recebido da transportadora, conforme configuracao do sistema.',
+  'Permite alterar manualmente valor recebido da transportadora antes da finalizacao por CT-e.',
   TRUE
 )
 ON CONFLICT (codigo) DO UPDATE SET

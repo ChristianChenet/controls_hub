@@ -236,6 +236,7 @@ export async function listarPedidosEnvioMassa(filtros: {
   cotacao_criada_fim?: string;
   data_documento_inicio?: string;
   data_documento_fim?: string;
+  somente_top3?: string | boolean;
 }) {
   const parametros = new URLSearchParams();
   Object.entries(filtros).forEach(([chave, valor]) => {
