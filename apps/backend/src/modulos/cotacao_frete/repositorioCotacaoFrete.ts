@@ -2595,8 +2595,7 @@ export async function alterarValorFreteManual(dados: {
       AND ($4::VARCHAR IS NULL OR cft.tipo_documento = $4)
       AND ($5::VARCHAR IS NULL OR cft.numero_documento = $5)
       AND ($6::VARCHAR IS NULL OR cft.codigo_chave = $6)
-      AND COALESCE(c.excluido, FALSE) = FALSE
-      AND cft.origem_cotacao NOT IN ('ERP', 'AUTOMATICA')`,
+      AND COALESCE(c.excluido, FALSE) = FALSE`,
     [
       transportadoraId,
       dados.empresaId,

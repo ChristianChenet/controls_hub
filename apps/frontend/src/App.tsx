@@ -2567,7 +2567,7 @@ function CotacoesOperacional({
       return null;
     }
 
-    if (obterTransportadoraId(transportadora) !== Number(detalhe.cotacao.transportadora_pedido_id ?? 0)) {
+    if (!mesmaTransportadoraDoPedido(detalhe.cotacao, transportadora)) {
       return 'Origem obriga a transportadora do pedido.';
     }
 
@@ -3528,6 +3528,48 @@ function obterTransportadoraId(item?: RegistroGenerico | null) {
   return 0;
 }
 
+function normalizarComparacaoTransportadora(valor: unknown) {
+  return String(valor ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function cotacaoTemTransportadoraPedido(cotacao?: RegistroGenerico | null) {
+  if (!cotacao) {
+    return false;
+  }
+
+  return Boolean(
+    Number(cotacao.transportadora_pedido_id ?? 0) > 0
+    || normalizarComparacaoTransportadora(cotacao.transportadora_pedido_codigo || cotacao.codigo_transportadora_pedido)
+    || normalizarComparacaoTransportadora(cotacao.transportadora_pedido_nome)
+  );
+}
+
+function mesmaTransportadoraDoPedido(cotacao: RegistroGenerico, transportadora: RegistroGenerico) {
+  const idPedido = Number(cotacao.transportadora_pedido_id ?? 0);
+  const idTransportadora = obterTransportadoraId(transportadora);
+  if (idPedido > 0 && idTransportadora === idPedido) {
+    return true;
+  }
+
+  const codigoPedido = normalizarComparacaoTransportadora(cotacao.transportadora_pedido_codigo || cotacao.codigo_transportadora_pedido);
+  const codigoTransportadora = normalizarComparacaoTransportadora(transportadora.codigo_transportadora || transportadora.codigo_interno);
+  if (codigoPedido && codigoTransportadora && codigoPedido === codigoTransportadora) {
+    return true;
+  }
+
+  const nomePedido = normalizarComparacaoTransportadora(cotacao.transportadora_pedido_nome);
+  const nomeTransportadora = normalizarComparacaoTransportadora(
+    transportadora.nome_fantasia || transportadora.razao_social || transportadora.nome_transportadora
+  );
+
+  return Boolean(nomePedido && nomeTransportadora && nomePedido === nomeTransportadora);
+}
+
 function podeRemoverTransportadoraCotacao(item?: RegistroGenerico | null) {
   if (!item) {
     return false;
@@ -3563,7 +3605,7 @@ function listarOrigensObrigatorias(parametros: Record<string, string>) {
 
 function cotacaoObrigaTransportadoraPedido(cotacao: RegistroGenerico, parametros: Record<string, string>) {
   const origem = String(cotacao.origem_comercial ?? '').trim().toUpperCase();
-  return Boolean(cotacao.transportadora_pedido_id) && listarOrigensObrigatorias(parametros).includes(origem);
+  return cotacaoTemTransportadoraPedido(cotacao) && listarOrigensObrigatorias(parametros).includes(origem);
 }
 
 function obterMotivoPadraoTransportadoraPedido(parametros: Record<string, string>) {
@@ -3821,11 +3863,12 @@ function AbaTransportadoras({
       <PodioCotacao transportadoras={ordenadas} />
       <div className="comparativo compacto listaRankingAba">
         {exibidas.map((transportadora, indice) => {
+          const motivoBloqueioRegra = bloqueioEscolha?.(transportadora) ?? null;
           const motivoBloqueio = escolhaBloqueada
             ? 'CT-e emitido. A escolha da transportadora está bloqueada.'
-            : bloqueioEscolha?.(transportadora) ?? null;
+            : motivoBloqueioRegra;
           return (
-            <article className={`${indice === 0 ? 'primeiro' : indice === 1 ? 'segundo' : indice === 2 ? 'terceiro' : ''} ${motivoBloqueio ? 'cotacaoCardBloqueada' : ''}`} key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}-${indice}`}>
+            <article className={`${indice === 0 ? 'primeiro' : indice === 1 ? 'segundo' : indice === 2 ? 'terceiro' : ''} ${motivoBloqueioRegra ? 'cotacaoCardBloqueada' : ''}`} key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}-${indice}`}>
               <small>{indice + 1}º lugar · {String(transportadora.origem_cotacao ?? '-')}</small>
               <strong>{String(transportadora.nome_fantasia ?? '-')}</strong>
               <span>{formatarMoeda(transportadora.valor_frete)}</span>
@@ -4194,7 +4237,7 @@ function DetalheCotacaoConteudo({
       return null;
     }
 
-    if (obterTransportadoraId(transportadora) !== Number(detalhe.cotacao.transportadora_pedido_id ?? 0)) {
+    if (!mesmaTransportadoraDoPedido(detalhe.cotacao, transportadora)) {
       return 'Origem obriga a transportadora do pedido.';
     }
 
@@ -4916,6 +4959,7 @@ const colunasPadraoEnvioCotacao: ColunaEnvioCotacao[] = [
   { chave: 'prazo_cotacao_automatica', titulo: 'Prazo Cotação Aut.', largura: 122, visivel: true },
   { chave: 'fornecedores_vinculados', titulo: 'Fornecedores', largura: 96, visivel: true },
   { chave: 'fornecedores_enviados', titulo: 'Enviados', largura: 88, visivel: true },
+  { chave: 'envio_transportadoras_resumo', titulo: 'Envio', largura: 86, visivel: true },
   { chave: 'nome_destinatario', titulo: 'Cliente', largura: 220, visivel: true },
   { chave: 'cidade_destino', titulo: 'Cidade', largura: 130, visivel: true },
   { chave: 'sugestao_cotacao', titulo: 'Sugestão', largura: 96, visivel: true }
@@ -4940,6 +4984,12 @@ function compararValorOrdenacaoEnvio(valorA: unknown, valorB: unknown, direcao: 
   }
 
   return textoA.localeCompare(textoB, 'pt-BR', { numeric: true, sensitivity: 'base' }) * multiplicador;
+}
+
+function resumoEnvioTransportadoras(pedido: RegistroGenerico) {
+  const enviadas = Number(pedido.total_enviadas_envio ?? pedido.fornecedores_enviados ?? 0) || 0;
+  const elegiveis = Number(pedido.total_transportadoras_envio ?? pedido.fornecedores_vinculados ?? 0) || 0;
+  return `${enviadas} / ${elegiveis}`;
 }
 
 function EnvioMassaCotacoes() {
@@ -5080,6 +5130,9 @@ function EnvioMassaCotacoes() {
   function exportarCsvEnvio() {
     const cabecalho = colunasVisiveis.map((coluna) => coluna.titulo).join(';');
     const linhas = pedidosOrdenados.map((pedido: any) => colunasVisiveis.map((coluna) => {
+      if (coluna.chave === 'envio_transportadoras_resumo') {
+        return resumoEnvioTransportadoras(pedido);
+      }
       const valor = pedido[coluna.chave];
       if (typeof valor === 'boolean') {
         return valor ? 'Sim' : 'Nao';
@@ -5584,6 +5637,8 @@ function EnvioMassaCotacoes() {
                   <td key={coluna.chave} style={{ minWidth: coluna.largura, width: coluna.largura }}>
                     {coluna.chave === 'sla_operacional'
                       ? <SemaforoSlaCotacao cotacao={pedido} parametros={parametrosSla} compacto />
+                      : coluna.chave === 'envio_transportadoras_resumo'
+                        ? <strong>{resumoEnvioTransportadoras(pedido)}</strong>
                       : renderizarValorCampo(coluna.chave, pedido[coluna.chave], { semMoeda: true })}
                   </td>
                 ))}
