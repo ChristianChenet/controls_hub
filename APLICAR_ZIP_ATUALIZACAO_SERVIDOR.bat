@@ -5,6 +5,8 @@ REM Atualiza o Control S Hub a partir de um ZIP copiado para a pasta do sistema.
 REM Nao apaga banco, nao remove .env, logs, backups nem dados locais.
 
 set "RAIZ=%~dp0"
+set "RAIZ_ROBO=%RAIZ%"
+if "%RAIZ_ROBO:~-1%"=="\" set "RAIZ_ROBO=%RAIZ_ROBO:~0,-1%"
 set "ZIP=%RAIZ%ControlSHub_atualizacao.zip"
 set "TMP=%RAIZ%_update_tmp"
 set "DATA_LOG=%DATE:~-4%%DATE:~3,2%%DATE:~0,2%"
@@ -42,7 +44,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='Sil
 if errorlevel 1 goto :falha
 
 call :log "Copiando arquivos sem apagar dados locais..."
-robocopy "%TMP%" "%RAIZ%" /E /NFL /NDL /NJH /NJS /NP /XD node_modules logs backups dist-atualizacao .git /XF .env *.backup *.bak_* >> "%LOG%" 2>&1
+robocopy "%TMP%" "%RAIZ_ROBO%" /E /NFL /NDL /NJH /NJS /NP /XD node_modules logs backups dist-atualizacao .git /XF .env *.backup *.bak_* >> "%LOG%" 2>&1
 if %ERRORLEVEL% GEQ 8 goto :falha
 
 call :log "Limpando temporarios..."

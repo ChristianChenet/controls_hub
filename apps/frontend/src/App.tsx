@@ -3012,6 +3012,37 @@ function formatarNumero(valor: unknown, casas = 0) {
   });
 }
 
+function lerNumeroOperacional(valor: unknown) {
+  if (valor === null || valor === undefined || valor === '') {
+    return 0;
+  }
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor) ? valor : 0;
+  }
+  const texto = String(valor).trim();
+  if (!texto) {
+    return 0;
+  }
+  const normalizado = texto.includes(',')
+    ? texto.replace(/\./g, '').replace(',', '.')
+    : texto;
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) ? numero : 0;
+}
+
+function calcularCubagemTotal(cotacao: RegistroGenerico, itens: RegistroGenerico[] = []) {
+  const cubagemCabecalho = lerNumeroOperacional(cotacao.cubagem_total);
+  if (cubagemCabecalho > 0) {
+    return cubagemCabecalho;
+  }
+
+  return itens.reduce((total, item) => {
+    const cubagemItem = lerNumeroOperacional(item.cubagem_item ?? item.cubagem_por_item ?? item.cubagem);
+    const quantidade = Math.max(lerNumeroOperacional(item.quantidade), 1);
+    return total + (cubagemItem * quantidade);
+  }, 0);
+}
+
 function formatarPercentual(valor: unknown) {
   const numero = Number(valor ?? 0);
   return `${numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
@@ -3776,6 +3807,7 @@ function AbaTransportadoras({
   const ordenadas = [...transportadoras].sort(compararValorFreteRanking);
   const exibidas = verTodas ? ordenadas : ordenadas.slice(0, 3);
   const valorPedidoBase = cotacao.valor_frete_pedido ?? cotacao.valor_frete_venda ?? cotacao.valor_solicitado;
+  const cubagemTotalLinkLocal = calcularCubagemTotal(cotacao, itens ?? []);
 
   return (
     <section className="abaPainel">
@@ -3883,7 +3915,7 @@ function AbaTransportadoras({
                   ['Valor da Mercadoria', formatarMoeda(cotacao.valor_mercadoria ?? 0)],
                   ['Peso Real', formatarNumero(cotacao.peso_real ?? 0)],
                   ['Volumes Total', formatarNumero(cotacao.volumes_total ?? 0)],
-                  ['Cubagem Total', formatarNumero(cotacao.cubagem_total ?? 0)],
+                  ['Cubagem Total', formatarNumero(cubagemTotalLinkLocal, 4)],
                   ['Total do Frete', formatarMoeda(linkLocal.valor_frete ?? 0)],
                   ['Prazo informado na venda', `${formatarNumero(cotacao.prazo_informado_venda_dias ?? cotacao.prazo_pedido_dias ?? 0)} dias`],
                   ['Prazo tabela', `${formatarNumero(linkLocal.prazo_dias ?? 0)} dias`],
@@ -3915,7 +3947,7 @@ function AbaTransportadoras({
                         <td>{String(item.codigo_item ?? item.codigo ?? indice + 1)}</td>
                         <td>{String(item.descricao_item ?? item.descricao ?? 'Material não informado')}</td>
                         <td>{formatarNumero(item.quantidade ?? 0)}</td>
-                        <td>{formatarNumero(item.cubagem_por_item ?? item.cubagem ?? 0)}</td>
+                        <td>{formatarNumero(item.cubagem_item ?? item.cubagem_por_item ?? item.cubagem ?? 0, 4)}</td>
                         <td>{formatarNumero(item.largura ?? 0)}</td>
                         <td>{formatarNumero(item.altura ?? 0)}</td>
                         <td>{formatarNumero(item.comprimento ?? 0)}</td>
@@ -3965,6 +3997,10 @@ function AbaTransportadoras({
 }
 
 function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes, outrasCotacoes }: { cotacao: RegistroGenerico; itens: RegistroGenerico[]; notasFiscais?: RegistroGenerico[]; ctes?: RegistroGenerico[]; outrasCotacoes?: RegistroGenerico[] }) {
+  const cotacaoComCubagem: RegistroGenerico = {
+    ...cotacao,
+    cubagem_total: calcularCubagemTotal(cotacao, itens)
+  };
   const campos = [
     'origem_comercial', 'lote_fluxo_logistico', 'vendedor_nome', 'tipo_documento', 'numero_documento',
     'numero_pedido', 'data_documento', 'status', 'valor_mercadoria',
@@ -3981,7 +4017,7 @@ function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes, outra
         {campos.map((campo) => (
           <div key={campo}>
             <small>{rotuloCampo(campo)}</small>
-            <strong>{renderizarValorCampo(campo, cotacao[campo])}</strong>
+            <strong>{renderizarValorCampo(campo, cotacaoComCubagem[campo])}</strong>
           </div>
         ))}
       </div>
@@ -4007,7 +4043,7 @@ function DetalhamentoCompletoCotacao({ cotacao, itens, notasFiscais, ctes, outra
                   <td>{String(item.codigo_item ?? '-')}</td>
                   <td>{String(item.descricao_item ?? '-')}</td>
                   <td>{String(item.quantidade ?? '-')}</td>
-                  <td>{String(item.cubagem_item ?? '-')}</td>
+                  <td>{formatarNumero(item.cubagem_item ?? item.cubagem_por_item ?? item.cubagem ?? 0, 4)}</td>
                   <td>{String(item.largura ?? '-')}</td>
                   <td>{String(item.altura ?? '-')}</td>
                   <td>{String(item.comprimento ?? '-')}</td>
@@ -4539,6 +4575,7 @@ function PodioCotacao({ transportadoras }: { transportadoras: RegistroGenerico[]
 
 function PreviewTransportadora({ cotacao, itens }: { cotacao: RegistroGenerico; itens: RegistroGenerico[] }) {
   const [aberto, setAberto] = useState(false);
+  const cubagemTotal = calcularCubagemTotal(cotacao, itens);
   const campos = [
     ['Documento', cotacao.numero_documento],
     ['CNPJ Remetente', cotacao.cnpj_remetente ?? '-'],
@@ -4554,7 +4591,7 @@ function PreviewTransportadora({ cotacao, itens }: { cotacao: RegistroGenerico; 
     ['Valor Da Mercadoria', formatarMoeda(cotacao.valor_mercadoria ?? 0)],
     ['Peso Real', formatarNumero(cotacao.peso_real ?? 0, 2)],
     ['Volumes Total', formatarNumero(cotacao.volumes_total ?? 0, 2)],
-    ['Cubagem Total', formatarNumero(cotacao.cubagem_total ?? 0, 2)],
+    ['Cubagem Total', formatarNumero(cubagemTotal, 4)],
     ['Total do Frete', formatarMoeda(cotacao.valor_solicitado ?? 0)],
     ['% Tabela sobre o Total', formatarPercentual(cotacao.percentual_sobre_nf ?? 0)]
   ];
@@ -4595,7 +4632,7 @@ function PreviewTransportadora({ cotacao, itens }: { cotacao: RegistroGenerico; 
                     <td>{String(item.codigo_item ?? '-')}</td>
                     <td>{String(item.descricao_item ?? '-')}</td>
                     <td>{String(item.quantidade ?? '-')}</td>
-                    <td>{String(item.cubagem_item ?? '-')}</td>
+                    <td>{formatarNumero(item.cubagem_item ?? item.cubagem_por_item ?? item.cubagem ?? 0, 4)}</td>
                     <td>{String(item.largura ?? '-')}</td>
                     <td>{String(item.altura ?? '-')}</td>
                     <td>{String(item.comprimento ?? '-')}</td>
@@ -4720,6 +4757,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
   }
 
   const resumo = dados?.resumo ?? {};
+  const cubagemTotalPublica = calcularCubagemTotal(resumo, dados?.itens ?? []);
   const camposPublicos = [
     ['Tipo do Documento', resumo.tipo_documento],
     ['Documento', resumo.numero_documento],
@@ -4740,7 +4778,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
     ['Valor da Mercadoria', formatarMoeda(resumo.valor_mercadoria ?? 0)],
     ...(resumo.apresenta_peso === false ? [] : [['Peso Real', resumo.peso_real]]),
     ['Volumes Total', resumo.volumes_total],
-    ...(resumo.apresenta_cubagem === false ? [] : [['Cubagem Total', resumo.cubagem_total]]),
+    ...(resumo.apresenta_cubagem === false ? [] : [['Cubagem Total', formatarNumero(cubagemTotalPublica, 4)]]),
     ['Total do Frete', formatarMoeda(valorFrete || resumo.valor_solicitado || 0)],
     ...(resumo.recebe_prazo_solicitado === false ? [] : [['Prazo informado na venda', `${String(resumo.prazo_informado_venda_dias ?? resumo.prazo_pedido_dias ?? 0)} dias`]]),
     ['Prazo tabela', `${String(resumo.prazo_tabela_transportadora ?? resumo.menor_prazo_atual ?? 0)} dias`],
@@ -4806,7 +4844,7 @@ function PaginaPublicaCotacao({ token }: { token: string }) {
                       <td>{String(item.codigo_item ?? '-')}</td>
                       <td>{String(item.descricao_item ?? '-')}</td>
                       <td>{String(item.quantidade ?? '-')}</td>
-                      <td>{String(item.cubagem_item ?? '-')}</td>
+                      <td>{formatarNumero(item.cubagem_item ?? item.cubagem_por_item ?? item.cubagem ?? 0, 4)}</td>
                       <td>{String(item.largura ?? '-')}</td>
                       <td>{String(item.altura ?? '-')}</td>
                       <td>{String(item.comprimento ?? '-')}</td>
@@ -5598,7 +5636,7 @@ function EnvioMassaCotacoes() {
           <div className="detalheEnvioResumo">
             <article><span>Valor mercadoria</span><strong>R$ {String(detalheEnvio.cotacao.valor_mercadoria ?? '0')}</strong></article>
             <article><span>Peso</span><strong>{String(detalheEnvio.cotacao.peso_real ?? '0')}</strong></article>
-            <article><span>Cubagem</span><strong>{String(detalheEnvio.cotacao.cubagem_total ?? '0')}</strong></article>
+            <article><span>Cubagem</span><strong>{formatarNumero(calcularCubagemTotal(detalheEnvio.cotacao, detalheEnvio.itens ?? []), 4)}</strong></article>
             <article><span>Volumes</span><strong>{String(detalheEnvio.cotacao.volumes_total ?? '0')}</strong></article>
           </div>
           <div className="detalheEnvioGrid">
