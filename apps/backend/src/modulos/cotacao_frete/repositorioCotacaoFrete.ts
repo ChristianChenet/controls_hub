@@ -761,6 +761,39 @@ export type FiltrosCotacao = {
   limite?: number;
 };
 
+function montarCondicaoTransportadoraPedido(aliasCotacao = 'c', aliasTransportadora = 't') {
+  return `(
+    (${aliasCotacao}.transportadora_pedido_id IS NOT NULL AND ${aliasTransportadora}.id = ${aliasCotacao}.transportadora_pedido_id)
+    OR (
+      COALESCE(NULLIF(TRIM(${aliasCotacao}.transportadora_pedido_codigo), ''), '') <> ''
+      AND UPPER(TRIM(COALESCE(${aliasTransportadora}.codigo_interno, ''))) = UPPER(TRIM(${aliasCotacao}.transportadora_pedido_codigo))
+    )
+    OR (
+      COALESCE(NULLIF(TRIM(${aliasCotacao}.transportadora_pedido_nome), ''), '') <> ''
+      AND (
+        UPPER(TRIM(COALESCE(${aliasTransportadora}.nome_fantasia, ''))) = UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome))
+        OR UPPER(TRIM(COALESCE(${aliasTransportadora}.razao_social, ''))) = UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome))
+        OR (
+          COALESCE(NULLIF(TRIM(${aliasTransportadora}.nome_fantasia), ''), '') <> ''
+          AND UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome)) LIKE '%' || UPPER(TRIM(${aliasTransportadora}.nome_fantasia)) || '%'
+        )
+        OR (
+          COALESCE(NULLIF(TRIM(${aliasTransportadora}.nome_fantasia), ''), '') <> ''
+          AND UPPER(TRIM(${aliasTransportadora}.nome_fantasia)) LIKE '%' || UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome)) || '%'
+        )
+        OR (
+          COALESCE(NULLIF(TRIM(${aliasTransportadora}.razao_social), ''), '') <> ''
+          AND UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome)) LIKE '%' || UPPER(TRIM(${aliasTransportadora}.razao_social)) || '%'
+        )
+        OR (
+          COALESCE(NULLIF(TRIM(${aliasTransportadora}.razao_social), ''), '') <> ''
+          AND UPPER(TRIM(${aliasTransportadora}.razao_social)) LIKE '%' || UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome)) || '%'
+        )
+      )
+    )
+  )`;
+}
+
 export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCotacao = {}) {
   await garantirColunasOperacionaisCotacao();
 
@@ -1038,7 +1071,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
     ) outras ON TRUE
     WHERE e.empresa_id = $1
       AND e.ativa = TRUE
-      AND ($4::VARCHAR IS NULL OR e.codigo = $4)
+      AND ($4::VARCHAR IS NULL OR e.codigo = ANY(string_to_array($4::VARCHAR, ',')))
     ORDER BY e.ordem ASC, c.criado_em ASC NULLS LAST`,
     [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true, normalizarFiltroFreteGratis(filtros.freteGratis), filtros.cidade ? `%${filtros.cidade}%` : null]
   );
@@ -2301,6 +2334,7 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
     numero_documento: string;
     codigo_chave: string;
     transportadora_pedido_id: number | null;
+    transportadora_auto_id: number | null;
     transportadora_escolhida_id: number | null;
     escolhido_em: Date | string | null;
     escolhido_por_usuario_id: number | null;
@@ -2314,6 +2348,7 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
       c.numero_documento,
       c.codigo_chave,
       c.transportadora_pedido_id,
+      t.id AS transportadora_auto_id,
       c.transportadora_escolhida_id,
       c.escolhido_em,
       c.escolhido_por_usuario_id,
@@ -2321,7 +2356,7 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
       c.status
     FROM cotacoes_frete c
     INNER JOIN transportadoras t
-      ON t.id = c.transportadora_pedido_id
+      ON ${montarCondicaoTransportadoraPedido('c', 't')}
      AND COALESCE(t.escolher_automaticamente_se_pedido, FALSE) = TRUE
      AND COALESCE(t.ativa, TRUE) = TRUE
      AND COALESCE(t.excluido, FALSE) = FALSE
@@ -2337,7 +2372,7 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
 
   if (
     !cotacao
-    || !cotacao.transportadora_pedido_id
+    || !cotacao.transportadora_auto_id
     || cotacao.bloqueado_para_alteracao
     || String(cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO'
     || possuiEscolhaManualOuOperacional
@@ -2366,7 +2401,7 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
       COALESCE(valor_frete, 0) ASC,
       alterado_em DESC NULLS LAST
     LIMIT 1`,
-    [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave, cotacao.transportadora_pedido_id]
+    [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave, cotacao.transportadora_auto_id]
   );
 
   let origemCotacao = cotacaoExistente?.origem_cotacao ?? null;
@@ -2411,12 +2446,12 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
           WHEN cotacoes_frete_transportadoras.status IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE') THEN cotacoes_frete_transportadoras.status
           ELSE EXCLUDED.status
         END`,
-      [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave, cotacao.transportadora_pedido_id]
+      [cotacao.empresa_id, cotacao.tipo_documento, cotacao.numero_documento, cotacao.codigo_chave, cotacao.transportadora_auto_id]
     );
     origemCotacao = 'MANUAL';
   }
 
-  const identificadorTransportadora = `${cotacao.empresa_id}|${cotacao.tipo_documento}|${cotacao.numero_documento}|${cotacao.codigo_chave}|${cotacao.transportadora_pedido_id}|${origemCotacao}`;
+  const identificadorTransportadora = `${cotacao.empresa_id}|${cotacao.tipo_documento}|${cotacao.numero_documento}|${cotacao.codigo_chave}|${cotacao.transportadora_auto_id}|${origemCotacao}`;
   const resultado = await escolherTransportadora({
     empresaId: cotacao.empresa_id,
     cotacaoId: cotacao.id,
@@ -2429,7 +2464,7 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
     await registrarTimelineCotacao({
       cotacaoId: cotacao.id,
       usuarioId: dados.usuarioId ?? null,
-      transportadoraId: cotacao.transportadora_pedido_id,
+      transportadoraId: cotacao.transportadora_auto_id,
       tipoEvento: 'ESCOLHA_AUTOMATICA_TRANSPORTADORA_PEDIDO',
       titulo: 'Transportadora do pedido escolhida automaticamente',
       descricao: 'Transportadora configurada para escolha automatica quando vier definida no pedido.'
@@ -2456,13 +2491,17 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
     'COALESCE(c.excluido, FALSE) = FALSE',
     'COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE',
     "UPPER(COALESCE(c.status, '')) <> 'CTE_EMITIDO'",
-    'c.transportadora_pedido_id IS NOT NULL',
     'c.transportadora_escolhida_id IS NULL',
     'c.escolhido_em IS NULL',
     'c.escolhido_por_usuario_id IS NULL',
-    'COALESCE(t.escolher_automaticamente_se_pedido, FALSE) = TRUE',
-    'COALESCE(t.ativa, TRUE) = TRUE',
-    'COALESCE(t.excluido, FALSE) = FALSE'
+    `EXISTS (
+      SELECT 1
+      FROM transportadoras t
+      WHERE ${montarCondicaoTransportadoraPedido('c', 't')}
+        AND COALESCE(t.escolher_automaticamente_se_pedido, FALSE) = TRUE
+        AND COALESCE(t.ativa, TRUE) = TRUE
+        AND COALESCE(t.excluido, FALSE) = FALSE
+    )`
   ];
 
   if (dados.etapaCodigo) {
@@ -2490,8 +2529,6 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
       c.codigo_chave,
       COALESCE(e.codigo, c.status) AS etapa_codigo
     FROM cotacoes_frete c
-    INNER JOIN transportadoras t
-      ON t.id = c.transportadora_pedido_id
     LEFT JOIN etapas_kanban e
       ON e.id = c.etapa_kanban_id
     WHERE ${filtros.join('\n      AND ')}

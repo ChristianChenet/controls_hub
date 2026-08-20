@@ -1,12 +1,20 @@
 import {
-  BarChart3,
+    BarChart3,
+  Boxes,
   Building2,
   Columns3,
   FileCode2,
+  FileUp,
+  Globe2,
   LayoutDashboard,
+  PackageSearch,
+
   LogOut,
-  RefreshCw,
+    RefreshCw,
   Settings,
+  SlidersHorizontal,
+  Sparkles,
+
   ShieldCheck,
   Truck,
   Users
@@ -45,6 +53,7 @@ import {
   alterarEtapaCotacao,
   alterarValorFreteManual,
   EmpresaUsuario,
+  alterarSenhaLogin,
   entrar,
   excluirEmpresa,
   excluirEtapa,
@@ -54,6 +63,7 @@ import {
   excluirUsuario,
   escolherTransportadora,
   FonteTela,
+  validarCredenciaisLogin,
   gerarNovoLinkCotacao,
   enviarCotacoesMassa,
   listarAuditorias,
@@ -102,14 +112,26 @@ import {
 import {
   AtributosPim,
   CargaSqlServerPim,
-  ConfiguracoesPim,
+    ConfiguracoesPim,
+  ComparacaoConcorrentesPim,
   ConexoesSqlServerPim,
+
   DashboardPim,
   ImportacaoPim,
   LogoProdutoCentral,
   PainelPimGenerico,
   ProdutosPim
 } from './modulos/cadastro_produto_central/Pim';
+
+const CHAVE_FILTROS_KANBAN = 'controlSHubKanbanFiltros';
+
+function lerFiltrosKanbanSalvos(): Record<string, any> {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_FILTROS_KANBAN) ?? '{}');
+  } catch {
+    return {};
+  }
+}
 import {
   BiConsultasEditor,
   BiFontesDados,
@@ -122,7 +144,9 @@ import {
   usuarioPodeBi
 } from './modulos/business_intelligence/BusinessIntelligence';
 import {
+  ApontamentoKmMobileFrota,
   LogoFrota,
+  LogoKm,
   menusFrota,
   ModuloFrota,
   permissoesMenuFrota,
@@ -149,8 +173,10 @@ type TelaAtual =
   | 'pimComponentes'
   | 'pimSkus'
   | 'pimAtributos'
-  | 'pimCanais'
+    | 'pimCanais'
+  | 'pimConcorrentes'
   | 'pimImportacao'
+
   | 'pimSqlConexoes'
   | 'pimSqlCargas'
   | 'pimAssets'
@@ -167,7 +193,7 @@ type TelaAtual =
   | 'biLogs'
   | TelaFrota;
 
-type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central' | 'business_intelligence' | 'frota';
+type ModuloAtual = 'cotacao_frete' | 'cadastro_produto_central' | 'business_intelligence' | 'frota' | 'km_mobile';
 
 type DetalheCotacaoNormalizado = {
   cotacao: RegistroGenerico;
@@ -198,24 +224,11 @@ const menus: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = 
 
 const menusCadastroProduto: { id: TelaAtual; nome: string; icone: typeof LayoutDashboard }[] = [
   { id: 'pimDashboard' as TelaAtual, nome: 'Dashboard', icone: LayoutDashboard },
-  { id: 'pimConjuntos' as TelaAtual, nome: 'Conjuntos', icone: FileCode2 },
-  { id: 'pimProdutos' as TelaAtual, nome: 'Produtos', icone: FileCode2 },
-  { id: 'pimAtributos' as TelaAtual, nome: 'Atributos', icone: Settings },
-  { id: 'pimCanais' as TelaAtual, nome: 'Canais / Marketplaces', icone: Settings },
-  { id: 'pimImportacao' as TelaAtual, nome: 'Importação por Arquivo', icone: FileCode2 },
-  { id: 'pimSqlConexoes' as TelaAtual, nome: 'Conexões SQL Server', icone: Settings },
-  { id: 'pimSqlCargas' as TelaAtual, nome: 'Carga SQL / De-Para', icone: FileCode2 },
-  { id: 'pimAssets' as TelaAtual, nome: 'Imagens e Documentos', icone: FileCode2 },
-  { id: 'pimWorkflows' as TelaAtual, nome: 'Workflows', icone: Columns3 },
-  { id: 'pimAprovacoes' as TelaAtual, nome: 'Aprovacoes', icone: ShieldCheck },
-  { id: 'pimIa' as TelaAtual, nome: 'IA & Enriquecimento', icone: Settings },
-  { id: 'pimAuditoria' as TelaAtual, nome: 'Auditoria', icone: FileCode2 },
-  { id: 'pimConfiguracoes' as TelaAtual, nome: 'Configuracoes', icone: Settings },
-  { id: 'empresas' as TelaAtual, nome: 'Empresas', icone: Building2 },
-  { id: 'usuarios' as TelaAtual, nome: 'Usuarios', icone: Users },
-  { id: 'perfis' as TelaAtual, nome: 'Perfis e Direitos', icone: ShieldCheck },
-  { id: 'direitos' as TelaAtual, nome: 'Matriz de Permissoes', icone: ShieldCheck },
-  { id: 'configuracoes' as TelaAtual, nome: 'Configuracoes Gerais', icone: Settings }
+  { id: 'pimConjuntos' as TelaAtual, nome: 'Conjuntos', icone: Boxes },
+  { id: 'pimAtributos' as TelaAtual, nome: 'Atributos', icone: SlidersHorizontal },
+  { id: 'pimCanais' as TelaAtual, nome: 'Canais / Marketplaces', icone: Globe2 },
+  { id: 'pimConcorrentes' as TelaAtual, nome: 'Enriquecimento', icone: Sparkles },
+  { id: 'pimConfiguracoes' as TelaAtual, nome: 'Configurações', icone: Settings }
 ];
 
 const permissoesPorMenu: Partial<Record<TelaAtual, string[]>> = {
@@ -241,8 +254,10 @@ const permissoesMenuPim: Partial<Record<TelaAtual, string[]>> = {
   pimComponentes: ['PIM_VISUALIZAR_COMPONENTES', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimSkus: ['PIM_VISUALIZAR_SKUS', 'PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimAtributos: ['PIM_VISUALIZAR_ATRIBUTOS', 'CONFIGURAR_ATRIBUTOS_PIM'],
-  pimCanais: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM'],
+    pimCanais: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM'],
+  pimConcorrentes: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimImportacao: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'],
+
   pimSqlConexoes: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'GERENCIAR_INTEGRACOES_PIM'],
   pimSqlCargas: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'],
   pimAssets: ['PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'],
@@ -330,8 +345,10 @@ const rotasPorTela: Record<TelaAtual, string> = {
   pimComponentes: '/Cadastro_Produto_Central/Componentes',
   pimSkus: '/Cadastro_Produto_Central/SKUs',
   pimAtributos: '/Cadastro_Produto_Central/Atributos',
-  pimCanais: '/Cadastro_Produto_Central/Canais',
+    pimCanais: '/Cadastro_Produto_Central/Canais',
+  pimConcorrentes: '/Cadastro_Produto_Central/Concorrentes',
   pimImportacao: '/Cadastro_Produto_Central/Importacao',
+
   pimSqlConexoes: '/Cadastro_Produto_Central/Conexoes_SQL',
   pimSqlCargas: '/Cadastro_Produto_Central/Carga_SQL',
   pimAssets: '/Cadastro_Produto_Central/Assets',
@@ -354,6 +371,11 @@ const rotasPorTela: Record<TelaAtual, string> = {
   frotaFornecedores: '/Frota/Fornecedores',
   frotaDespesaTipo: '/Frota/Despesa_Tipo',
   frotaMotivosCancelamento: '/Frota/Motivos_Cancelamento',
+  frotaMotivosSemPedido: '/Frota/Motivos_Sem_Pedido',
+  frotaPedidosVenda: '/Frota/Pedidos_Venda',
+  frotaKmApontamento: '/Frota/KM_Apontamento',
+  frotaKmMobile: '/KM_Mobile',
+  frotaKmValidacao: '/Frota/KM_Validacao',
   frotaImportacao: '/Frota/Importacao',
   frotaValidacao: '/Frota/Validacao',
   frotaConfiguracoes: '/Frota/Configuracoes'
@@ -386,11 +408,17 @@ function obterTelaPelaRota(): TelaAtual {
   if (/^\/business_intelligence\/dashboards\/\d+\/tv$/i.test(window.location.pathname)) {
     return 'biDashboards';
   }
+  if (window.location.pathname.toLowerCase() === '/frota/km_mobile') {
+    return 'frotaKmMobile';
+  }
   return telasPorRota[window.location.pathname.toLowerCase()] ?? 'dashboard';
 }
 
 function obterModuloPelaRota(): ModuloAtual {
   const rota = window.location.pathname.toLowerCase();
+  if (rota === '/km_mobile' || rota === '/frota/km_mobile') {
+    return 'km_mobile';
+  }
   if (rota.startsWith('/cadastro_produto_central')) {
     return 'cadastro_produto_central';
   }
@@ -820,14 +848,55 @@ function nomeModuloTopo(moduloAtual: ModuloAtual) {
 function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: EmpresaUsuario[]) => void }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmacaoSenha, setConfirmacaoSenha] = useState('');
+  const [modoSenha, setModoSenha] = useState(false);
+  const [credenciaisValidadas, setCredenciaisValidadas] = useState(false);
+  const [mensagem, setMensagem] = useState('');
   const [erro, setErro] = useState('');
 
   async function enviar(evento: FormEvent) {
     evento.preventDefault();
     setErro('');
+    setMensagem('');
+
+    if (modoSenha) {
+      try {
+        if (!credenciaisValidadas) {
+          await validarCredenciaisLogin(email, senha);
+          setCredenciaisValidadas(true);
+          setMensagem('Senha atual confirmada. Informe a nova senha.');
+          return;
+        }
+        if (novaSenha.length < 6) {
+          setErro('A nova senha deve ter pelo menos 6 caracteres.');
+          return;
+        }
+        if (novaSenha !== confirmacaoSenha) {
+          setErro('A confirmacao da senha nao confere.');
+          return;
+        }
+        await alterarSenhaLogin(email, senha, novaSenha);
+        setMensagem('Senha alterada. Entre novamente com a nova senha.');
+        setModoSenha(false);
+        setCredenciaisValidadas(false);
+        setSenha('');
+        setNovaSenha('');
+        setConfirmacaoSenha('');
+      } catch (error) {
+        setErro(error instanceof Error ? error.message : 'Falha ao alterar senha.');
+      }
+      return;
+    }
 
     try {
       const dados = await entrar(email, senha);
+      if (dados.usuario.alterar_senha_proximo_login) {
+        setModoSenha(true);
+        setCredenciaisValidadas(true);
+        setMensagem('Primeiro acesso confirmado. Defina sua nova senha para continuar.');
+        return;
+      }
       localStorage.setItem('controlSHubToken', dados.token);
       aoEntrar({ ...dados.usuario, permissoes: dados.permissoes }, dados.empresas);
     } catch (error) {
@@ -844,15 +913,29 @@ function Login({ aoEntrar }: { aoEntrar: (usuario: UsuarioLogado, empresas: Empr
         </div>
         <h1>Control S Hub</h1>
         <label>
-          E-mail
-          <input value={email} onChange={(evento) => setEmail(evento.target.value)} />
+          E-mail ou usuario
+          <input value={email} onChange={(evento) => { setEmail(evento.target.value); setCredenciaisValidadas(false); }} />
         </label>
         <label>
-          Senha
-          <input type="password" value={senha} onChange={(evento) => setSenha(evento.target.value)} />
+          Senha atual
+          <input type="password" value={senha} onChange={(evento) => { setSenha(evento.target.value); setCredenciaisValidadas(false); }} />
         </label>
+        {modoSenha && credenciaisValidadas && (
+          <>
+            <label>
+              Nova senha
+              <input type="password" value={novaSenha} onChange={(evento) => setNovaSenha(evento.target.value)} />
+            </label>
+            <label>
+              Confirmar nova senha
+              <input type="password" value={confirmacaoSenha} onChange={(evento) => setConfirmacaoSenha(evento.target.value)} />
+            </label>
+          </>
+        )}
+        {mensagem && <div className="sucesso">{mensagem}</div>}
         {erro && <div className="alerta">{erro}</div>}
-        <button className="primary">Entrar</button>
+        <button className="primary">{modoSenha ? (credenciaisValidadas ? 'Salvar nova senha' : 'Validar senha atual') : 'Entrar'}</button>
+        <button type="button" className="ghost" onClick={() => { setModoSenha(!modoSenha); setCredenciaisValidadas(false); setErro(''); setMensagem(''); }}>{modoSenha ? 'Voltar ao login' : 'Alterar senha'}</button>
       </form>
     </main>
   );
@@ -1902,6 +1985,7 @@ function KanbanCotacoes({
   ordemInicial?: string[];
   aoSalvarOrdem?: (ordem: string[]) => void;
 }) {
+  const filtrosKanbanSalvos = useMemo(() => lerFiltrosKanbanSalvos(), []);
   const [linhas, setLinhas] = useState<RegistroGenerico[]>([]);
   const [etapasDisponiveis, setEtapasDisponiveis] = useState<RegistroGenerico[]>([]);
   const [erro, setErro] = useState('');
@@ -1910,18 +1994,21 @@ function KanbanCotacoes({
   const [carregando, setCarregando] = useState(false);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [colunaArrastada, setColunaArrastada] = useState('');
-  const [dataInicial, setDataInicial] = useState('');
-  const [dataFinal, setDataFinal] = useState('');
-  const [chaveFiltro, setChaveFiltro] = useState('');
-  const [cidadeFiltro, setCidadeFiltro] = useState('');
-  const [faturadoFiltro, setFaturadoFiltro] = useState('');
-  const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(false);
-  const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState('SOMENTE');
-  const [freteGratisFiltro, setFreteGratisFiltro] = useState('');
-  const [cteDiferenteEscolhidoFiltro, setCteDiferenteEscolhidoFiltro] = useState(false);
-  const [somentePendentes, setSomentePendentes] = useState(true);
+  const [dataInicial, setDataInicial] = useState(String(filtrosKanbanSalvos.dataInicial ?? ''));
+  const [dataFinal, setDataFinal] = useState(String(filtrosKanbanSalvos.dataFinal ?? ''));
+  const [chaveFiltro, setChaveFiltro] = useState(String(filtrosKanbanSalvos.chaveFiltro ?? ''));
+  const [cidadeFiltro, setCidadeFiltro] = useState(String(filtrosKanbanSalvos.cidadeFiltro ?? ''));
+  const [faturadoFiltro, setFaturadoFiltro] = useState(String(filtrosKanbanSalvos.faturadoFiltro ?? ''));
+  const [multiplasCotacoesFiltro, setMultiplasCotacoesFiltro] = useState(Boolean(filtrosKanbanSalvos.multiplasCotacoesFiltro));
+  const [fluxoLogisticoFiltro, setFluxoLogisticoFiltro] = useState(String(filtrosKanbanSalvos.fluxoLogisticoFiltro ?? 'SOMENTE'));
+  const [freteGratisFiltro, setFreteGratisFiltro] = useState(String(filtrosKanbanSalvos.freteGratisFiltro ?? ''));
+  const [cteDiferenteEscolhidoFiltro, setCteDiferenteEscolhidoFiltro] = useState(Boolean(filtrosKanbanSalvos.cteDiferenteEscolhidoFiltro));
+  const [somentePendentes, setSomentePendentes] = useState(filtrosKanbanSalvos.somentePendentes === undefined ? true : Boolean(filtrosKanbanSalvos.somentePendentes));
   const [limitesKanbanPorEtapa, setLimitesKanbanPorEtapa] = useState<Record<string, number>>({});
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
+    if (Array.isArray(filtrosKanbanSalvos.etapasSelecionadas)) {
+      return filtrosKanbanSalvos.etapasSelecionadas.map((item: unknown) => String(item));
+    }
     const salvas = localStorage.getItem('controlSHubKanbanEtapas');
     return salvas ? JSON.parse(salvas) : [];
   });
@@ -1935,9 +2022,23 @@ function KanbanCotacoes({
     setCarregando(true);
     setErro('');
     try {
+      localStorage.setItem(CHAVE_FILTROS_KANBAN, JSON.stringify({
+        dataInicial,
+        dataFinal,
+        chaveFiltro,
+        cidadeFiltro,
+        faturadoFiltro,
+        multiplasCotacoesFiltro,
+        fluxoLogisticoFiltro,
+        freteGratisFiltro,
+        cteDiferenteEscolhidoFiltro,
+        somentePendentes,
+        etapasSelecionadas
+      }));
       const dados = await listarKanbanCotacoes({
         data_inicial: dataInicial,
         data_final: dataFinal,
+        etapa_codigo: etapasSelecionadas.length ? etapasSelecionadas.join(',') : undefined,
         faturado: faturadoFiltro || undefined,
         cidade: cidadeFiltro || undefined,
         multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
@@ -1955,7 +2056,6 @@ function KanbanCotacoes({
   }
 
   useEffect(() => {
-    carregarKanban();
     listarEtapas()
       .then((dados) => {
         const ativas = dados.filter((item: any) => Boolean(item.ativa) && etapasFluxoAtivas.has(String(item.codigo ?? '')));
@@ -2183,6 +2283,9 @@ function KanbanCotacoes({
           );
         })}
       </div>
+      {!carregando && linhas.length === 0 && !erro && (
+        <div className="alertaInfo">Kanban sem dados carregados. Revise os filtros e clique em Filtrar para consultar.</div>
+      )}
       <section className="kanban kanbanPremium">
         {listaEtapas.map(({ etapa, cards }) => {
           const codigoEtapa = String(etapa.etapa_codigo);
@@ -6439,10 +6542,16 @@ function SelecaoModulo({
     nome: 'Frota',
     descricao: 'Gestao de veiculos, despesas, importacao, validacao, auditoria e integracao com ERP.'
   };
+  const moduloKmMobile = {
+    id: 'km_mobile',
+    nome: 'KM Mobile',
+    descricao: 'Aplicativo mobile para motoristas e mecanicos apontarem KM pelo celular.'
+  };
   const podeCotacao = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('UTILIZA_COTACAO_FRETE');
   const podePim = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_CADASTRO_PRODUTO_CENTRAL') || usuario.permissoes?.includes('PIM_VISUALIZAR_DASHBOARD');
   const podeBi = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('VISUALIZAR_BUSINESS_INTELLIGENCE');
   const podeFrota = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('FROTA_ACESSAR');
+  const podeKmMobile = usuario.superadmin || usuario.administrador || usuario.permissoes?.includes('FROTA_MOBILE_KM') || usuario.permissoes?.includes('FROTA_LANCAR_KM');
 
   return (
     <main className="selecaoModulo">
@@ -6481,6 +6590,11 @@ function SelecaoModulo({
           <strong><LogoFrota /></strong>
           <span>{moduloFrota.nome}</span>
           <small>{podeFrota ? moduloFrota.descricao : 'Sem permissao: FROTA_ACESSAR'}</small>
+        </button>}
+        {podeKmMobile && <button className="moduloCard moduloCardKmMobile" onClick={() => aoAbrirModulo('km_mobile')}>
+          <strong><LogoKm /></strong>
+          <span>{moduloKmMobile.nome}</span>
+          <small>{moduloKmMobile.descricao}</small>
         </button>}
       </section>
     </main>
@@ -6651,7 +6765,7 @@ export function App() {
         empresas={empresas}
         aoTrocarEmpresa={alterarEmpresaAtiva}
         aoAbrirModulo={(modulo) => {
-          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : modulo === 'business_intelligence' ? 'biDashboards' : modulo === 'frota' ? 'frotaDashboard' : 'dashboard';
+          const telaInicial = modulo === 'cadastro_produto_central' ? 'pimDashboard' : modulo === 'business_intelligence' ? 'biDashboards' : modulo === 'frota' ? 'frotaDashboard' : modulo === 'km_mobile' ? 'frotaKmMobile' : 'dashboard';
           setModuloAtual(modulo);
           setTela(telaInicial);
           setModuloAberto(true);
@@ -6664,6 +6778,10 @@ export function App() {
 
   if (!telaAtualPermitida && menusVisiveis.length) {
     return null;
+  }
+
+  if (tela === 'frotaKmMobile' || moduloAtual === 'km_mobile') {
+    return <ApontamentoKmMobileFrota usuario={usuario} empresaAtiva={empresaAtiva} aoSair={sair} />;
   }
 
   function reordenarMenu(destino: TelaAtual) {
@@ -6749,8 +6867,10 @@ export function App() {
         {tela === 'pimSkus' && <ProdutosPim />}
         {tela === 'pimComponentes' && <ProdutosPim />}
         {tela === 'pimAtributos' && <AtributosPim />}
-        {tela === 'pimCanais' && <PainelPimGenerico tela={tela} titulo="Canais / Marketplaces" subtitulo="Categorias, regras, mapeamentos e score mínimo por canal." />}
+        {tela === 'pimCanais' && <AtributosPim modo="canais" />}
+        {tela === 'pimConcorrentes' && <ComparacaoConcorrentesPim />}
         {tela === 'pimImportacao' && <ImportacaoPim />}
+
         {tela === 'pimSqlConexoes' && <ConexoesSqlServerPim />}
         {tela === 'pimSqlCargas' && <CargaSqlServerPim />}
         {tela === 'pimAssets' && <PainelPimGenerico tela={tela} titulo="Imagens e Documentos" subtitulo="Biblioteca de imagens, manuais, fichas técnicas, vídeos e URLs." />}
@@ -6758,7 +6878,8 @@ export function App() {
         {tela === 'pimAprovacoes' && <PainelPimGenerico tela={tela} titulo="Aprovações" subtitulo="Pendências de aprovação, comparação e histórico de decisão." />}
         {tela === 'pimIa' && <PainelPimGenerico tela={tela} titulo="IA & Enriquecimento" subtitulo="Configurações, sugestões e validações assistidas por IA." />}
         {tela === 'pimAuditoria' && <PainelPimGenerico tela={tela} titulo="Auditoria" subtitulo="Trilha de alterações relevantes do Cadastro de Produto Central." />}
-        {tela === 'pimConfiguracoes' && <ConfiguracoesPim />}
+                {tela === 'pimConfiguracoes' && <ConfiguracoesPim />}
+
         {tela === 'biDashboards' && (usuarioPodeBi(usuario, ['VISUALIZAR_BUSINESS_INTELLIGENCE']) ? <BusinessIntelligenceDashboards usuario={usuario} empresaAtiva={empresaAtiva} /> : <BiSemPermissao descricao="Você não possui permissão para visualizar dashboards de Business Intelligence." />)}
         {tela === 'biFontesDados' && (usuarioPodeBi(usuario, ['BI_CONFIGURAR_FONTES_DADOS']) ? <BiFontesDados /> : <BiSemPermissao descricao="Você não possui permissão para configurar fontes de dados." />)}
         {tela === 'biConsultas' && (usuarioPodeBi(usuario, ['BI_CONFIGURAR_CONSULTAS']) ? <BiConsultasEditor /> : <BiSemPermissao descricao="Você não possui permissão para configurar consultas SQL." />)}

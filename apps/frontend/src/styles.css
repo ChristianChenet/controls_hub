@@ -13,6 +13,23 @@
   --nav-soft: #111c2e;
 }
 
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  touch-action: pan-y;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
 .frotaLogoAsset {
   background: transparent;
   border-color: transparent;
@@ -582,6 +599,64 @@ button.primary.perigo {
   gap: 4px;
   margin: 0;
   padding: 10px;
+}
+
+.frotaHistoricoDetalhe {
+  border-top: 1px solid #e3ebf3;
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.frotaHistoricoDetalhe header {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.frotaHistoricoDetalhe h4 {
+  margin: 2px 0 0;
+}
+
+.frotaHistoricoLista {
+  display: grid;
+  gap: 8px;
+}
+
+.frotaHistoricoLista article {
+  background: #f8fbfe;
+  border: 1px solid #d9e5f2;
+  border-left: 4px solid #20d34a;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.frotaHistoricoLista article > div {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.frotaHistoricoLista strong {
+  color: #061329;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.frotaHistoricoLista span,
+.frotaHistoricoLista small,
+.frotaHistoricoLista p,
+.frotaHistoricoVazio {
+  color: #52627a;
+  font-size: 13px;
+  margin: 0;
+}
+
+.frotaHistoricoLista p {
+  line-height: 1.45;
 }
 
 @media (max-width: 1180px) {
@@ -4225,6 +4300,17 @@ h2 {
   color: #fff;
 }
 
+.alertaInfo {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  margin: 8px 0 12px;
+}
+
 .kanbanPremium .coluna {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, .65) transparent;
@@ -7294,4 +7380,3478 @@ body:has(.biModoTv) {
   gap: 6px;
   margin: 12px;
   padding: 8px 12px;
+}
+
+.kmLogoAsset {
+  align-items: center;
+  background: transparent;
+  display: inline-flex;
+  height: 82px;
+  justify-content: center;
+  width: 82px;
+}
+
+.kmLogoAsset img {
+  height: 78px;
+  object-fit: contain;
+  width: 78px;
+}
+
+.kmTela {
+  max-width: 1180px;
+}
+
+.kmTopoMobile {
+  align-items: center;
+  gap: 14px;
+}
+
+.kmFiltros {
+  align-items: end;
+  background: #f8fbff;
+  border: 1px solid #dbe7f3;
+  border-radius: 10px;
+  margin: 12px 0;
+  padding: 12px;
+}
+
+.kmLegenda {
+  align-items: center;
+  color: #475569;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.kmLegenda span {
+  border-radius: 999px;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.kmLegenda .diaSemKm {
+  background: #fee2e2;
+}
+
+.kmLegenda .diaComKm {
+  background: #dcfce7;
+}
+
+.kmLegenda .diaFuturo {
+  background: #dbeafe;
+}
+
+.kmLoading {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  color: #0b3b75;
+  display: flex;
+  font-weight: 850;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 10px 12px;
+}
+
+.kmCalendario {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.kmCalendario button {
+  background: #f8fafc;
+  border: 1px solid #dbe7f3;
+  border-radius: 10px;
+  color: #0f172a;
+  cursor: pointer;
+  display: grid;
+  min-height: 76px;
+  padding: 10px;
+  text-align: left;
+}
+
+.kmCalendario button strong {
+  font-size: 22px;
+}
+
+.kmCalendario button small {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.kmCalendario button.comKm {
+  background: #effdf4;
+  border-color: #86efac;
+}
+
+.kmCalendario button.semKm {
+  background: #fff1f2;
+  border-color: #fda4af;
+}
+
+.kmCalendario button.futuro {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.kmCalendario button.fimSemana {
+  background: #f8fafc;
+  opacity: .72;
+}
+
+.kmCalendario button.selecionado {
+  box-shadow: 0 0 0 3px rgba(29, 111, 212, .22);
+  outline: 2px solid #1d6fd4;
+}
+
+.kmDiaPainel {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 10px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.kmDiaPainel header {
+  align-items: center;
+  border-bottom: 1px solid #e5edf5;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+}
+
+.kmCardsDia {
+  display: grid;
+  gap: 10px;
+}
+
+.kmCardApontamento {
+  align-items: start;
+  background: #f8fbff;
+  border: 1px solid #d8e6f5;
+  border-radius: 10px;
+  color: #0f172a;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: flex-start;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.kmCardApontamento b {
+  color: #0d3f8f;
+  font-size: 18px;
+}
+
+.kmCardApontamento strong,
+.kmCardApontamento span,
+.kmCardApontamento b,
+.kmCardApontamento small {
+  align-self: flex-start;
+  justify-self: start;
+  text-align: left;
+  width: 100%;
+}
+
+.kmFormularioMobile {
+  max-width: 760px;
+}
+
+.kmGridFormulario,
+.kmResumoPedido {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.kmResumoPedido p,
+.kmTotalDia {
+  background: #f4f9ff;
+  border: 1px solid #d9e8f8;
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px;
+}
+
+.kmResumoPedido span,
+.kmTotalDia span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.kmTotalDia strong {
+  color: #0b7a2a;
+  font-size: 24px;
+}
+
+.kmTurnos {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kmTurnos section {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.kmTurnos section.turnoAtual {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .12);
+}
+
+.kmTurnos section.turnoIncompleto {
+  background: #fff1f2;
+  border-color: #fb7185;
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, .14);
+}
+
+.kmTurnos section > div {
+  align-items: end;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr auto;
+}
+
+.kmBotaoPadraoTurno {
+  font-size: 11px;
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.kmObservacaoAudio {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto;
+}
+
+.kmObservacaoAudio textarea {
+  min-height: 82px;
+}
+
+.kmObservacaoAudio .ghost {
+  align-self: start;
+  min-height: 42px;
+}
+
+.botaoAtualizarIcone {
+  align-items: center;
+  display: inline-flex;
+  font-size: 0;
+  justify-content: center;
+  min-width: 42px;
+  width: 42px;
+}
+
+.botaoAtualizarIcone svg {
+  flex: 0 0 auto;
+}
+
+.kmPickerOverlay {
+  z-index: 120;
+}
+
+.kmPickerModal {
+  box-sizing: border-box;
+  gap: 10px;
+  max-width: 460px;
+  overflow-x: hidden;
+  padding: 12px;
+  width: min(460px, calc(100vw - 12px));
+}
+
+.kmPickerModal header {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto;
+  min-width: 0;
+}
+
+.kmPickerModal header h3 {
+  font-size: 18px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.kmPickerModal header .ghost {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.kmPickerModal > input {
+  border: 1px solid #cbd8e6;
+  border-radius: 12px;
+  box-sizing: border-box;
+  font-size: 30px;
+  font-weight: 900;
+  min-height: 58px;
+  padding: 8px 12px;
+  text-align: center;
+  width: 100%;
+}
+
+.kmPickerAcoes {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.kmPickerAcoes .ghost,
+.kmPickerAtalhos .ghost {
+  box-sizing: border-box;
+  font-size: 12px;
+  min-height: 44px;
+  padding: 7px;
+  width: 100%;
+}
+
+.kmPickerAtalhos {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.campoAjuda {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.campoBuscaMobile {
+  position: relative;
+}
+
+.campoBuscaCaixa {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  min-width: 0;
+}
+
+.campoBuscaCaixa input {
+  min-width: 0;
+}
+
+.campoBuscaLimpar {
+  background: #eef5ff;
+  border: 1px solid #cbd8e6;
+  border-radius: 10px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  height: 38px;
+  margin-left: 6px;
+  width: 38px;
+}
+
+.campoBuscaLista {
+  background: #ffffff;
+  border: 1px solid #cbd8e6;
+  border-radius: 14px;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, .16);
+  display: grid;
+  gap: 6px;
+  left: 0;
+  margin-top: 4px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: calc(100% - 2px);
+  z-index: 12;
+}
+
+.campoBuscaLista button {
+  background: #f8fbff;
+  border: 1px solid #e0e8f2;
+  border-radius: 12px;
+  color: #0f172a;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.campoBuscaLista button strong {
+  font-size: 14px;
+}
+
+.campoBuscaLista button span,
+.campoBuscaLista p {
+  color: #64748b;
+  font-size: 12px;
+  margin: 0;
+}
+
+.kmTela:not(.kmTelaMobileApp) {
+  background:
+    radial-gradient(circle at 10% 0, rgba(18, 104, 200, .08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(247, 251, 255, .96));
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmTopoMobile {
+  background: linear-gradient(135deg, #ffffff, #f2f8ff);
+  border: 1px solid #dbe7f3;
+  border-radius: 18px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, .08);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto 1fr auto;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.kmTopoWebAcoes {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+.kmTopoWebAcoes label {
+  color: #526176;
+  display: grid;
+  font-size: 11px;
+  font-weight: 900;
+  gap: 5px;
+  text-transform: uppercase;
+}
+
+.kmTopoWebAcoes input {
+  min-height: 38px;
+  min-width: 150px;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmFiltros {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, .05);
+  padding: 12px;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmLegenda {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .04);
+  justify-content: center;
+  margin: 12px 0;
+  padding: 9px 12px;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmCalendario {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, .07);
+  gap: 8px;
+  padding: 12px;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmCalendario button {
+  border-radius: 14px;
+  min-height: 76px;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmCalendario button:hover {
+  box-shadow: 0 12px 24px rgba(15, 23, 42, .10);
+  transform: translateY(-1px);
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmDiaPainel {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, .07);
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmDiaPainel > header {
+  align-items: center;
+  border-bottom: 1px solid #e6eef6;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmCardsDia {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.kmTela:not(.kmTelaMobileApp) .kmCardApontamento {
+  align-items: flex-start;
+  border-radius: 14px;
+  justify-content: flex-start;
+  padding: 14px;
+  text-align: left;
+}
+
+.kmAppMobileShell {
+  background:
+    radial-gradient(circle at 18% -8%, rgba(25, 103, 210, .22), transparent 34%),
+    radial-gradient(circle at 88% 8%, rgba(34, 197, 94, .12), transparent 28%),
+    linear-gradient(180deg, #edf5ff 0%, #f7fbff 44%, #ffffff 100%);
+  color: #0f172a;
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding: calc(10px + env(safe-area-inset-top)) 8px 22px;
+  width: 100%;
+}
+
+.kmAppHeader {
+  align-items: center;
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid rgba(203, 216, 230, .9);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, .10);
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto 12px;
+  max-width: 980px;
+  min-height: 58px;
+  padding: 8px 10px;
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+}
+
+.kmLogoEmpresaCard {
+  height: 50px;
+  margin-left: auto;
+  max-width: 118px;
+  object-fit: contain;
+  width: auto;
+}
+
+.kmAppMarca {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kmAppMarca h1 {
+  font-size: 20px;
+  line-height: 1;
+  margin: 2px 0;
+}
+
+.kmAppMarca span,
+.kmAppMarca p {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  margin: 0;
+}
+
+.kmAppAcoes {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  position: fixed;
+  right: calc(8px + env(safe-area-inset-right));
+  top: calc(8px + env(safe-area-inset-top));
+  z-index: 45;
+}
+
+.kmAppAcoes img {
+  border-radius: 10px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .16);
+  height: 38px;
+  object-fit: cover;
+  width: 38px;
+}
+
+.kmAppAcoes .ghost {
+  font-size: 11px;
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
+.moduloCardKmMobile strong .kmLogoAsset {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  height: 82px;
+  width: 82px;
+}
+
+.moduloCardKmMobile strong .kmLogoAsset img {
+  height: 82px;
+  object-fit: contain;
+  width: 82px;
+}
+
+.kmAppMobileShell .kmTela {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 0;
+}
+
+.kmAppMobileShell .kmTelaMobileApp {
+  display: grid;
+  gap: 12px;
+}
+
+.kmMobilePeriodo {
+  align-items: center;
+  background: linear-gradient(135deg, #0b2b5c, #1268c8);
+  border: 1px solid rgba(255, 255, 255, .42);
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(18, 104, 200, .22);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.kmMobilePeriodo label {
+  color: rgba(255, 255, 255, .80);
+  display: grid;
+  font-size: 10px;
+  font-weight: 900;
+  gap: 3px;
+  min-width: 118px;
+  text-transform: uppercase;
+}
+
+.kmMobilePeriodo input {
+  background: rgba(255, 255, 255, .94);
+  border: 0;
+  border-radius: 10px;
+  color: #0f172a;
+  font-size: 16px;
+  min-height: 34px;
+  padding: 5px 7px;
+  width: 100%;
+}
+
+.kmMobilePeriodo span {
+  color: rgba(255, 255, 255, .76);
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.kmMobilePeriodo strong {
+  display: block;
+  font-size: 15px;
+  margin-top: 3px;
+}
+
+.kmMobilePeriodo .botaoAtualizar {
+  background: rgba(255, 255, 255, .20);
+  border: 1px solid rgba(255, 255, 255, .36);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .20), 0 8px 18px rgba(15, 23, 42, .12);
+  color: #ffffff;
+  font-size: 0;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  width: 40px;
+}
+
+.kmMobilePeriodo .botaoAtualizar .gaugeAtualizacao {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  margin: 0;
+}
+
+.kmMobilePeriodo .botaoAtualizar svg {
+  height: 18px;
+  width: 18px;
+}
+
+.kmTelaMobileApp .kmFiltros {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 18px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, .07);
+  padding: 12px;
+}
+
+.kmTelaMobileApp .kmLegenda {
+  background: rgba(255, 255, 255, .76);
+  border: 1px solid #dbe7f3;
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .05);
+  justify-content: center;
+  font-size: 10px;
+  margin: 0;
+  padding: 9px 10px;
+}
+
+.kmAppMobileShell .kmTela > .kmTopoMobile {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.kmAppMobileShell .kmTopoMobile .kmLogoAsset {
+  display: none;
+}
+
+.kmAppMobileShell .kmCalendario {
+  background: #ffffff;
+  border: 1px solid #dbe7f3;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+  gap: 6px;
+  padding: 8px;
+}
+
+.kmAppMobileShell .kmCalendario button {
+  border-radius: 16px;
+  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, .05);
+  min-height: 58px;
+  padding: 6px;
+}
+
+.kmTelaMobileApp .kmCalendario button.selecionado {
+  box-shadow: 0 0 0 3px rgba(18, 104, 200, .18), 0 12px 24px rgba(15, 23, 42, .10);
+  transform: translateY(-1px);
+}
+
+.kmAppMobileShell .kmDiaPainel {
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
+}
+
+.kmDiaModalMobile {
+  align-items: center;
+  padding: 0;
+}
+
+.kmDiaModalMobile .kmDiaPainel {
+  border-radius: 20px;
+  max-height: 82vh;
+  overflow: auto;
+  width: min(calc(100% - 18px), 620px);
+}
+
+.kmDiaModalWeb {
+  align-items: center;
+}
+
+.kmDiaModalWeb .kmDiaPainel {
+  max-width: 860px;
+  width: min(860px, calc(100vw - 32px));
+}
+
+.kmDiaAcoes {
+  display: flex;
+  gap: 8px;
+}
+
+.kmTelaMobileApp .kmDiaPainel header {
+  align-items: center;
+  border-bottom: 1px solid #e6eef6;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.kmTelaMobileApp .kmCardApontamento {
+  border-radius: 16px;
+  padding: 14px;
+  text-align: left;
+}
+
+.kmAppMobileShell .frotaModalOverlay {
+  background: rgba(15, 23, 42, .38);
+  padding: 0;
+}
+
+.kmAppMobileShell .kmFormularioMobile {
+  border-radius: 22px;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, .30);
+  max-height: 94vh;
+  width: min(760px, calc(100% - 18px));
+}
+
+.kmAppMobileShell .kmFormularioMobile header {
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.kmAppMobileShell .kmFormularioMobile label {
+  color: #172033;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.kmAppMobileShell .kmFormularioMobile input,
+.kmAppMobileShell .kmFormularioMobile select,
+.kmAppMobileShell .kmFormularioMobile textarea {
+  min-height: 44px;
+  text-align: left;
+}
+
+.kmCheckboxLinha {
+  align-items: center;
+  display: flex !important;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.kmCheckboxLinha input {
+  min-height: auto !important;
+  width: auto;
+}
+
+.kmAppRodape {
+  color: #667085;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .02em;
+  margin: 10px 0 0;
+  text-align: center;
+}
+
+.kmAppMobileShell .botaoAtualizar {
+  min-width: 44px;
+}
+
+.kmAppMobileShell .botaoAtualizar .gaugeAtualizacao {
+  display: inline-block;
+}
+
+@media (max-width: 760px) {
+  .kmTela {
+    border-radius: 0;
+    margin: -10px;
+  }
+
+  .kmTopoMobile {
+    align-items: flex-start;
+  }
+
+  .kmLogoAsset {
+    height: 64px;
+    width: 64px;
+  }
+
+  .kmLogoAsset img {
+    height: 62px;
+    width: 62px;
+  }
+
+  .kmCalendario {
+    gap: 6px;
+  }
+
+  .kmCalendario button {
+    min-height: 58px;
+    padding: 7px;
+  }
+
+  .kmCalendario button strong {
+    font-size: 18px;
+  }
+
+  .kmCalendario button small {
+    font-size: 10px;
+  }
+
+  .kmGridFormulario,
+  .kmResumoPedido,
+  .kmTurnos {
+    grid-template-columns: 1fr;
+  }
+
+  .kmFormularioMobile {
+    border-radius: 0;
+    height: 100vh;
+    max-height: 100vh;
+    width: 100%;
+  }
+
+  .kmAppMobileShell {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .kmAppHeader {
+    border-radius: 16px;
+    margin-bottom: 8px;
+    margin-right: 62px;
+    padding: 10px;
+    top: 6px;
+  }
+
+  .kmAppMarca .kmLogoAsset {
+    height: 54px;
+    width: 54px;
+  }
+
+  .kmAppMarca .kmLogoAsset img {
+    height: 52px;
+    width: 52px;
+  }
+
+  .kmAppAcoes {
+    gap: 5px;
+  }
+
+  .kmAppAcoes .ghost {
+    border-radius: 9px;
+    font-size: 10px;
+    min-height: 29px;
+    padding: 5px 8px;
+  }
+
+  .kmLogoEmpresaCard {
+    height: 52px;
+    max-width: 104px;
+  }
+
+  .kmAppMobileShell .kmTela > .kmTopoMobile {
+    align-items: center;
+    grid-template-columns: 1fr auto;
+  }
+
+  .kmAppMobileShell .kmTopoMobile .botaoAtualizar {
+    font-size: 0;
+    height: 42px;
+    padding: 0;
+    width: 42px;
+  }
+
+  .kmAppMobileShell .kmFormularioMobile {
+    border-radius: 18px;
+    height: 92vh;
+    max-height: 92vh;
+  }
+
+  .kmMobilePeriodo {
+    border-radius: 16px;
+    grid-template-columns: 1fr auto auto;
+    padding: 8px;
+  }
+
+  .kmMobilePeriodo strong {
+    font-size: 13px;
+  }
+
+  .kmMobilePeriodo .botaoAtualizar {
+    font-size: 0;
+    height: 42px;
+    min-width: 42px;
+    padding: 0;
+    width: 42px;
+  }
+
+  .kmTelaMobileApp .kmLegenda {
+    border-radius: 14px;
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+
+  .kmTelaMobileApp .kmDiaPainel {
+    margin-bottom: 72px;
+  }
+
+  .kmTelaMobileApp .kmGridFormulario {
+    grid-template-columns: 1fr;
+  }
+
+  .kmObservacaoAudio {
+    grid-template-columns: 1fr;
+  }
+
+  .campoBuscaLista {
+    max-height: 210px;
+    position: static;
+  }
+
+  .kmPickerModal {
+    max-height: calc(100vh - 20px);
+    padding: 10px;
+    width: calc(100vw - 10px);
+  }
+
+  .kmPickerAcoes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kmPickerModal header h3 {
+    font-size: 16px;
+  }
+}
+
+.linhaTurnoIncompleto td {
+  background: #fff7f7;
+}
+
+.linhaCancelada td {
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+/* Matriz integrada do Cadastro de Produto Central */
+.pimMatrizTela {
+  gap: 14px;
+}
+
+.pimMatrizTopoTela {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.pimMatrizTopoTela p {
+  margin: 4px 0 0;
+}
+
+.pimMatrizShell {
+  background: #f4f7f8;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  min-height: 700px;
+  overflow: hidden;
+}
+
+.pimMatrizLateral {
+  background: #ffffff;
+  border-right: 1px solid rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px;
+}
+
+.pimMatrizLateralTopo {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pimMatrizLateralTopo div {
+  display: grid;
+  gap: 3px;
+}
+
+.pimMatrizLateralTopo span,
+.pimMatrizItem small,
+.pimMatrizAtributo small {
+  color: #667085;
+  font-size: 0.72rem;
+}
+
+.pimMatrizLateralTopo strong {
+  color: #172033;
+  font-size: 1rem;
+}
+
+.pimMatrizBusca {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  min-height: 38px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.pimMatrizChips,
+.pimMatrizGrupoChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pimMatrizChips {
+  margin: 10px 0;
+}
+
+.pimMatrizChips button,
+.pimMatrizGrupoChips button {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 6px 9px;
+}
+
+.pimMatrizChips button.active,
+.pimMatrizGrupoChips button.active {
+  background: #09252b;
+  border-color: #09252b;
+  color: #ffffff;
+}
+
+.pimMatrizLista {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 610px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.pimMatrizItem {
+  background: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #172033;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.pimMatrizItem:hover,
+.pimMatrizItem.active {
+  background: #edfdf1;
+  border-color: #75d68d;
+}
+
+.pimMatrizItemTitulo {
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.pimMatrizItem strong {
+  font-size: 0.78rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizIndicadores {
+  display: flex;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.pimMatrizIndicadores i {
+  background: #d4dbe1;
+  border-radius: 50%;
+  display: block;
+  height: 7px;
+  width: 7px;
+}
+
+.pimMatrizIndicadores i.filled {
+  background: #22c55e;
+}
+
+.pimMatrizPrincipal {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pimMatrizCabecalhoProduto {
+  align-items: center;
+  background: #09252b;
+  color: #ffffff;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 128px;
+  padding: 20px 22px;
+}
+
+.pimMatrizCabecalhoProduto > div:first-child {
+  min-width: 0;
+}
+
+.pimMatrizCabecalhoProduto span {
+  color: #9dfaaa;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pimMatrizCabecalhoProduto h3 {
+  font-size: 1.1rem;
+  margin: 5px 0;
+  max-width: 760px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizCabecalhoProduto p {
+  color: #c9d8dc;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.pimMatrizKpis {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.pimMatrizKpis div {
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  min-width: 76px;
+  padding: 8px;
+  text-align: center;
+}
+
+.pimMatrizKpis span {
+  color: #c9d8dc;
+  display: block;
+  font-size: 0.65rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pimMatrizKpis strong {
+  display: block;
+  font-size: 1.15rem;
+  margin-top: 3px;
+}
+
+.pimMatrizFiltros {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #dbe3e7;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.pimMatrizFiltrosChecks {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.pimMatrizCheck {
+  align-items: center;
+  color: #475569;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  gap: 6px;
+}
+
+.pimMatrizTabelaWrap {
+  overflow: auto;
+  width: 100%;
+}
+
+.pimMatrizTabela {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 960px;
+  width: 100%;
+}
+
+.pimMatrizTabela th,
+.pimMatrizTabela td {
+  border-bottom: 1px solid #e5e7eb;
+  border-right: 1px solid #eef1f3;
+  min-width: 150px;
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+.pimMatrizTabela th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 800;
+  position: sticky;
+  text-align: left;
+  top: 0;
+  z-index: 2;
+}
+
+.pimMatrizTabela th:first-child,
+.pimMatrizTabela td:first-child {
+  background: #ffffff;
+  left: 0;
+  min-width: 210px;
+  position: sticky;
+  z-index: 3;
+}
+
+.pimMatrizTabela th:first-child {
+  background: #f8fafc;
+  z-index: 4;
+}
+
+.pimMatrizTabela th.erp,
+.pimMatrizTabela td.erp {
+  background: #eefbf1;
+}
+
+.pimMatrizAtributo {
+  display: grid;
+  gap: 4px;
+}
+
+.pimMatrizAtributo strong {
+  color: #172033;
+  font-size: 0.78rem;
+}
+
+.pimMatrizValor {
+  color: #475569;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.pimMatrizValor span {
+  display: block;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.pimMatrizValor.concordante {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.pimMatrizValor.divergente {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.pimMatrizValor.sem-dado {
+  color: #94a3b8;
+}
+
+.pimMatrizValor a {
+  color: #0f766e;
+  display: inline-block;
+  font-size: 0.68rem;
+  margin-top: 6px;
+  text-decoration: underline;
+}
+
+.pimMatrizVazio,
+.pimMatrizVazioPrincipal {
+  color: #667085;
+  padding: 24px;
+  text-align: center;
+}
+
+.pimMatrizVazioPrincipal {
+  background: #ffffff;
+  min-height: 540px;
+}
+
+.pimMatrizConfiguracao {
+  border-top: 1px solid #dbe3e7;
+  padding-top: 14px;
+}
+
+@media (max-width: 980px) {
+  .pimMatrizShell {
+    grid-template-columns: 1fr;
+  }
+
+  .pimMatrizLateral {
+    border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+    border-right: 0;
+  }
+
+  .pimMatrizLista {
+    max-height: 300px;
+  }
+
+  .pimMatrizTopoTela,
+  .pimMatrizCabecalhoProduto,
+  .pimMatrizFiltros {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pimMatrizKpis {
+    flex-wrap: wrap;
+  }
+}
+
+/* Refinamentos premium da matriz de concorrentes */
+.pimMatrizTopoAcoes {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pimMatrizTopoAcoes button,
+.pimMatrizCabecalhoAcoes button,
+.pimMatrizDetalheTopo button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pimMatrizFontesResumo {
+  border-bottom: 1px solid #e5e7eb;
+  display: grid;
+  gap: 7px;
+  margin-bottom: 10px;
+  padding-bottom: 12px;
+}
+
+.pimMatrizSecaoRotulo {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.pimMatrizSecaoRotulo span {
+  color: #172033;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.pimMatrizSecaoRotulo small {
+  color: #94a3b8;
+  font-size: 0.68rem;
+}
+
+.pimMatrizFontePill {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: grid;
+  gap: 2px 7px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 7px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.pimMatrizFontePill:hover {
+  background: #effcf3;
+  border-color: #86efac;
+}
+
+.pimMatrizFontePill i {
+  background: #22c55e;
+  border-radius: 50%;
+  grid-row: span 2;
+  height: 7px;
+  width: 7px;
+}
+
+.pimMatrizFontePill span {
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.pimMatrizFontePill small {
+  color: #64748b;
+  font-size: 0.63rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizFontePill svg {
+  color: #0f766e;
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+
+.pimMatrizCabecalhoAcoes {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 5px;
+}
+
+.pimMatrizCabecalhoAcoes > span {
+  color: #a8bcc1;
+  font-size: 0.64rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pimMatrizCabecalhoAcoes button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: #e7f8ec;
+  cursor: pointer;
+  font-size: 0.67rem;
+  padding: 5px 8px;
+}
+
+.pimMatrizCabecalhoAcoes button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.pimMatrizShellDetalhe {
+  display: block;
+}
+
+.pimMatrizShellDetalhe .pimMatrizPrincipal {
+  min-height: 720px;
+}
+
+.pimMatrizDetalheFicha {
+  background: #ffffff;
+  border-bottom: 1px solid #dbe3e7;
+  padding: 18px 20px 20px;
+}
+
+.pimMatrizDetalheTopo,
+.pimMatrizDetalheTitulo {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pimMatrizDetalheTopo {
+  margin-bottom: 14px;
+}
+
+.pimMatrizDetalheTopo span,
+.pimMatrizDetalheTitulo span {
+  color: #0f766e;
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pimMatrizDetalheTopo h4 {
+  color: #172033;
+  font-size: 1rem;
+  margin: 3px 0 0;
+}
+
+.pimMatrizDadosDiretos {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.pimMatrizDadosDiretos > div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.pimMatrizDadosDiretos span,
+.pimMatrizAtributosGrid span {
+  color: #64748b;
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pimMatrizDadosDiretos strong {
+  color: #172033;
+  display: block;
+  font-size: 0.79rem;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.pimMatrizDetalheAtributos {
+  border-top: 1px solid #edf1f3;
+  padding-top: 15px;
+}
+
+.pimMatrizDetalheTitulo {
+  margin-bottom: 9px;
+}
+
+.pimMatrizDetalheTitulo strong {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.pimMatrizAtributosGrid {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-height: 390px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.pimMatrizAtributosGrid > div {
+  background: #fbfdfc;
+  border: 1px solid #e5ece8;
+  border-radius: 7px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.pimMatrizAtributosGrid strong {
+  color: #166534;
+  display: block;
+  font-size: 0.76rem;
+  margin: 4px 0 3px;
+  overflow-wrap: anywhere;
+}
+
+.pimMatrizAtributosGrid small {
+  color: #94a3b8;
+  display: block;
+  font-size: 0.62rem;
+}
+
+.pimMatrizModalBackdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.62);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 22px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.pimMatrizModal {
+  background: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 14px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.3);
+  max-height: calc(100vh - 44px);
+  max-width: 1180px;
+  overflow: auto;
+  padding: 18px;
+  width: min(1180px, 100%);
+}
+
+.pimMatrizModal > header {
+  align-items: flex-start;
+  background: #09252b;
+  border-radius: 10px;
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+}
+
+.pimMatrizModal > header span {
+  align-items: center;
+  color: #9dfaaa;
+  display: flex;
+  font-size: 0.68rem;
+  font-weight: 800;
+  gap: 6px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pimMatrizModal > header h3 {
+  color: #ffffff;
+  font-size: 1.12rem;
+  margin: 4px 0;
+}
+
+.pimMatrizModal > header p {
+  color: #c9d8dc;
+  margin: 0;
+}
+
+.pimMatrizFecharModal {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 7px;
+}
+
+.pimMatrizModalFonte {
+  max-width: 760px;
+}
+
+.pimMatrizFonteContexto {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.pimMatrizFonteContexto > div {
+  background: #ffffff;
+  border: 1px solid #dbe3e7;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.pimMatrizFonteContexto span {
+  color: #64748b;
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimMatrizFonteContexto strong {
+  color: #172033;
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.pimMatrizModalGrid {
+  background: #ffffff;
+  border: 1px solid #dbe3e7;
+  border-radius: 10px;
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+}
+
+.pimMatrizModalGrid label {
+  color: #334155;
+  display: grid;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.pimMatrizModalGrid input,
+.pimMatrizModalGrid textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font: inherit;
+  font-weight: 400;
+  min-height: 40px;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.pimMatrizModalGrid textarea {
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.pimMatrizAjudaModal {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1e3a8a;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.pimMatrizAjudaModal p {
+  color: #1e3a8a;
+  font-size: 0.75rem;
+  margin: 4px 0 0;
+}
+
+.pimMatrizModalRodape {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.pimGirando {
+  animation: pimGiro 0.9s linear infinite;
+}
+
+@keyframes pimGiro {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 980px) {
+  .pimMatrizDadosDiretos,
+  .pimMatrizAtributosGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pimMatrizCabecalhoAcoes {
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 620px) {
+  .pimMatrizTopoAcoes,
+  .pimMatrizModalRodape {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .pimMatrizTopoAcoes button,
+  .pimMatrizModalRodape button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .pimMatrizDadosDiretos,
+  .pimMatrizAtributosGrid,
+  .pimMatrizFonteContexto {
+    grid-template-columns: 1fr;
+  }
+
+  .pimMatrizModalBackdrop {
+    padding: 8px;
+  }
+
+  .pimMatrizModal {
+    border-radius: 10px;
+    max-height: calc(100vh - 16px);
+    padding: 9px;
+  }
+}
+
+.pimMatrizProgresso {
+  background: #ffffff;
+  border: 1px solid #dbe3e7;
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.pimMatrizProgresso > div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.pimMatrizProgresso span {
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.pimMatrizProgresso strong {
+  color: #0f766e;
+  font-size: 0.76rem;
+}
+
+.pimMatrizProgresso progress {
+  accent-color: #16a34a;
+  height: 7px;
+  width: 100%;
+}
+
+/* Ajustes finais de leitura e navegação da matriz */
+.pimMatrizTela {
+  overflow: visible;
+}
+
+.pimMatrizShell {
+  grid-template-columns: minmax(300px, 350px) minmax(0, 1fr);
+  height: calc(100vh - 285px);
+  max-height: calc(100vh - 285px);
+  min-height: 620px;
+}
+
+.pimMatrizLateral {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: sticky;
+  top: 10px;
+}
+
+.pimMatrizLista {
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.pimMatrizItem {
+  padding: 12px;
+}
+
+.pimMatrizItem strong {
+  font-size: 0.9rem;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.pimMatrizItem small {
+  font-size: 0.76rem;
+}
+
+.pimMatrizPrincipal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pimMatrizCabecalhoProduto {
+  align-items: flex-start;
+  min-height: 154px;
+  padding: 26px 28px;
+}
+
+.pimMatrizCabecalhoProduto h3 {
+  font-size: clamp(1.35rem, 1.8vw, 1.8rem);
+  line-height: 1.22;
+  max-width: 820px;
+  overflow: visible;
+  white-space: normal;
+}
+
+.pimMatrizCabecalhoProduto p {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.pimMatrizFiltros {
+  flex-shrink: 0;
+}
+
+.pimMatrizTabelaWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #9db0b6 #edf2f3;
+  scrollbar-width: thin;
+}
+
+.pimMatrizFiltroConcorrentes {
+  position: relative;
+}
+
+.pimMatrizFiltroBotao {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.74rem;
+  gap: 7px;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.pimMatrizFiltroBotao.active {
+  background: #ecfdf3;
+  border-color: #58c878;
+  color: #166534;
+}
+
+.pimMatrizFiltroBotao span {
+  flex: 1;
+  text-align: left;
+}
+
+.pimMatrizLimparFiltro {
+  background: transparent;
+  border: 0;
+  color: #0f766e;
+  cursor: pointer;
+  display: block;
+  font-size: 0.68rem;
+  margin: 4px 0 0 auto;
+  padding: 0;
+}
+
+.pimMatrizFiltroMenu {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+  display: grid;
+  gap: 7px;
+  left: 0;
+  padding: 11px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+
+.pimMatrizFiltroMenu > strong {
+  color: #334155;
+  font-size: 0.72rem;
+}
+
+.pimMatrizFiltroMenu label {
+  align-items: center;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.75rem;
+  gap: 7px;
+}
+
+.pimMatrizFiltroMenu small {
+  color: #94a3b8;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+@media (max-width: 980px) {
+  .pimMatrizShell {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .pimMatrizLateral,
+  .pimMatrizPrincipal {
+    height: auto;
+    position: static;
+  }
+
+  .pimMatrizPrincipal {
+    display: block;
+  }
+
+  .pimMatrizLista {
+    max-height: 300px;
+  }
+
+  .pimMatrizTabelaWrap {
+    max-height: 70vh;
+  }
+
+  .pimMatrizCabecalhoProduto h3 {
+    font-size: 1.35rem;
+  }
+}
+
+/* Compactação solicitada para lista e cabeçalho do produto */
+.pimMatrizItem strong {
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.18;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizItem {
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.pimMatrizItem small {
+  font-size: 0.68rem;
+}
+
+.pimMatrizCabecalhoProduto {
+  min-height: 112px;
+  padding: 16px 20px;
+}
+
+.pimMatrizCabecalhoProduto h3 {
+  font-size: clamp(1.08rem, 1.35vw, 1.36rem);
+  line-height: 1.16;
+  margin: 3px 0;
+  max-width: 680px;
+}
+
+.pimMatrizCabecalhoProduto p {
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.pimMatrizKpis {
+  gap: 5px;
+}
+
+.pimMatrizKpis div {
+  min-width: 62px;
+  padding: 6px;
+}
+
+.pimMatrizKpis strong {
+  font-size: 0.95rem;
+}
+
+.pimMatrizCabecalhoAcoes {
+  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 230px;
+}
+
+.pimMatrizCabecalhoAcoes > span {
+  flex-basis: 100%;
+}
+
+.pimMatrizCabecalhoAcoes button {
+  font-size: 0.61rem;
+  gap: 4px;
+  padding: 4px 6px;
+}
+
+.pimMatrizCabecalhoAcoes button small {
+  color: #a8d5b1;
+  display: block;
+  font-size: 0.55rem;
+  line-height: 1;
+}
+
+@media (max-width: 980px) {
+  .pimMatrizCabecalhoProduto {
+    min-height: 104px;
+  }
+}
+
+/* Cabeçalho com espaço controlado para até três linhas de descrição */
+.pimMatrizCabecalhoProduto {
+  min-height: 154px;
+  padding: 20px 22px;
+}
+
+.pimMatrizCabecalhoProduto > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pimMatrizCabecalhoProduto h3 {
+  display: -webkit-box;
+  font-size: clamp(1.12rem, 1.45vw, 1.42rem);
+  line-height: 1.18;
+  max-width: 760px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  white-space: normal;
+}
+
+.pimMatrizCabecalhoProduto p {
+  margin-top: 7px;
+  max-width: 820px;
+}
+
+@media (max-width: 980px) {
+  .pimMatrizCabecalhoProduto {
+    min-height: 140px;
+  }
+}
+
+/* Correção de corte e sobreposição na lista de Conjuntos */
+.pimMatrizItem {
+  align-content: start;
+  box-sizing: border-box;
+  min-height: 68px;
+  overflow: hidden;
+  row-gap: 2px;
+}
+
+.pimMatrizItem strong {
+  display: -webkit-box;
+  font-size: 0.76rem;
+  line-height: 1.18;
+  max-height: 2.36em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+.pimMatrizItem small {
+  display: block;
+  line-height: 1.15;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizItemTitulo {
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizIndicadores {
+  margin-top: 2px;
+}
+
+/* Semáforo visual de cobertura por código e lista sem o Modelo */
+.pimMatrizItem {
+  min-height: 82px;
+}
+
+.pimMatrizItem strong {
+  -webkit-line-clamp: 3;
+  max-height: 3.54em;
+}
+
+.pimMatrizSemaforoConcorrentes {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  min-height: 8px;
+}
+
+.pimSemaforoDot {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+}
+
+.pimSemaforoDot.cinza {
+  background: #cbd5e1;
+}
+
+.pimSemaforoDot.vermelho {
+  background: #ef4444;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
+}
+
+.pimSemaforoDot.verde {
+  background: #22c55e;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.12);
+}
+
+.pimMatrizSemaforoProduto {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 9px;
+  margin-top: 8px;
+}
+
+.pimMatrizSemaforoProduto > span {
+  color: #b9dfe0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pimMatrizSemaforoProduto > div {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+}
+
+.pimMatrizSemaforoProduto small {
+  color: #9bc0c4;
+  flex-basis: 100%;
+  font-size: 0.68rem;
+}
+
+@media (max-width: 980px) {
+  .pimMatrizItem {
+    min-height: 76px;
+  }
+}
+
+/* Revisao visual de campos concorrentes e fila de Pendente de De/Para */
+.pimDeParaPainel{display:flex;flex-direction:column;gap:12px;border:1px solid #dce5ea;border-radius:16px;padding:14px;background:#fbfdfe;min-width:0}
+.pimDeParaCabecalho{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:4px}
+.pimDeParaCabecalho>div{display:flex;flex-direction:column;gap:4px}
+.pimDeParaCabecalho strong{font-size:14px;color:#12232b}
+.pimDeParaCabecalho span{font-size:11px;line-height:1.4;color:#6d7b82}
+.pimDeParaContagem{white-space:nowrap;border-radius:999px;background:#fff3d6;color:#8a5a00;font-size:11px;font-weight:700;padding:7px 10px}
+.pimDeParaBarra{display:flex;align-items:center;gap:8px}
+.pimDeParaBarra input{flex:1;min-width:0;border:1px solid #d6e0e5;border-radius:9px;padding:9px 11px;background:#fff;color:#20333b;font-size:12px}
+.pimDeParaBarra button{white-space:nowrap;font-size:11px;padding:8px 10px}
+.pimDeParaLista{display:flex;flex-direction:column;gap:7px;max-height:420px;overflow:auto;padding-right:4px}
+.pimDeParaLinha{display:grid;grid-template-columns:minmax(190px,1fr) 22px minmax(220px,1.15fr) auto;align-items:center;gap:8px;padding:9px 10px;border:1px solid #e1e9ed;border-radius:10px;background:#fff}
+.pimDeParaOrigem{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pimDeParaOrigem strong{font-size:11px;color:#233841;overflow-wrap:anywhere}
+.pimDeParaOrigem small{font-size:11px;line-height:1.35;color:#718087;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.pimDeParaSeta{color:#9aaab1;text-align:center;font-weight:700}
+.pimDeParaSelect{width:100%;min-width:0;border:1px solid #d2dde2;border-radius:8px;background:#fff;padding:8px 9px;color:#253941;font-size:11px}
+.pimDeParaSugerir{padding:7px 9px!important;font-size:10px!important;white-space:nowrap}
+.pimDeParaVazio{padding:20px;border:1px dashed #cbd8de;border-radius:10px;text-align:center;color:#74838a;font-size:12px;background:#fff}
+.pimDeParaVinculados{border-top:1px solid #e2eaee;padding-top:11px;display:flex;flex-direction:column;gap:8px}
+.pimDeParaVinculados strong{font-size:11px;color:#52656d}
+.pimDeParaVinculados>div{display:flex;flex-wrap:wrap;gap:6px;max-height:130px;overflow:auto}
+.pimDeParaVinculados span{font-size:10px;color:#216c4b;background:#eaf8f0;border:1px solid #c8ead6;border-radius:999px;padding:5px 8px}
+@media(max-width:900px){.pimDeParaLinha{grid-template-columns:1fr;gap:6px}.pimDeParaSeta{display:none}.pimDeParaSugerir{justify-self:start}.pimDeParaCabecalho{flex-direction:column}.pimDeParaContagem{align-self:flex-start}}
+
+/* Ajustes do piloto 8255: concorrente, Consolidado e enriquecimento */
+.pimMatrizItemNomeLinha {
+  align-items: flex-start;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.pimMatrizItemNomeLinha strong {
+  flex: 1;
+  font-size: 0.7rem;
+  line-height: 1.18;
+  min-width: 0;
+}
+
+.pimMatrizItemNomeLinha .pimMatrizSemaforoConcorrentes {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.pimMatrizSemaforoConcorrentes .pimSemaforoDot {
+  height: 8px;
+  width: 8px;
+}
+
+.pimConsolidadoCabecalho {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.pimMatrizTabela th.pimConsolidadoCabecalho,
+.pimMatrizTabela td.pimConsolidadoCelula {
+  min-width: 165px;
+}
+
+.pimConsolidadoCelula {
+  background: #f8fbff;
+}
+
+.pimConsolidadoCelula input {
+  background: #fff;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  box-sizing: border-box;
+  color: #1e3a8a;
+  font-size: 0.76rem;
+  min-height: 32px;
+  padding: 7px 8px;
+  width: 100%;
+}
+
+.pimConsolidadoCelula input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+.pimDeParaLinha.vinculado {
+  background: #f4fcf7;
+  border-color: #bde8ca;
+}
+
+.pimDeParaLinha.pendente {
+  background: #fffdfa;
+  border-color: #f1dfb4;
+}
+
+.pimDeParaOrigem em {
+  color: #9a6b19;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.pimDeParaLinha.vinculado .pimDeParaOrigem em {
+  color: #23734b;
+}
+
+.pimEnriquecimentoBotao {
+  align-items: center;
+  display: inline-flex;
+  font-size: 10px;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 7px;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+.pimEnriquecimentoContexto {
+  background: #f1f8f8;
+  border: 1px solid #d7e9e9;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.pimEnriquecimentoContexto strong {
+  color: #17343a;
+  font-size: 13px;
+}
+
+.pimEnriquecimentoContexto span {
+  color: #60757b;
+  font-size: 11px;
+}
+
+.pimEnriquecimentoLista {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pimEnriquecimentoFonte {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dce6e9;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.pimEnriquecimentoFonte.selecionada {
+  background: #f0fdf4;
+  border-color: #86d49c;
+}
+
+.pimEnriquecimentoFonte input {
+  accent-color: #087f82;
+}
+
+.pimEnriquecimentoFonte span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pimEnriquecimentoFonte strong {
+  color: #1f343c;
+  font-size: 11px;
+}
+
+.pimEnriquecimentoFonte small {
+  color: #718087;
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  .pimEnriquecimentoLista {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pimDeParaResumo {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pimDeParaResumo > div {
+  background: #f7fafb;
+  border: 1px solid #dce6e9;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+}
+
+.pimDeParaResumo span {
+  color: #6b7d83;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pimDeParaResumo strong {
+  color: #17343a;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.pimDeParaResumo .pendente {
+  background: #fffaf0;
+  border-color: #f1dfb4;
+}
+
+.pimDeParaResumo .pendente strong {
+  color: #9a6b19;
+}
+
+.pimDeParaResumo .vinculado {
+  background: #f3fcf6;
+  border-color: #bde8ca;
+}
+
+.pimDeParaResumo .vinculado strong {
+  color: #23734b;
+}
+
+@media (max-width: 700px) {
+  .pimDeParaResumo {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Refinamentos da tela de Conjuntos e do cadastro de Atributos */
+.pimProdutoShell {
+  min-width: 0;
+}
+
+.pimProdutoShell > form,
+.pimProdutoShell > form > *,
+.pimAbaProduto,
+.pimFormProduto,
+.pimAbaProduto .formCadastro,
+.pimCadastroEditor {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.pimProdutoShell > header.pimListaCabecalhoOculto {
+  display: none;
+}
+
+.pimProdutoHeader {
+  align-items: flex-start;
+  background: #f7fafb;
+  border: 1px solid #dce6e9;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.pimProdutoIdentidade {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pimProdutoVoltarTopo {
+  align-self: flex-start;
+  margin-bottom: 6px;
+}
+
+.pimProdutoIdentidade h3,
+.pimProdutoIdentidade p,
+.pimProdutoIdentidade > span {
+  overflow-wrap: anywhere;
+}
+
+.pimFormProduto,
+.pimAbaProduto .formCadastro {
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  width: 100%;
+}
+
+.pimAbaProduto .formCadastro label {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pimAbaProduto .formCadastro input,
+.pimAbaProduto .formCadastro select,
+.pimAbaProduto .formCadastro textarea,
+.pimFormProduto input,
+.pimFormProduto select,
+.pimFormProduto textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+.pimAbas {
+  align-items: stretch;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 9px;
+  scrollbar-width: thin;
+}
+
+.pimAbas button {
+  flex: 1 1 150px;
+  max-width: 220px;
+  min-width: 135px;
+}
+
+.pimGridLinhaInterativa {
+  cursor: pointer;
+  transition: background .16s ease, box-shadow .16s ease;
+}
+
+.pimGridLinhaInterativa:hover {
+  background: #f0fdf4;
+  box-shadow: inset 3px 0 0 #16a34a;
+}
+
+.pimGridLinhaInterativa td {
+  user-select: none;
+}
+
+.pimMatrizCoberturaResumo {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 9px;
+}
+
+.pimMatrizCoberturaResumo span {
+  color: #b9dfe0;
+  font-size: .64rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.pimMatrizCoberturaResumo small {
+  color: #9bc0c4;
+  font-size: .68rem;
+}
+
+.pimFonteNomeComMatch {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pimFonteNomeComMatch > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizCabecalhoAcoes button {
+  min-width: 0;
+}
+
+.pimMatrizCabecalhoAcoes button .pimSemaforoDot {
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.pimAtributosResumo {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.pimAtributosResumo > div {
+  background: #fff;
+  border: 1px solid #dce6e9;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.pimAtributosResumo span {
+  color: #63757b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimAtributosResumo strong {
+  color: #17343a;
+  font-size: 22px;
+}
+
+.pimCadastroEditorModalBackdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, .54);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1300;
+}
+
+.pimCadastroEditorModal {
+  background: #fff;
+  border: 1px solid #cfe0e5;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, .28);
+  max-height: min(88vh, 820px);
+  max-width: 900px;
+  overflow-y: auto;
+  width: min(900px, 100%);
+}
+
+.pimConfiguracaoEmpresasModal {
+  max-height: min(88vh, 900px);
+  max-width: 1180px;
+}
+
+.pimCadastroEditor {
+  align-items: end;
+  background: #f8fbfc;
+  border: 1px solid #cfe0e5;
+  border-radius: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  padding: 16px;
+}
+
+.pimCadastroEditorTopo {
+  align-items: center;
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #dce6e9;
+}
+
+.pimCadastroEditorTopo > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pimCadastroEditorTopo span {
+  color: #63757b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimCadastroEditorTopo strong {
+  color: #17343a;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.pimCadastroAtributoEditor .campoLargo {
+  grid-column: span 2;
+}
+
+.pimCheckEditor {
+  align-items: center;
+  display: flex !important;
+  flex-direction: row;
+  gap: 9px !important;
+  min-height: 38px;
+}
+
+.pimCheckEditor input {
+  width: 20px !important;
+}
+
+@media (max-width: 900px) {
+  .pimAtributosResumo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pimCadastroAtributoEditor .campoLargo {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .pimAtributosResumo {
+    grid-template-columns: 1fr;
+  }
+
+  .pimCadastroEditorTopo {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.pimMatrizFiltrosTopo {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.pimMatrizFiltrosTopo strong {
+  color: #344054;
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.pimMatrizFiltrosTopo button {
+  font-size: 11px;
+  padding: 6px 9px;
+}
+
+.pimMatrizFiltrosConteudo {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  width: 100%;
+}
+
+.pimMatrizFiltros.recolhido {
+  padding: 7px 10px;
+}
+
+@media (max-width: 640px) {
+  .pimMatrizFiltrosTopo {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Recolhimento da lista lateral de produtos da matriz */
+.pimMatrizShellListaRecolhida {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pimMatrizShellListaRecolhida .pimMatrizPrincipal {
+  width: 100%;
+}
+
+.pimMatrizTopoAcoes {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .pimMatrizTopoAcoes {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pimMatrizTopoAcoes button {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* Match do produto na lista lateral: uma bolinha por concorrente abaixo da descrição */
+.pimMatrizItemMatches {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  min-height: 9px;
+}
+
+.pimMatrizItemMatches .pimSemaforoDot {
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+.pimFonteNomeComMatch {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pimFonteNomeComMatch .pimSemaforoDot {
+  flex: 0 0 auto;
+  height: 8px;
+  width: 8px;
+}
+
+/* Tipografia compacta para acomodar o match por código ao lado do concorrente */
+.pimMatrizCabecalhoAcoes button {
+  gap: 5px;
+  padding: 6px 8px;
+}
+
+.pimMatrizCabecalhoAcoes button .pimFonteNomeComMatch {
+  gap: 3px;
+}
+
+.pimFonteNomeComMatch > span {
+  font-size: .64rem;
+  font-weight: 800;
+  letter-spacing: .01em;
+  max-width: 118px;
+}
+
+.pimMatrizCabecalhoAcoes button > small {
+  font-size: .55rem;
+}
+
+/* Cabeçalho da matriz: ERP preenchido abaixo de Fontes e fontes com mais espaço horizontal */
+.pimMatrizKpiAtributos {
+  min-width: 126px !important;
+}
+
+.pimMatrizKpiColuna {
+  background: transparent !important;
+  border: 0 !important;
+  display: grid !important;
+  gap: 6px;
+  min-width: 86px !important;
+  padding: 0 !important;
+}
+
+.pimMatrizKpiColuna > div {
+  min-width: 86px !important;
+  padding: 6px 8px !important;
+}
+
+.pimMatrizCabecalhoAcoes {
+  flex: 1 1 360px;
+  margin-left: 8px;
+  max-width: none;
+  min-width: 320px;
+}
+
+.pimMatrizCabecalhoAcoes button {
+  flex: 0 1 auto;
+}
+
+@media (max-width: 980px) {
+  .pimMatrizCabecalhoAcoes {
+    margin-left: 0;
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+/* Materiais encontrados por produto */
+.pimMatrizMidiaAcoes {
+  align-items: center;
+  background: #f8fbfc;
+  border: 1px solid #d8e5e8;
+  border-radius: 10px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 13px 15px;
+}
+
+.pimMatrizMidiaAcoes > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pimMatrizMidiaAcoes span {
+  color: #17343a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pimMatrizMidiaAcoes small {
+  color: #66777d;
+  font-size: 11px;
+}
+
+.pimMatrizMidiaBotoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pimMatrizMidiaBotoes button,
+.pimMatrizMidiaItem {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pimMatrizModalMidia {
+  max-width: 1040px;
+}
+
+.pimMatrizMidiaLista {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: 210px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.pimMatrizMidiaItem {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid #dbe3e7;
+  border-radius: 9px;
+  cursor: pointer;
+  flex-direction: column;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.pimMatrizMidiaItem:hover,
+.pimMatrizMidiaItem.selecionado {
+  background: #f0fdf4;
+  border-color: #66c981;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, .10);
+}
+
+.pimMatrizMidiaItem span {
+  color: #0f766e;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimMatrizMidiaItem strong {
+  color: #334155;
+  display: block;
+  font-size: 11px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.pimMatrizMidiaItem small {
+  color: #75848a;
+  font-size: 10px;
+}
+
+.pimMatrizMidiaVazio {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  grid-column: 1 / -1;
+  padding: 20px;
+  text-align: center;
+}
+
+.pimMatrizMidiaPreview {
+  background: #edf3f4;
+  border: 1px solid #d3e1e4;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+  min-height: 280px;
+  padding: 10px;
+}
+
+.pimMatrizMidiaPreviewCabecalho {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.pimMatrizMidiaPreviewCabecalho > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pimMatrizMidiaPreviewCabecalho span {
+  color: #0f766e;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimMatrizMidiaPreviewCabecalho strong {
+  color: #17343a;
+  font-size: 12px;
+}
+
+.pimMatrizMidiaPreviewCabecalho small {
+  color: #66777d;
+  font-size: 10px;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimMatrizMidiaPreview img,
+.pimMatrizMidiaPreview iframe {
+  background: #fff;
+  border: 0;
+  border-radius: 7px;
+  flex: 1;
+  min-height: 300px;
+  object-fit: contain;
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .pimMatrizMidiaAcoes,
+  .pimMatrizMidiaPreviewCabecalho {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pimMatrizMidiaBotoes {
+    justify-content: stretch;
+  }
+
+  .pimMatrizMidiaBotoes button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .pimMatrizMidiaLista {
+    grid-template-columns: 1fr;
+  }
+
+  .pimMatrizMidiaPreviewCabecalho small {
+    max-width: 100%;
+  }
+}
+
+/* Seleção e aprovação de materiais na tela Imagens */
+.pimAssetsCandidatos {
+  background: #f8fbfc;
+  border: 1px solid #d8e5e8;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  padding: 13px;
+}
+
+.pimAssetsCandidatos .pimBlocoTopo {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pimAssetsCandidatos h4 {
+  margin: 0 0 3px;
+}
+
+.pimAssetsCandidatosControles {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.pimAssetsCandidatosControles select {
+  max-width: 420px;
+  min-width: 250px;
+}
+
+.pimAssetsCandidatosLista {
+  display: grid;
+  gap: 7px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.pimAssetsCandidato {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dce6e9;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 9px 11px;
+}
+
+.pimAssetsCandidato > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pimAssetsCandidato span {
+  color: #0f766e;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pimAssetsCandidato strong {
+  color: #334155;
+  font-size: 11px;
+  max-width: 740px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pimAssetsCandidato small,
+.pimAssetsCandidatos > .pimBlocoTopo small {
+  color: #718087;
+  font-size: 10px;
+}
+
+.pimAssetsCandidatosVazio {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  padding: 14px;
+  text-align: center;
+}
+
+@media (max-width: 800px) {
+  .pimAssetsCandidatos .pimBlocoTopo,
+  .pimAssetsCandidato {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pimAssetsCandidatosControles {
+    flex-direction: column;
+  }
+
+  .pimAssetsCandidatosControles select,
+  .pimAssetsCandidatosControles button {
+    max-width: none;
+    width: 100%;
+  }
+}
+
+/* Ações de mídia no card Atributos do cabeçalho */
+.pimMatrizMidiaKpiBotoes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.pimMatrizMidiaKpiBotoes button {
+  align-items: center;
+  display: inline-flex;
+  font-size: .62rem;
+  gap: 5px;
+  justify-content: center;
+  min-height: 26px;
+  padding: 4px 6px;
+  width: 100%;
+}
+
+/* Filtro por concorrente e seleção múltipla no modal de mídia */
+.pimMatrizMidiaFiltros {
+  align-items: flex-end;
+  background: #f8fbfc;
+  border: 1px solid #d8e5e8;
+  border-radius: 9px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+}
+
+.pimMatrizMidiaFiltros label {
+  align-items: flex-start;
+  color: #455a61;
+  display: flex;
+  flex-direction: column;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 4px;
+}
+
+.pimMatrizMidiaFiltros select {
+  min-width: 220px;
+}
+
+.pimMatrizMidiaFiltros > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.pimMatrizMidiaFiltros strong {
+  color: #0f766e;
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+.pimMatrizMidiaItem {
+  align-items: center;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.pimMatrizMidiaCheck {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pimMatrizMidiaCheck input {
+  accent-color: #16a34a;
+  margin: 0 0 3px;
+}
+
+.pimMatrizMidiaItem > button {
+  flex: 0 0 auto;
+  min-width: 54px;
+}
+
+@media (max-width: 700px) {
+  .pimMatrizMidiaFiltros {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pimMatrizMidiaFiltros select,
+  .pimMatrizMidiaFiltros > div,
+  .pimMatrizMidiaFiltros > div button {
+    width: 100%;
+  }
+
+  .pimMatrizMidiaFiltros > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Feedback do PIM sempre visível sobre a área de trabalho */
+.pimMatrizTela > .sucesso,
+.pimMatrizTela > .alerta {
+  align-items: flex-start;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+  left: auto;
+  max-width: min(620px, calc(100vw - 40px));
+  position: fixed;
+  right: 22px;
+  top: 82px;
+  z-index: 1200;
+}
+
+.pimMatrizTela > .sucesso {
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.pimMatrizTela > .alerta {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+}
+
+.pimMatrizFeedback {
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding-right: 10px;
+}
+
+.pimMatrizFeedback > span {
+  min-width: 0;
+}
+
+.pimMatrizFeedbackFechar {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: currentColor;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  margin: -2px -2px 0 0;
+  min-height: 28px;
+  min-width: 28px;
+  opacity: .72;
+  padding: 4px;
+  transition: background-color .16s ease, opacity .16s ease, transform .16s ease;
+}
+
+.pimMatrizFeedbackFechar:hover {
+  background: rgba(15, 23, 42, .08);
+  opacity: 1;
+}
+
+.pimMatrizFeedbackFechar:active {
+  transform: scale(.96);
 }
