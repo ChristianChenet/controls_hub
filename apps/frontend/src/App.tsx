@@ -1079,10 +1079,6 @@ function Dashboard() {
   }
 
   useEffect(() => {
-    carregarDashboard();
-  }, []);
-
-  useEffect(() => {
     listarMotivosPrejuizoLogistico().then(setMotivosPrejuizoLogistico).catch(() => setMotivosPrejuizoLogistico([]));
   }, []);
 
@@ -2039,12 +2035,14 @@ function KanbanCotacoes({
         data_inicial: dataInicial,
         data_final: dataFinal,
         etapa_codigo: etapasSelecionadas.length ? etapasSelecionadas.join(',') : undefined,
+        busca: chaveFiltro.trim() || undefined,
         faturado: faturadoFiltro || undefined,
         cidade: cidadeFiltro || undefined,
         multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
         fluxo_logistico: fluxoLogisticoFiltro || undefined,
         frete_gratis: freteGratisFiltro || undefined,
-        cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined
+        cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined,
+        somente_pendentes: somentePendentes ? 'true' : undefined
       });
       setLinhas(Array.isArray(dados) ? dados : []);
       setLimitesKanbanPorEtapa({});

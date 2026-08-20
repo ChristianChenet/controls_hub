@@ -757,6 +757,7 @@ export type FiltrosCotacao = {
   fluxoLogistico?: boolean | string;
   cteDiferenteEscolhido?: boolean;
   freteGratis?: string;
+  somentePendentes?: boolean;
   pagina?: number;
   limite?: number;
 };
@@ -800,6 +801,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
   const filtroFluxoLogistico = filtros.fluxoLogistico === true || String(filtros.fluxoLogistico ?? '').toLowerCase() === 'true'
     ? 'SOMENTE'
     : String(filtros.fluxoLogistico ?? '').trim().toUpperCase() || null;
+  const filtroBusca = filtros.busca ? `%${String(filtros.busca).trim()}%` : null;
   return consultar(
     `SELECT
       e.id AS etapa_id,
@@ -955,6 +957,71 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
         OR ($9 = 'SIM' AND COALESCE(c.valor_frete_pedido, 0) <= 0)
         OR ($9 = 'NAO' AND COALESCE(c.valor_frete_pedido, 0) > 0)
       )
+      AND (
+        $11::VARCHAR IS NULL
+        OR COALESCE(c.codigo_chave, '') ILIKE $11
+        OR COALESCE(c.numero_documento, '') ILIKE $11
+        OR COALESCE(c.numero_pedido, '') ILIKE $11
+        OR COALESCE(c.nome_destinatario, '') ILIKE $11
+        OR COALESCE(c.cidade_destino, '') ILIKE $11
+        OR COALESCE(c.uf_destino, '') ILIKE $11
+        OR COALESCE(c.vendedor_nome, '') ILIKE $11
+        OR COALESCE(c.numero_nfe_faturada, '') ILIKE $11
+        OR COALESCE(c.numero_cte, '') ILIKE $11
+        OR COALESCE(c.transportadora_pedido_nome, '') ILIKE $11
+        OR EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_notas_fiscais nf_busca
+          WHERE nf_busca.empresa_id = c.empresa_id
+            AND nf_busca.tipo_documento = c.tipo_documento
+            AND nf_busca.numero_documento = c.numero_documento
+            AND nf_busca.codigo_chave = c.codigo_chave
+            AND (
+              COALESCE(nf_busca.numero_nfe::TEXT, '') ILIKE $11
+              OR COALESCE(nf_busca.chave_nfe, '') ILIKE $11
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_ctes ct_busca
+          LEFT JOIN transportadoras t_cte_busca
+            ON (
+              COALESCE(NULLIF(TRIM(ct_busca.transportadora_cte_codigo), ''), '') <> ''
+              AND UPPER(TRIM(COALESCE(t_cte_busca.codigo_interno, ''))) = UPPER(TRIM(ct_busca.transportadora_cte_codigo))
+            )
+          WHERE ct_busca.empresa_id = c.empresa_id
+            AND ct_busca.tipo_documento = c.tipo_documento
+            AND ct_busca.numero_documento = c.numero_documento
+            AND ct_busca.codigo_chave = c.codigo_chave
+            AND (
+              COALESCE(ct_busca.numero_cte::TEXT, '') ILIKE $11
+              OR COALESCE(ct_busca.chave_cte, '') ILIKE $11
+              OR COALESCE(ct_busca.transportadora_cte_codigo, '') ILIKE $11
+              OR COALESCE(t_cte_busca.nome_fantasia, '') ILIKE $11
+              OR COALESCE(t_cte_busca.razao_social, '') ILIKE $11
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM cotacoes_frete_transportadoras cft_busca
+          LEFT JOIN transportadoras t_busca
+            ON t_busca.id = cft_busca.transportadora_id
+          WHERE cft_busca.empresa_id = c.empresa_id
+            AND cft_busca.tipo_documento = c.tipo_documento
+            AND cft_busca.numero_documento = c.numero_documento
+            AND cft_busca.codigo_chave = c.codigo_chave
+            AND (
+              COALESCE(cft_busca.codigo_transportadora, '') ILIKE $11
+              OR COALESCE(t_busca.codigo_interno, '') ILIKE $11
+              OR COALESCE(t_busca.nome_fantasia, '') ILIKE $11
+              OR COALESCE(t_busca.razao_social, '') ILIKE $11
+            )
+        )
+      )
+      AND (
+        $12::BOOLEAN IS DISTINCT FROM TRUE
+        OR e.codigo NOT IN ('CTE_EMITIDO', 'COTACAO_CANCELADA')
+      )
     LEFT JOIN transportadoras t_escolhida ON t_escolhida.id = c.transportadora_escolhida_id
     LEFT JOIN LATERAL (
       SELECT
@@ -1073,7 +1140,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       AND e.ativa = TRUE
       AND ($4::VARCHAR IS NULL OR e.codigo = ANY(string_to_array($4::VARCHAR, ',')))
     ORDER BY e.ordem ASC, c.criado_em ASC NULLS LAST`,
-    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true, normalizarFiltroFreteGratis(filtros.freteGratis), filtros.cidade ? `%${filtros.cidade}%` : null]
+    [empresaId, filtros.dataInicial || null, filtros.dataFinal || null, filtros.etapaCodigo || null, filtros.faturado || null, filtros.multiplasCotacoes === true, filtroFluxoLogistico, filtros.cteDiferenteEscolhido === true, normalizarFiltroFreteGratis(filtros.freteGratis), filtros.cidade ? `%${filtros.cidade}%` : null, filtroBusca, filtros.somentePendentes === true]
   );
 }
 
@@ -2366,16 +2433,16 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
     parametrosChave(interpretarChaveCotacao(dados.empresaId, dados.cotacaoId))
   );
 
-  const possuiEscolhaManualOuOperacional = Boolean(cotacao?.transportadora_escolhida_id)
-    || Boolean(cotacao?.escolhido_em)
-    || Boolean(cotacao?.escolhido_por_usuario_id);
+  const escolhaAutomaticaJaAplicada = Boolean(cotacao?.transportadora_escolhida_id)
+    && Number(cotacao?.transportadora_escolhida_id) === Number(cotacao?.transportadora_auto_id)
+    && (Boolean(cotacao?.escolhido_em) || Boolean(cotacao?.escolhido_por_usuario_id));
 
   if (
     !cotacao
     || !cotacao.transportadora_auto_id
     || cotacao.bloqueado_para_alteracao
     || String(cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO'
-    || possuiEscolhaManualOuOperacional
+    || escolhaAutomaticaJaAplicada
   ) {
     return null;
   }
@@ -2491,9 +2558,6 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
     'COALESCE(c.excluido, FALSE) = FALSE',
     'COALESCE(c.bloqueado_para_alteracao, FALSE) = FALSE',
     "UPPER(COALESCE(c.status, '')) <> 'CTE_EMITIDO'",
-    'c.transportadora_escolhida_id IS NULL',
-    'c.escolhido_em IS NULL',
-    'c.escolhido_por_usuario_id IS NULL',
     `EXISTS (
       SELECT 1
       FROM transportadoras t

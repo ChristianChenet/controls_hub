@@ -1790,20 +1790,26 @@ export async function criarApp() {
     }));
   });
 
-  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; cidade?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string; frete_gratis?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
+  app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; cidade?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string; frete_gratis?: string; somente_pendentes?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
+    await reprocessarEscolhasAutomaticasTransportadoraPedido({
+      empresaId: usuario!.empresaAtivaId!,
+      usuarioId: usuario.id
+    });
     await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
     return sucesso(await listarKanbanCotacao(usuario!.empresaAtivaId!, {
       dataInicial: request.query.data_inicial,
       dataFinal: request.query.data_final,
       etapaCodigo: request.query.etapa_codigo,
+      busca: request.query.busca,
       cidade: request.query.cidade,
       faturado: request.query.faturado,
       multiplasCotacoes: request.query.multiplas_cotacoes === 'true',
       fluxoLogistico: request.query.fluxo_logistico,
       cteDiferenteEscolhido: request.query.cte_diferente_escolhido === 'true',
-      freteGratis: request.query.frete_gratis
+      freteGratis: request.query.frete_gratis,
+      somentePendentes: request.query.somente_pendentes === 'true'
     }));
   });
 
@@ -2912,3 +2918,4 @@ export async function criarApp() {
 
   return app;
 }
+
