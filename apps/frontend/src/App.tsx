@@ -19,7 +19,7 @@ import {
   Truck,
   Users
 } from 'lucide-react';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode, UIEvent } from 'react';
 
 
@@ -2002,6 +2002,8 @@ function KanbanCotacoes({
   const [somentePendentes, setSomentePendentes] = useState(filtrosKanbanSalvos.somentePendentes === undefined ? true : Boolean(filtrosKanbanSalvos.somentePendentes));
   const [limitesKanbanPorEtapa, setLimitesKanbanPorEtapa] = useState<Record<string, number>>({});
   const [kanbanAtualizadoNoDetalhe, setKanbanAtualizadoNoDetalhe] = useState(false);
+  const requisicaoKanbanRef = useRef(0);
+  const linhasKanbanRef = useRef<RegistroGenerico[]>([]);
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     if (Array.isArray(filtrosKanbanSalvos.etapasSelecionadas)) {
       return filtrosKanbanSalvos.etapasSelecionadas.map((item: unknown) => String(item));
@@ -2015,10 +2017,30 @@ function KanbanCotacoes({
     return ordemInicial?.length ? ordemInicial : salva ? JSON.parse(salva) : [];
   });
 
+  function atualizarLinhasKanban(novasLinhas: RegistroGenerico[]) {
+    linhasKanbanRef.current = novasLinhas;
+    setLinhas(novasLinhas);
+  }
+
   async function carregarKanban() {
+    const numeroRequisicao = requisicaoKanbanRef.current + 1;
+    requisicaoKanbanRef.current = numeroRequisicao;
     setCarregando(true);
     setErro('');
     try {
+      const filtrosConsulta = {
+        data_inicial: dataInicial,
+        data_final: dataFinal,
+        etapa_codigo: etapasSelecionadas.length ? etapasSelecionadas.join(',') : undefined,
+        busca: chaveFiltro.trim() || undefined,
+        faturado: faturadoFiltro || undefined,
+        cidade: cidadeFiltro || undefined,
+        multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
+        fluxo_logistico: fluxoLogisticoFiltro || undefined,
+        frete_gratis: freteGratisFiltro || undefined,
+        cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined,
+        somente_pendentes: somentePendentes ? 'true' : undefined
+      };
       localStorage.setItem(CHAVE_FILTROS_KANBAN, JSON.stringify({
         dataInicial,
         dataFinal,
@@ -2032,25 +2054,35 @@ function KanbanCotacoes({
         somentePendentes,
         etapasSelecionadas
       }));
-      const dados = await listarKanbanCotacoes({
-        data_inicial: dataInicial,
-        data_final: dataFinal,
-        etapa_codigo: etapasSelecionadas.length ? etapasSelecionadas.join(',') : undefined,
-        busca: chaveFiltro.trim() || undefined,
-        faturado: faturadoFiltro || undefined,
-        cidade: cidadeFiltro || undefined,
-        multiplas_cotacoes: multiplasCotacoesFiltro ? 'true' : undefined,
-        fluxo_logistico: fluxoLogisticoFiltro || undefined,
-        frete_gratis: freteGratisFiltro || undefined,
-        cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined,
-        somente_pendentes: somentePendentes ? 'true' : undefined
-      });
-      setLinhas(Array.isArray(dados) ? dados : []);
+      let dados = await listarKanbanCotacoes(filtrosConsulta);
+      if (numeroRequisicao !== requisicaoKanbanRef.current) {
+        return;
+      }
+
+      let linhasRecebidas = Array.isArray(dados) ? dados : [];
+      const recebeuCards = linhasRecebidas.some((linha: any) => Boolean(linha.cotacao_id));
+      const tinhaCards = linhasKanbanRef.current.some((linha: any) => Boolean(linha.cotacao_id));
+
+      // Evita que um retorno momentaneamente vazio derrube o Kanban em produção.
+      if (!recebeuCards && tinhaCards) {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        dados = await listarKanbanCotacoes(filtrosConsulta);
+        if (numeroRequisicao !== requisicaoKanbanRef.current) {
+          return;
+        }
+        linhasRecebidas = Array.isArray(dados) ? dados : [];
+      }
+
+      atualizarLinhasKanban(linhasRecebidas as RegistroGenerico[]);
       setLimitesKanbanPorEtapa({});
     } catch (error) {
-      setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.');
+      if (numeroRequisicao === requisicaoKanbanRef.current) {
+        setErro(error instanceof Error ? error.message : 'Falha ao carregar kanban.');
+      }
     } finally {
-      setCarregando(false);
+      if (numeroRequisicao === requisicaoKanbanRef.current) {
+        setCarregando(false);
+      }
     }
   }
 
