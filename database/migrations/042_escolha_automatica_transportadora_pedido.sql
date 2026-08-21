@@ -21,20 +21,6 @@ ALTER TABLE cotacoes_frete_transportadoras
   ADD COLUMN IF NOT EXISTS origem_detalhada VARCHAR(80),
   ADD COLUMN IF NOT EXISTS prazo_origem VARCHAR(40);
 
-UPDATE cotacoes_frete_transportadoras cft
-SET empresa_id = COALESCE(cft.empresa_id, cf.empresa_id),
-  tipo_documento = COALESCE(cft.tipo_documento, cf.tipo_documento),
-  numero_documento = COALESCE(cft.numero_documento, cf.numero_documento),
-  codigo_chave = COALESCE(cft.codigo_chave, cf.codigo_chave)
-FROM cotacoes_frete cf
-WHERE cft.cotacao_frete_id = cf.id
-  AND (
-    cft.empresa_id IS NULL
-    OR cft.tipo_documento IS NULL
-    OR cft.numero_documento IS NULL
-    OR cft.codigo_chave IS NULL
-  );
-
 CREATE OR REPLACE FUNCTION fn_aplicar_escolha_automatica_transportadora_pedido(
   p_empresa_id BIGINT,
   p_tipo_documento VARCHAR,
@@ -121,13 +107,11 @@ BEGIN
       ELSE 2
     END,
     COALESCE(cft.valor_frete, 0) ASC,
-    cft.alterado_em DESC NULLS LAST,
-    cft.id DESC
+    cft.alterado_em DESC NULLS LAST
   LIMIT 1;
 
   IF NOT FOUND THEN
     INSERT INTO cotacoes_frete_transportadoras (
-      cotacao_frete_id,
       empresa_id,
       tipo_documento,
       numero_documento,
@@ -145,7 +129,6 @@ BEGIN
       criada_em
     )
     VALUES (
-      v_cotacao.id,
       v_cotacao.empresa_id,
       v_cotacao.tipo_documento,
       v_cotacao.numero_documento,
@@ -219,6 +202,10 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NEW;
+  END IF;
+
   PERFORM fn_aplicar_escolha_automatica_transportadora_pedido(
     NEW.empresa_id,
     NEW.tipo_documento,
@@ -234,6 +221,10 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NEW;
+  END IF;
+
   PERFORM fn_aplicar_escolha_automatica_transportadora_pedido(
     NEW.empresa_id,
     NEW.tipo_documento,
