@@ -156,6 +156,7 @@ function definirStatusOperacionalCotacao(resumo: Record<string, any>) {
   }
 
   const possuiEscolhaReal = Boolean(resumo.tem_transportadora_selecionada)
+    || Boolean(resumo.transportadora_escolhida_id)
     || Boolean(resumo.escolhido_em)
     || Boolean(resumo.escolhido_por_usuario_id);
 
@@ -852,7 +853,33 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       COALESCE(outras.total_outras_cotacoes, 0) AS total_outras_cotacoes
     FROM etapas_kanban e
     LEFT JOIN cotacoes_frete c ON (
-        UPPER(TRIM(COALESCE(c.status, ''))) = e.codigo
+        CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM cotacoes_frete_ctes ct_status
+            WHERE ct_status.empresa_id = c.empresa_id
+              AND ct_status.tipo_documento = c.tipo_documento
+              AND ct_status.numero_documento = c.numero_documento
+              AND ct_status.codigo_chave = c.codigo_chave
+          ) THEN 'CTE_EMITIDO'
+          WHEN c.transportadora_escolhida_id IS NOT NULL
+            OR c.escolhido_em IS NOT NULL
+            OR c.escolhido_por_usuario_id IS NOT NULL
+            OR EXISTS (
+              SELECT 1
+              FROM cotacoes_frete_transportadoras cft_status
+              WHERE cft_status.empresa_id = c.empresa_id
+                AND cft_status.tipo_documento = c.tipo_documento
+                AND cft_status.numero_documento = c.numero_documento
+                AND cft_status.codigo_chave = c.codigo_chave
+                AND (
+                  COALESCE(cft_status.selecionada, FALSE) = TRUE
+                  OR COALESCE(cft_status.escolhida_plataforma, FALSE) = TRUE
+                  OR UPPER(COALESCE(cft_status.status, '')) IN ('SELECIONADA', 'ESCOLHIDA')
+                )
+            ) THEN 'TRANSPORTADORA_ESCOLHIDA'
+          ELSE UPPER(TRIM(COALESCE(c.status, '')))
+        END = e.codigo
         OR (
           COALESCE(c.status, '') = ''
           AND c.etapa_kanban_id = e.id
