@@ -2003,6 +2003,7 @@ function KanbanCotacoes({
   const [limitesKanbanPorEtapa, setLimitesKanbanPorEtapa] = useState<Record<string, number>>({});
   const [kanbanAtualizadoNoDetalhe, setKanbanAtualizadoNoDetalhe] = useState(false);
   const requisicaoKanbanRef = useRef(0);
+  const carregandoKanbanRef = useRef(false);
   const linhasKanbanRef = useRef<RegistroGenerico[]>([]);
   const assinaturaFiltrosKanbanRef = useRef('');
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
@@ -2023,7 +2024,43 @@ function KanbanCotacoes({
     setLinhas(novasLinhas);
   }
 
+  function possuiCardsKanban(lista: RegistroGenerico[]) {
+    return lista.some((linha: any) => Boolean(linha.cotacao_id));
+  }
+
+  function obterCacheKanban(assinatura: string) {
+    try {
+      const bruto = localStorage.getItem('controlSHubKanbanUltimoResultado');
+      const cache = bruto ? JSON.parse(bruto) : null;
+      if (cache?.assinatura === assinatura && Array.isArray(cache?.linhas) && possuiCardsKanban(cache.linhas)) {
+        return cache.linhas as RegistroGenerico[];
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function salvarCacheKanban(assinatura: string, novasLinhas: RegistroGenerico[]) {
+    if (!possuiCardsKanban(novasLinhas)) {
+      return;
+    }
+    try {
+      localStorage.setItem('controlSHubKanbanUltimoResultado', JSON.stringify({
+        assinatura,
+        salvo_em: new Date().toISOString(),
+        linhas: novasLinhas
+      }));
+    } catch {
+      // O cache é apenas uma proteção visual contra retorno vazio intermitente.
+    }
+  }
+
   async function carregarKanban() {
+    if (carregandoKanbanRef.current) {
+      return;
+    }
+    carregandoKanbanRef.current = true;
     const numeroRequisicao = requisicaoKanbanRef.current + 1;
     requisicaoKanbanRef.current = numeroRequisicao;
     setCarregando(true);
@@ -2062,8 +2099,8 @@ function KanbanCotacoes({
       }
 
       let linhasRecebidas = Array.isArray(dados) ? dados : [];
-      const recebeuCards = linhasRecebidas.some((linha: any) => Boolean(linha.cotacao_id));
-      const tinhaCards = linhasKanbanRef.current.some((linha: any) => Boolean(linha.cotacao_id));
+      const recebeuCards = possuiCardsKanban(linhasRecebidas as RegistroGenerico[]);
+      const tinhaCards = possuiCardsKanban(linhasKanbanRef.current);
       const mesmaConsultaAnterior = assinaturaFiltrosKanbanRef.current === assinaturaFiltros;
 
       // Evita que um retorno momentaneamente vazio derrube o Kanban em produção.
@@ -2076,12 +2113,24 @@ function KanbanCotacoes({
         linhasRecebidas = Array.isArray(dados) ? dados : [];
       }
 
-      if (!linhasRecebidas.some((linha: any) => Boolean(linha.cotacao_id)) && tinhaCards && mesmaConsultaAnterior) {
+      const recebeuCardsAposTentativa = possuiCardsKanban(linhasRecebidas as RegistroGenerico[]);
+      if (!recebeuCardsAposTentativa && tinhaCards && mesmaConsultaAnterior) {
         return;
+      }
+
+      if (!recebeuCardsAposTentativa) {
+        const cacheValido = obterCacheKanban(assinaturaFiltros);
+        if (cacheValido) {
+          assinaturaFiltrosKanbanRef.current = assinaturaFiltros;
+          atualizarLinhasKanban(cacheValido);
+          setLimitesKanbanPorEtapa({});
+          return;
+        }
       }
 
       assinaturaFiltrosKanbanRef.current = assinaturaFiltros;
       atualizarLinhasKanban(linhasRecebidas as RegistroGenerico[]);
+      salvarCacheKanban(assinaturaFiltros, linhasRecebidas as RegistroGenerico[]);
       setLimitesKanbanPorEtapa({});
     } catch (error) {
       if (numeroRequisicao === requisicaoKanbanRef.current) {
@@ -2091,6 +2140,7 @@ function KanbanCotacoes({
       if (numeroRequisicao === requisicaoKanbanRef.current) {
         setCarregando(false);
       }
+      carregandoKanbanRef.current = false;
     }
   }
 
@@ -2300,7 +2350,7 @@ function KanbanCotacoes({
           <option value="SIM">Frete grátis</option>
           <option value="NAO">Com frete</option>
         </select>
-        <button className="ghost" onClick={carregarKanban}>Filtrar</button>
+        <button className="ghost" onClick={carregarKanban} disabled={carregando}>{carregando ? 'Filtrando...' : 'Filtrar'}</button>
       </div>
       <div className="etapasFiltroChips">
         <button className="ghost" onClick={() => {
