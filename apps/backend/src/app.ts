@@ -1793,11 +1793,8 @@ export async function criarApp() {
   app.get<{ Querystring: { data_inicial?: string; data_final?: string; etapa_codigo?: string; busca?: string; cidade?: string; faturado?: string; multiplas_cotacoes?: string; fluxo_logistico?: string; cte_diferente_escolhido?: string; frete_gratis?: string; somente_pendentes?: string } }>('/api/cotacao-frete/kanban', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirPermissao(request, reply, 'VISUALIZAR_COTACAO_FRETE', 'Usuario sem permissao para visualizar cotacoes.');
     if (!usuario) return;
-    await reprocessarEscolhasAutomaticasTransportadoraPedido({
-      empresaId: usuario!.empresaAtivaId!,
-      usuarioId: usuario.id
-    });
-    await sincronizarStatusCotacoes(usuario!.empresaAtivaId!);
+    // A consulta do Kanban precisa ser leitura pura para manter a navegacao rapida.
+    // Reprocessamentos ficam nos botoes/rotinas especificas e nas triggers do banco.
     return sucesso(await listarKanbanCotacao(usuario!.empresaAtivaId!, {
       dataInicial: request.query.data_inicial,
       dataFinal: request.query.data_final,

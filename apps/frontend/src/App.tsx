@@ -2001,6 +2001,7 @@ function KanbanCotacoes({
   const [cteDiferenteEscolhidoFiltro, setCteDiferenteEscolhidoFiltro] = useState(Boolean(filtrosKanbanSalvos.cteDiferenteEscolhidoFiltro));
   const [somentePendentes, setSomentePendentes] = useState(filtrosKanbanSalvos.somentePendentes === undefined ? true : Boolean(filtrosKanbanSalvos.somentePendentes));
   const [limitesKanbanPorEtapa, setLimitesKanbanPorEtapa] = useState<Record<string, number>>({});
+  const [kanbanAtualizadoNoDetalhe, setKanbanAtualizadoNoDetalhe] = useState(false);
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     if (Array.isArray(filtrosKanbanSalvos.etapasSelecionadas)) {
       return filtrosKanbanSalvos.etapasSelecionadas.map((item: unknown) => String(item));
@@ -2123,6 +2124,7 @@ function KanbanCotacoes({
         setErro('Cotação não encontrada para abrir os detalhes.');
         return;
       }
+      setKanbanAtualizadoNoDetalhe(false);
       setDetalheKanban(detalheNormalizado);
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Falha ao abrir detalhe da cotação.');
@@ -2137,12 +2139,13 @@ function KanbanCotacoes({
 
     const detalheNormalizado = normalizarDetalheCotacao(await obterCotacao(String(detalheKanban.cotacao.id)));
     setDetalheKanban(detalheNormalizado);
+    setKanbanAtualizadoNoDetalhe(true);
     await carregarKanban();
   }
 
   function fecharDetalheKanban() {
     setDetalheKanban(null);
-    carregarKanban().catch(() => undefined);
+    setKanbanAtualizadoNoDetalhe(false);
   }
 
   const linhasFiltradas = useMemo(() => linhas.filter((linha: any) => {

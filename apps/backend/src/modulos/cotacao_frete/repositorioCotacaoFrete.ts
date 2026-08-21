@@ -86,7 +86,11 @@ async function garantirColunasOperacionaisCotacao() {
     `ALTER TABLE cotacoes_frete
       ADD COLUMN IF NOT EXISTS lote_fluxo_logistico VARCHAR(80),
       ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_id BIGINT,
-      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_descricao TEXT`
+      ADD COLUMN IF NOT EXISTS motivo_escolha_transportadora_descricao TEXT,
+      ADD COLUMN IF NOT EXISTS atualizado_no_erp BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS atualizado_no_erp_em TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS retorno_erp_status VARCHAR(30) NOT NULL DEFAULT 'PENDENTE',
+      ADD COLUMN IF NOT EXISTS retorno_erp_em TIMESTAMPTZ`
   );
   await consultar(
     `ALTER TABLE transportadoras
@@ -796,8 +800,6 @@ function montarCondicaoTransportadoraPedido(aliasCotacao = 'c', aliasTransportad
 }
 
 export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCotacao = {}) {
-  await garantirColunasOperacionaisCotacao();
-
   const filtroFluxoLogistico = filtros.fluxoLogistico === true || String(filtros.fluxoLogistico ?? '').toLowerCase() === 'true'
     ? 'SOMENTE'
     : String(filtros.fluxoLogistico ?? '').trim().toUpperCase() || null;
