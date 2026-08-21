@@ -272,7 +272,11 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
               OR UPPER(COALESCE(t.origem_detalhada, '')) = 'DIGITACAO_ERP'
               OR UPPER(COALESCE(t.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
             )
-            AND (t.respondida_em IS NOT NULL OR COALESCE(t.status, '') IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTADA'))
+            AND (
+              t.respondida_em IS NOT NULL
+              OR t.cotada_em IS NOT NULL
+              OR COALESCE(t.status, '') IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE')
+            )
         ) AS total_externas_respondidas
       FROM cotacoes_frete_transportadoras t
       WHERE t.empresa_id = c.empresa_id
@@ -328,6 +332,7 @@ export async function sincronizarStatusCotacoes(empresaId: number, cotacaoId?: s
               )
               AND (
                 t_resposta.respondida_em IS NOT NULL
+                OR t_resposta.cotada_em IS NOT NULL
                 OR UPPER(COALESCE(t_resposta.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
               )
           ) AS respondeu_cotacao
@@ -1107,6 +1112,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
               )
               AND (
                 cft_resposta.respondida_em IS NOT NULL
+                OR cft_resposta.cotada_em IS NOT NULL
                 OR UPPER(COALESCE(cft_resposta.status, '')) IN ('COTACAO_TRANSPORTADORA_RECEBIDA', 'RESPONDIDA', 'ALTERADA_MANUALMENTE')
               )
           ) AS respondeu_cotacao
@@ -3476,6 +3482,7 @@ export async function excluirTransportadoraCotacao(dados: {
       AND COALESCE(selecionada, FALSE) = FALSE
       AND COALESCE(escolhida_plataforma, FALSE) = FALSE
       AND respondida_em IS NULL
+      AND cotada_em IS NULL
       AND UPPER(COALESCE(status, '')) NOT IN ('RESPONDIDA', 'SELECIONADA', 'ALTERADA_MANUALMENTE', 'COTACAO_TRANSPORTADORA_RECEBIDA')
       AND (
         UPPER(COALESCE(origem_cotacao, '')) IN ('MANUAL', 'EXTERNA')
