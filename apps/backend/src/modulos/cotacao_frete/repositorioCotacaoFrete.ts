@@ -2275,7 +2275,7 @@ export async function escolherTransportadora(dados: {
   const valorEscolhido = Number(cotacao.valor_frete ?? 0);
   const escolhaNaoVencedora = menorValor > 0 && valorEscolhido > menorValor;
   if (escolhaNaoVencedora && !motivoId && !motivoDescricao) {
-    throw new Error('Informe o motivo para escolher uma transportadora que nÃ£o venceu a cotaÃ§Ã£o.');
+    throw new Error('Informe o motivo para escolher uma transportadora que nao venceu a cotacao.');
   }
 
   await consultar(
@@ -2328,6 +2328,9 @@ export async function escolherTransportadora(dados: {
       prazo_final_dias = $8,
       motivo_escolha_transportadora_id = $9,
       motivo_escolha_transportadora_descricao = $10,
+      atualizado_no_erp = FALSE,
+      retorno_erp_status = 'PENDENTE',
+      retorno_erp_em = NULL,
       alterado_em = NOW(),
       alterado_por_usuario_id = $6
     WHERE empresa_id = $1
