@@ -2336,6 +2336,16 @@ export async function escolherTransportadora(dados: {
       prazo_final_dias = $8,
       motivo_escolha_transportadora_id = $9,
       motivo_escolha_transportadora_descricao = $10,
+      status = 'TRANSPORTADORA_ESCOLHIDA',
+      etapa_kanban_id = COALESCE((
+        SELECT etapa.id
+        FROM etapas_kanban etapa
+        WHERE etapa.empresa_id = cotacoes_frete.empresa_id
+          AND etapa.codigo = 'TRANSPORTADORA_ESCOLHIDA'
+          AND etapa.ativa = TRUE
+        ORDER BY etapa.ordem
+        LIMIT 1
+      ), etapa_kanban_id),
       atualizado_no_erp = FALSE,
       retorno_erp_status = 'PENDENTE',
       retorno_erp_em = NULL,
