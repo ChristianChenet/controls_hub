@@ -848,7 +848,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       COALESCE(outras.total_outras_cotacoes, 0) AS total_outras_cotacoes
     FROM etapas_kanban e
     LEFT JOIN cotacoes_frete c ON (
-        UPPER(COALESCE(c.status, '')) = e.codigo
+        UPPER(TRIM(COALESCE(c.status, ''))) = e.codigo
         OR (
           COALESCE(c.status, '') = ''
           AND c.etapa_kanban_id = e.id
@@ -856,7 +856,7 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       )
       AND c.empresa_id = $1
       AND COALESCE(c.excluido, FALSE) = FALSE
-      AND c.situacao_pedido = 'ATIVO'
+      AND COALESCE(c.situacao_pedido, 'ATIVO') = 'ATIVO'
       AND ($2::DATE IS NULL OR c.data_documento >= $2::DATE)
       AND ($3::DATE IS NULL OR c.data_documento <= $3::DATE)
       AND ($10::VARCHAR IS NULL OR COALESCE(c.cidade_destino, '') ILIKE $10)

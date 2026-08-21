@@ -2004,6 +2004,7 @@ function KanbanCotacoes({
   const [kanbanAtualizadoNoDetalhe, setKanbanAtualizadoNoDetalhe] = useState(false);
   const requisicaoKanbanRef = useRef(0);
   const linhasKanbanRef = useRef<RegistroGenerico[]>([]);
+  const assinaturaFiltrosKanbanRef = useRef('');
   const [etapasSelecionadas, setEtapasSelecionadas] = useState<string[]>(() => {
     if (Array.isArray(filtrosKanbanSalvos.etapasSelecionadas)) {
       return filtrosKanbanSalvos.etapasSelecionadas.map((item: unknown) => String(item));
@@ -2041,6 +2042,7 @@ function KanbanCotacoes({
         cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined,
         somente_pendentes: somentePendentes ? 'true' : undefined
       };
+      const assinaturaFiltros = JSON.stringify(filtrosConsulta);
       localStorage.setItem(CHAVE_FILTROS_KANBAN, JSON.stringify({
         dataInicial,
         dataFinal,
@@ -2062,6 +2064,7 @@ function KanbanCotacoes({
       let linhasRecebidas = Array.isArray(dados) ? dados : [];
       const recebeuCards = linhasRecebidas.some((linha: any) => Boolean(linha.cotacao_id));
       const tinhaCards = linhasKanbanRef.current.some((linha: any) => Boolean(linha.cotacao_id));
+      const mesmaConsultaAnterior = assinaturaFiltrosKanbanRef.current === assinaturaFiltros;
 
       // Evita que um retorno momentaneamente vazio derrube o Kanban em produção.
       if (!recebeuCards && tinhaCards) {
@@ -2073,6 +2076,11 @@ function KanbanCotacoes({
         linhasRecebidas = Array.isArray(dados) ? dados : [];
       }
 
+      if (!linhasRecebidas.some((linha: any) => Boolean(linha.cotacao_id)) && tinhaCards && mesmaConsultaAnterior) {
+        return;
+      }
+
+      assinaturaFiltrosKanbanRef.current = assinaturaFiltros;
       atualizarLinhasKanban(linhasRecebidas as RegistroGenerico[]);
       setLimitesKanbanPorEtapa({});
     } catch (error) {
