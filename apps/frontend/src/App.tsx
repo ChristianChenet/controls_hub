@@ -2028,34 +2028,6 @@ function KanbanCotacoes({
     return lista.some((linha: any) => Boolean(linha.cotacao_id));
   }
 
-  function obterCacheKanban(assinatura: string) {
-    try {
-      const bruto = localStorage.getItem('controlSHubKanbanUltimoResultado');
-      const cache = bruto ? JSON.parse(bruto) : null;
-      if (cache?.assinatura === assinatura && Array.isArray(cache?.linhas) && possuiCardsKanban(cache.linhas)) {
-        return cache.linhas as RegistroGenerico[];
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
-
-  function salvarCacheKanban(assinatura: string, novasLinhas: RegistroGenerico[]) {
-    if (!possuiCardsKanban(novasLinhas)) {
-      return;
-    }
-    try {
-      localStorage.setItem('controlSHubKanbanUltimoResultado', JSON.stringify({
-        assinatura,
-        salvo_em: new Date().toISOString(),
-        linhas: novasLinhas
-      }));
-    } catch {
-      // O cache é apenas uma proteção visual contra retorno vazio intermitente.
-    }
-  }
-
   async function carregarKanban() {
     if (carregandoKanbanRef.current) {
       return;
@@ -2079,7 +2051,6 @@ function KanbanCotacoes({
         cte_diferente_escolhido: cteDiferenteEscolhidoFiltro ? 'true' : undefined,
         somente_pendentes: somentePendentes ? 'true' : undefined
       };
-      const assinaturaFiltros = JSON.stringify(filtrosConsulta);
       localStorage.setItem(CHAVE_FILTROS_KANBAN, JSON.stringify({
         dataInicial,
         dataFinal,
@@ -2093,44 +2064,14 @@ function KanbanCotacoes({
         somentePendentes,
         etapasSelecionadas
       }));
-      let dados = await listarKanbanCotacoes(filtrosConsulta);
+      const dados = await listarKanbanCotacoes(filtrosConsulta);
       if (numeroRequisicao !== requisicaoKanbanRef.current) {
         return;
       }
 
-      let linhasRecebidas = Array.isArray(dados) ? dados : [];
-      const recebeuCards = possuiCardsKanban(linhasRecebidas as RegistroGenerico[]);
-      const tinhaCards = possuiCardsKanban(linhasKanbanRef.current);
-      const mesmaConsultaAnterior = assinaturaFiltrosKanbanRef.current === assinaturaFiltros;
-
-      // Evita que um retorno momentaneamente vazio derrube o Kanban em produção.
-      if (!recebeuCards && tinhaCards) {
-        await new Promise((resolve) => setTimeout(resolve, 450));
-        dados = await listarKanbanCotacoes(filtrosConsulta);
-        if (numeroRequisicao !== requisicaoKanbanRef.current) {
-          return;
-        }
-        linhasRecebidas = Array.isArray(dados) ? dados : [];
-      }
-
-      const recebeuCardsAposTentativa = possuiCardsKanban(linhasRecebidas as RegistroGenerico[]);
-      if (!recebeuCardsAposTentativa && tinhaCards && mesmaConsultaAnterior) {
-        return;
-      }
-
-      if (!recebeuCardsAposTentativa) {
-        const cacheValido = obterCacheKanban(assinaturaFiltros);
-        if (cacheValido) {
-          assinaturaFiltrosKanbanRef.current = assinaturaFiltros;
-          atualizarLinhasKanban(cacheValido);
-          setLimitesKanbanPorEtapa({});
-          return;
-        }
-      }
-
-      assinaturaFiltrosKanbanRef.current = assinaturaFiltros;
+      const linhasRecebidas = Array.isArray(dados) ? dados : [];
+      assinaturaFiltrosKanbanRef.current = JSON.stringify(filtrosConsulta);
       atualizarLinhasKanban(linhasRecebidas as RegistroGenerico[]);
-      salvarCacheKanban(assinaturaFiltros, linhasRecebidas as RegistroGenerico[]);
       setLimitesKanbanPorEtapa({});
     } catch (error) {
       if (numeroRequisicao === requisicaoKanbanRef.current) {
