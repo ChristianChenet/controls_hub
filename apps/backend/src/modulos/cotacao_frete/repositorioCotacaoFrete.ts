@@ -847,7 +847,13 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
       COALESCE(respostas.total_pendentes_sla, 0) AS total_pendentes_sla,
       COALESCE(outras.total_outras_cotacoes, 0) AS total_outras_cotacoes
     FROM etapas_kanban e
-    LEFT JOIN cotacoes_frete c ON c.etapa_kanban_id = e.id
+    LEFT JOIN cotacoes_frete c ON (
+        UPPER(COALESCE(c.status, '')) = e.codigo
+        OR (
+          COALESCE(c.status, '') = ''
+          AND c.etapa_kanban_id = e.id
+        )
+      )
       AND c.empresa_id = $1
       AND COALESCE(c.excluido, FALSE) = FALSE
       AND c.situacao_pedido = 'ATIVO'
