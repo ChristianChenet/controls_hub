@@ -165,10 +165,9 @@ function definirStatusOperacionalCotacao(resumo: Record<string, any>) {
 
   const totalSolicitadas = Number(resumo.total_solicitadas ?? 0);
   const totalPendentes = Number(resumo.total_pendentes ?? 0);
-  const totalExternasRespondidas = Number(resumo.total_externas_respondidas ?? 0);
   const totalExternas = Number(resumo.total_externas ?? 0);
 
-  if (totalSolicitadas > 0 && totalPendentes === 0 && (totalExternasRespondidas > 0 || totalExternas > 0)) {
+  if (totalSolicitadas > 0 && totalPendentes === 0) {
     return 'EM_ANALISE';
   }
 
