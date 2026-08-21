@@ -2142,6 +2142,7 @@ export async function escolherTransportadora(dados: {
   motivoId?: number | null;
   motivoDescricao?: string | null;
 }) {
+  await garantirColunasOperacionaisCotacao();
   await consultar(
     `CREATE TABLE IF NOT EXISTS motivos_escolha_transportadora (
       id BIGSERIAL PRIMARY KEY,
@@ -2381,7 +2382,6 @@ export async function escolherTransportadora(dados: {
   }
 
   await normalizarSelecaoTransportadoraEscolhida(dados.empresaId, cotacaoBase.id);
-  await sincronizarStatusCotacoes(dados.empresaId, cotacaoBase.id);
 
   await registrarTimelineCotacao({
     cotacaoId: cotacaoBase.id,

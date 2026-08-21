@@ -55,7 +55,7 @@ popd
 
 call :log ""
 if "%APLICAR_SQL_PREDEFINIDO%"=="" (
-  set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 034 no banco? (S/N): "
+  set /p APLICAR_SQL="Aplicar migrations aditivas 012 a 044 no banco? (S/N): "
 ) else (
   set "APLICAR_SQL=%APLICAR_SQL_PREDEFINIDO%"
   call :log "Opcao de banco recebida do aplicador ZIP: %APLICAR_SQL%"
@@ -138,6 +138,9 @@ if /I "%APLICAR_SQL%"=="S" (
   if errorlevel 1 goto :falha_popd
   call :log "Aplicando migration 034_alterar_frete_apos_cte.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\034_alterar_frete_apos_cte.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 044_status_escolha_cte_definitivo.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\044_status_escolha_cte_definitivo.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."
