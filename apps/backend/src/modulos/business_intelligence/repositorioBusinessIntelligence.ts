@@ -125,6 +125,7 @@ export async function listarDashboardsBi(empresaId: number, usuarioId: number, p
       LEFT JOIN bi_dashboard_paginas p ON p.dashboard_id = d.id
       LEFT JOIN bi_dashboard_widgets w ON w.dashboard_id = d.id
       WHERE d.empresa_id = $1
+        AND COALESCE(d.status, '') <> 'INATIVO'
       GROUP BY d.id
       ORDER BY d.atualizado_em DESC NULLS LAST, d.nome
     `, [empresaId]);
@@ -183,7 +184,11 @@ export async function salvarDashboardBi(empresaId: number, dados: RegistroBi, us
 }
 
 export async function excluirDashboardBi(empresaId: number, dashboardId: number, usuarioId: number) {
-  await consultar('UPDATE bi_dashboards SET status = $1, atualizado_por = $2, atualizado_em = NOW() WHERE empresa_id = $3 AND id = $4', ['INATIVO', usuarioId, empresaId, dashboardId]);
+  const dashboard = await consultarUm<RegistroBi>(
+    'UPDATE bi_dashboards SET status = $1, atualizado_por = $2, atualizado_em = NOW() WHERE empresa_id = $3 AND id = $4 RETURNING id',
+    ['INATIVO', usuarioId, empresaId, dashboardId]
+  );
+  if (!dashboard) throw new Error('Dashboard nao encontrado para exclusao.');
   return { excluido: true };
 }
 
@@ -558,16 +563,34 @@ export async function importarDashboardBi(empresaId: number, pacote: RegistroBi,
   const mapaConsultas = new Map<number, number>();
   const mapaConsultasPorNome = new Map<string, number>();
   for (const consulta of pacote.consultas ?? []) {
-    const novaConsulta = await salvarConsultaBi(empresaId, { ...consulta, id: null, nome: `${consulta.nome} (importado)` }, usuarioId);
+    const nomeConsulta = String(consulta.nome ?? '').trim();
+    const consultaExistente = nomeConsulta
+      ? await consultarUm<RegistroBi>('SELECT id FROM bi_consultas WHERE empresa_id = $1 AND LOWER(nome) = LOWER($2) ORDER BY ativo DESC, id LIMIT 1', [empresaId, nomeConsulta])
+      : null;
+    const novaConsulta = await salvarConsultaBi(empresaId, { ...consulta, id: consultaExistente?.id ?? null, nome: nomeConsulta || consulta.nome }, usuarioId);
     if (consulta.id) mapaConsultas.set(Number(consulta.id), Number(novaConsulta?.id));
-    mapaConsultasPorNome.set(String(consulta.nome ?? '').trim(), Number(novaConsulta?.id));
+    if (nomeConsulta) mapaConsultasPorNome.set(nomeConsulta, Number(novaConsulta?.id));
   }
   const origem = pacote.dashboard ?? {};
-  const novo = await salvarDashboardBi(empresaId, { ...origem, id: null, nome: `${origem.nome ?? 'Dashboard'} (importado)`, status: 'RASCUNHO' }, usuarioId);
+  const dashboardDestinoId = Number(pacote.dashboard_destino_id ?? pacote.substituir_dashboard_id ?? origem.id ?? 0) || null;
+  const nomeDashboard = String(origem.nome ?? 'Dashboard').trim();
+  const dashboardExistente = dashboardDestinoId
+    ? await consultarUm<RegistroBi>('SELECT id FROM bi_dashboards WHERE empresa_id = $1 AND id = $2', [empresaId, dashboardDestinoId])
+    : await consultarUm<RegistroBi>(
+        'SELECT id FROM bi_dashboards WHERE empresa_id = $1 AND LOWER(nome) = LOWER($2) AND COALESCE(status, \'\') <> $3 ORDER BY atualizado_em DESC NULLS LAST, id LIMIT 1',
+        [empresaId, nomeDashboard, 'INATIVO']
+      );
+  const novo = await salvarDashboardBi(empresaId, { ...origem, id: dashboardExistente?.id ?? null, nome: nomeDashboard, status: origem.status ?? 'RASCUNHO' }, usuarioId);
+  const dashboardId = Number(novo?.id);
+  // A importacao substitui a estrutura do dashboard alvo para evitar duplicar paginas, filtros e widgets em manutencoes sucessivas.
+  await consultar('UPDATE bi_dashboard_paginas SET ativo = FALSE WHERE dashboard_id = $1', [dashboardId]);
+  await consultar('UPDATE bi_dashboard_widgets SET ativo = FALSE WHERE dashboard_id = $1', [dashboardId]);
+  await consultar('UPDATE bi_filtros SET ativo = FALSE WHERE dashboard_id = $1', [dashboardId]);
+  await consultar('DELETE FROM bi_widget_cache WHERE widget_id IN (SELECT id FROM bi_dashboard_widgets WHERE dashboard_id = $1)', [dashboardId]);
   const mapaPaginas = new Map<number, number>();
   const mapaPaginasPorNome = new Map<string, number>();
   for (const pagina of origem.paginas ?? []) {
-    const novaPagina = await salvarPaginaBi(empresaId, Number(novo?.id), { ...pagina, id: null });
+    const novaPagina = await salvarPaginaBi(empresaId, dashboardId, { ...pagina, id: null, ativo: pagina.ativo !== false });
     if (pagina.id) mapaPaginas.set(Number(pagina.id), Number(novaPagina?.id));
     mapaPaginasPorNome.set(String(pagina.nome ?? '').trim(), Number(novaPagina?.id));
   }
@@ -576,7 +599,7 @@ export async function importarDashboardBi(empresaId: number, pacote: RegistroBi,
       INSERT INTO bi_filtros (dashboard_id, nome, label, tipo, campo, valor_padrao, opcoes_json, obrigatorio, global, ordem, ativo)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `, [
-      Number(novo?.id),
+      dashboardId,
       filtro.nome,
       filtro.label ?? filtro.nome,
       filtro.tipo ?? 'TEXTO',
@@ -597,12 +620,12 @@ export async function importarDashboardBi(empresaId: number, pacote: RegistroBi,
     const paginaImportadaId = widget.pagina_id
       ? mapaPaginas.get(Number(widget.pagina_id))
       : mapaPaginasPorNome.get(String(widget.pagina_nome ?? widget.pagina ?? 'Visao Geral').trim());
-    await salvarWidgetBi(empresaId, Number(novo?.id), {
+    await salvarWidgetBi(empresaId, dashboardId, {
       ...widget,
       id: null,
       pagina_id: paginaImportadaId ?? primeiraPaginaId,
       consulta_id: consultaImportadaId ?? null
     });
   }
-  return carregarDashboardBase(empresaId, Number(novo?.id));
+  return carregarDashboardBase(empresaId, dashboardId);
 }

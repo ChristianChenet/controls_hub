@@ -734,10 +734,14 @@ export function BusinessIntelligenceDashboards({ usuario, empresaAtiva }: { usua
     const arquivo = evento.target.files?.[0];
     if (!arquivo) return;
     const texto = await arquivo.text();
-    await importarDashboardBi(JSON.parse(texto));
+    const pacote = JSON.parse(texto);
+    await importarDashboardBi(detalhe?.dashboard?.id ? { ...pacote, dashboard_destino_id: detalhe.dashboard.id } : pacote);
     evento.target.value = '';
-    setMensagem('Dashboard importado com sucesso.');
+    setMensagem(detalhe?.dashboard?.id ? 'Dashboard atualizado pela importacao com sucesso.' : 'Dashboard importado com sucesso.');
     await carregar();
+    if (detalhe?.dashboard?.id) {
+      await carregarDetalhe(Number(detalhe.dashboard.id));
+    }
   }
 
   function gerarPromptIaDashboard() {
