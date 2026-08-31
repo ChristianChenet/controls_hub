@@ -57,6 +57,79 @@ function validarPrazoOperacional(prazoDias?: number | null) {
   }
 }
 
+function normalizarCampoTransportadoraPedido(valor: unknown) {
+  const texto = String(valor ?? '').trim();
+  if (!texto || texto === '0') {
+    return null;
+  }
+
+  return texto;
+}
+
+function primeiroCampoTransportadoraPedido(dados: any, campos: string[]) {
+  for (const campo of campos) {
+    const valor = normalizarCampoTransportadoraPedido(dados?.[campo]);
+    if (valor) {
+      return valor;
+    }
+  }
+
+  return null;
+}
+
+function inferirTransportadoraPedidoNome(dados: any) {
+  const nomeInformado = primeiroCampoTransportadoraPedido(dados, [
+    'transportadora_pedido_nome',
+    'transportadora_definida_nome',
+    'nome_transportadora_pedido',
+    'nome_transportadora',
+    'transportadora_nome',
+    'transportadora',
+    'modalidade_frete',
+    'tipo_frete',
+    'tipo_entrega',
+    'forma_entrega',
+    'descricao_entrega',
+    'retira_entrega'
+  ]);
+
+  if (nomeInformado) {
+    return nomeInformado;
+  }
+
+  const camposReferencia = [
+    dados?.origem_comercial,
+    dados?.origem,
+    dados?.loja_origem,
+    dados?.loja_destino,
+    dados?.observacao,
+    dados?.observacoes
+  ].map((valor) => String(valor ?? '').toUpperCase());
+
+  if (camposReferencia.some((valor) => valor.includes('RETIRA'))) {
+    return 'CLIENTE RETIRA';
+  }
+
+  const valorFretePedido = Number(dados?.valor_frete_pedido ?? dados?.valor_frete_venda ?? dados?.valor_solicitado ?? 0);
+  const semCodigoTransportadora = !inferirTransportadoraPedidoCodigo(dados);
+  if (semCodigoTransportadora && Number.isFinite(valorFretePedido) && valorFretePedido === 0) {
+    return 'CLIENTE RETIRA';
+  }
+
+  return null;
+}
+
+function inferirTransportadoraPedidoCodigo(dados: any) {
+  return primeiroCampoTransportadoraPedido(dados, [
+    'transportadora_pedido_codigo',
+    'transportadora_definida_codigo',
+    'codigo_transportadora_pedido',
+    'codigo_transportadora',
+    'transportadora_codigo',
+    'cod_transportadora'
+  ]);
+}
+
 async function garantirColunasOperacionaisCotacao() {
   await consultar(
     `CREATE TABLE IF NOT EXISTS motivos_prejuizo_logistico (
@@ -775,11 +848,11 @@ function montarCondicaoTransportadoraPedido(aliasCotacao = 'c', aliasTransportad
   return `(
     (${aliasCotacao}.transportadora_pedido_id IS NOT NULL AND ${aliasTransportadora}.id = ${aliasCotacao}.transportadora_pedido_id)
     OR (
-      COALESCE(NULLIF(TRIM(${aliasCotacao}.transportadora_pedido_codigo), ''), '') <> ''
+      COALESCE(NULLIF(NULLIF(TRIM(${aliasCotacao}.transportadora_pedido_codigo), ''), '0'), '') <> ''
       AND UPPER(TRIM(COALESCE(${aliasTransportadora}.codigo_interno, ''))) = UPPER(TRIM(${aliasCotacao}.transportadora_pedido_codigo))
     )
     OR (
-      COALESCE(NULLIF(TRIM(${aliasCotacao}.transportadora_pedido_nome), ''), '') <> ''
+      COALESCE(NULLIF(NULLIF(TRIM(${aliasCotacao}.transportadora_pedido_nome), ''), '0'), '') <> ''
       AND (
         UPPER(TRIM(COALESCE(${aliasTransportadora}.nome_fantasia, ''))) = UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome))
         OR UPPER(TRIM(COALESCE(${aliasTransportadora}.razao_social, ''))) = UPPER(TRIM(${aliasCotacao}.transportadora_pedido_nome))
@@ -2493,7 +2566,6 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
   if (
     !cotacao
     || !cotacao.transportadora_auto_id
-    || cotacao.bloqueado_para_alteracao
     || String(cotacao.status ?? '').toUpperCase() === 'CTE_EMITIDO'
     || escolhaAutomaticaJaAplicada
   ) {
@@ -3039,6 +3111,8 @@ export async function bloquearCotacaoPorErp(dados: {
 }
 
 export async function receberCotacaoErp(empresaId: number, dados: any) {
+  const codigoTransportadoraPedidoRecebido = inferirTransportadoraPedidoCodigo(dados);
+  const nomeTransportadoraPedidoRecebido = inferirTransportadoraPedidoNome(dados);
   const etapa = await consultarUm<{ id: number }>(
     `SELECT id
     FROM etapas_kanban
@@ -3179,8 +3253,8 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
     [
       cotacao.id,
       String(dados.origem_comercial ?? dados.origem ?? 'ERP').toUpperCase(),
-      dados.transportadora_pedido_codigo ?? dados.transportadora_definida_codigo ?? null,
-      dados.transportadora_pedido_nome ?? dados.transportadora_definida_nome ?? null,
+      codigoTransportadoraPedidoRecebido,
+      nomeTransportadoraPedidoRecebido,
       dados.valor_frete_pedido ?? null,
       dados.prazo_pedido_dias ?? null,
       dados.prazo_vendedor_dias ?? dados.prazo_vendedor ?? null,
@@ -3228,7 +3302,7 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
     );
   }
 
-  const codigoTransportadoraPedido = dados.transportadora_pedido_codigo ?? dados.transportadora_definida_codigo ?? null;
+  const codigoTransportadoraPedido = codigoTransportadoraPedidoRecebido;
   const origemComercial = String(dados.origem_comercial ?? dados.origem ?? '').toUpperCase();
   const transportadorasRecebidas = origemComercial === 'MARKETPLACE' && codigoTransportadoraPedido
     ? (dados.transportadoras ?? []).filter((transporte: any) => String(transporte.codigo_transportadora ?? transporte.codigo_interno ?? '') === String(codigoTransportadoraPedido))

@@ -142,6 +142,12 @@ if /I "%APLICAR_SQL%"=="S" (
   call :log "Aplicando migration 044_status_escolha_cte_definitivo.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\044_status_escolha_cte_definitivo.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 045_normaliza_transportadora_pedido_retira.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\045_normaliza_transportadora_pedido_retira.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 046_escolha_automatica_ignora_bloqueio_operacional.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\046_escolha_automatica_ignora_bloqueio_operacional.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."
 )
