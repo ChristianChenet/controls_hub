@@ -3088,6 +3088,13 @@ export async function bloquearCotacaoPorErp(dados: {
 export async function receberCotacaoErp(empresaId: number, dados: any) {
   const codigoTransportadoraPedidoRecebido = inferirTransportadoraPedidoCodigo(dados);
   const nomeTransportadoraPedidoRecebido = inferirTransportadoraPedidoNome(dados);
+  const statusProtegidosIntegracaoPedido = new Set([
+    'COTACAO_CANCELADA',
+    'TRANSPORTADORA_ESCOLHIDA',
+    'CTE_EMITIDO',
+    'EM_ANALISE',
+    'BLOQUEADO_FINALIZADO'
+  ]);
   const etapa = await consultarUm<{ id: number }>(
     `SELECT id
     FROM etapas_kanban
@@ -3102,6 +3109,7 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
     tipo_documento: string;
     numero_documento: string;
     codigo_chave: string;
+    status: string;
   }>(
     `INSERT INTO cotacoes_frete (
       empresa_id,
@@ -3165,9 +3173,13 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       destinatario_pessoa_fisica = EXCLUDED.destinatario_pessoa_fisica,
       identificador_externo = EXCLUDED.identificador_externo,
       payload_recebido = EXCLUDED.payload_recebido,
-      alterado_em = NOW()
+      alterado_em = CASE
+        WHEN UPPER(COALESCE(cotacoes_frete.status, '')) IN ('COTACAO_CANCELADA', 'TRANSPORTADORA_ESCOLHIDA', 'CTE_EMITIDO', 'EM_ANALISE', 'BLOQUEADO_FINALIZADO')
+          THEN cotacoes_frete.alterado_em
+        ELSE NOW()
+      END
     WHERE COALESCE(cotacoes_frete.excluido, FALSE) = FALSE
-    RETURNING id, tipo_documento, numero_documento, codigo_chave`,
+    RETURNING id, tipo_documento, numero_documento, codigo_chave, status`,
     [
       empresaId,
       etapa?.id ?? null,
@@ -3207,11 +3219,13 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
     return null;
   }
 
+  const preservarFluxoOperacional = statusProtegidosIntegracaoPedido.has(String(cotacao.status ?? '').toUpperCase());
+
   await consultar(
     `UPDATE cotacoes_frete
     SET origem_comercial = COALESCE($2, origem_comercial),
-      transportadora_pedido_codigo = $3,
-      transportadora_pedido_nome = $4,
+      transportadora_pedido_codigo = COALESCE($3, transportadora_pedido_codigo),
+      transportadora_pedido_nome = COALESCE($4, transportadora_pedido_nome),
       valor_frete_pedido = $5,
       prazo_pedido_dias = $6,
       prazo_vendedor_dias = $7,
@@ -3222,7 +3236,11 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       numero_nfe_faturada = COALESCE($12, numero_nfe_faturada),
       numero_cte = COALESCE($13, numero_cte),
       idempotencia_origem = $14,
-      alterado_em = NOW()
+      alterado_em = CASE
+        WHEN UPPER(COALESCE(status, '')) IN ('COTACAO_CANCELADA', 'TRANSPORTADORA_ESCOLHIDA', 'CTE_EMITIDO', 'EM_ANALISE', 'BLOQUEADO_FINALIZADO')
+          THEN alterado_em
+        ELSE NOW()
+      END
     WHERE id = $1
       AND COALESCE(excluido, FALSE) = FALSE`,
     [
@@ -3242,6 +3260,10 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
       dados.idempotencia_origem ?? dados.identificador_externo ?? null
     ]
   );
+
+  if (preservarFluxoOperacional) {
+    return cotacao;
+  }
 
   await consultar(
     `DELETE FROM cotacoes_frete_itens
