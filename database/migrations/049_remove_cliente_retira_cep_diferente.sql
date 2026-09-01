@@ -1,7 +1,7 @@
 -- CONTROL S HUB
 -- CLIENTE RETIRA so deve permanecer como transportadora cotada quando o CEP
--- destino for 87050440. A limpeza historica fica limitada ao periodo posterior
--- a atualizacao de 31/08/2026 17:50 (America/Sao_Paulo).
+-- destino for 87050440. A limpeza historica fica limitada a escolhas feitas
+-- no periodo posterior a atualizacao de 31/08/2026 17:50 (America/Sao_Paulo).
 
 CREATE OR REPLACE FUNCTION controlshub_remover_cliente_retira_cep_diferente(
   p_empresa_id BIGINT,
@@ -145,20 +145,7 @@ BEGIN
   FROM cotacoes_frete cf
   WHERE COALESCE(cf.excluido, FALSE) = FALSE
     AND regexp_replace(COALESCE(cf.cep_destino, ''), '[^0-9]', '', 'g') <> '87050440'
-    AND (
-      cf.escolhido_em >= TIMESTAMPTZ '2026-08-31 20:50:00+00'
-      OR cf.alterado_em >= TIMESTAMPTZ '2026-08-31 20:50:00+00'
-      OR EXISTS (
-        SELECT 1
-        FROM cotacoes_frete_transportadoras cft_periodo
-        WHERE cft_periodo.empresa_id = cf.empresa_id
-          AND cft_periodo.tipo_documento = cf.tipo_documento
-          AND cft_periodo.numero_documento = cf.numero_documento
-          AND cft_periodo.codigo_chave = cf.codigo_chave
-          AND cft_periodo.transportadora_id = 52472
-          AND cft_periodo.alterado_em >= TIMESTAMPTZ '2026-08-31 20:50:00+00'
-      )
-    )
+    AND cf.escolhido_em >= TIMESTAMPTZ '2026-08-31 20:50:00+00'
     AND (
       cf.transportadora_escolhida_id = 52472
       OR cf.transportadora_final_id = 52472

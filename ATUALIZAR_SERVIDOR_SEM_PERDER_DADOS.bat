@@ -157,6 +157,9 @@ if /I "%APLICAR_SQL%"=="S" (
   call :log "Aplicando migration 049_remove_cliente_retira_cep_diferente.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\049_remove_cliente_retira_cep_diferente.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 050_restaura_escolhas_antigas_apos_limpeza_retira.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\050_restaura_escolhas_antigas_apos_limpeza_retira.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."
 )
