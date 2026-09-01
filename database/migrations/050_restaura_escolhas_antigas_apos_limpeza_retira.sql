@@ -10,7 +10,8 @@ BEGIN
     SELECT cf.empresa_id, cf.tipo_documento, cf.numero_documento, cf.codigo_chave
     FROM cotacoes_frete cf
     WHERE COALESCE(cf.excluido, FALSE) = FALSE
-      AND UPPER(COALESCE(cf.status, '')) = 'EM_ANALISE'
+      AND UPPER(COALESCE(cf.status, '')) NOT IN ('CTE_EMITIDO', 'COTACAO_CANCELADA')
+      AND cf.transportadora_escolhida_id IS NULL
       AND cf.data_documento < DATE '2026-08-30'
       AND cf.alterado_em >= TIMESTAMPTZ '2026-09-01 12:30:00+00'
       AND EXISTS (
@@ -98,6 +99,54 @@ BEGIN
     AND r.tipo_documento = cf.tipo_documento
     AND r.numero_documento = cf.numero_documento
     AND r.codigo_chave = cf.codigo_chave;
+
+  UPDATE cotacoes_frete cf
+  SET valor_frete_final = COALESCE(cf.valor_frete_final, r.valor_frete),
+    prazo_final_dias = COALESCE(cf.prazo_final_dias, r.prazo_dias),
+    alterado_em = NOW()
+  FROM (
+    SELECT DISTINCT ON (
+      cft.empresa_id,
+      cft.tipo_documento,
+      cft.numero_documento,
+      cft.codigo_chave
+    )
+      cft.empresa_id,
+      cft.tipo_documento,
+      cft.numero_documento,
+      cft.codigo_chave,
+      cft.valor_frete,
+      cft.prazo_dias
+    FROM cotacoes_frete_transportadoras cft
+    INNER JOIN cotacoes_frete cf2
+      ON cf2.empresa_id = cft.empresa_id
+     AND cf2.tipo_documento = cft.tipo_documento
+     AND cf2.numero_documento = cft.numero_documento
+     AND cf2.codigo_chave = cft.codigo_chave
+     AND cf2.transportadora_escolhida_id = cft.transportadora_id
+    WHERE COALESCE(cf2.excluido, FALSE) = FALSE
+      AND UPPER(COALESCE(cf2.status, '')) = 'TRANSPORTADORA_ESCOLHIDA'
+      AND cf2.data_documento < DATE '2026-08-30'
+      AND cf2.alterado_em >= TIMESTAMPTZ '2026-09-01 12:30:00+00'
+      AND (cf2.valor_frete_final IS NULL OR cf2.prazo_final_dias IS NULL)
+      AND COALESCE(cft.valor_frete, 0) > 0
+    ORDER BY
+      cft.empresa_id,
+      cft.tipo_documento,
+      cft.numero_documento,
+      cft.codigo_chave,
+      cft.selecionada DESC NULLS LAST,
+      cft.escolhida_plataforma DESC NULLS LAST,
+      cft.valor_frete ASC,
+      cft.prazo_dias ASC NULLS LAST,
+      cft.alterado_em DESC NULLS LAST
+  ) r
+  WHERE r.empresa_id = cf.empresa_id
+    AND r.tipo_documento = cf.tipo_documento
+    AND r.numero_documento = cf.numero_documento
+    AND r.codigo_chave = cf.codigo_chave
+    AND UPPER(COALESCE(cf.status, '')) = 'TRANSPORTADORA_ESCOLHIDA'
+    AND (cf.valor_frete_final IS NULL OR cf.prazo_final_dias IS NULL);
 
   DROP TABLE IF EXISTS tmp_restaura_escolhas_antigas;
 END;
