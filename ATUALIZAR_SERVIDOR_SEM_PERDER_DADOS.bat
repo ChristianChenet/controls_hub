@@ -148,6 +148,12 @@ if /I "%APLICAR_SQL%"=="S" (
   call :log "Aplicando migration 046_escolha_automatica_ignora_bloqueio_operacional.sql..."
   psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\046_escolha_automatica_ignora_bloqueio_operacional.sql" >> "%LOG%" 2>&1
   if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 047_corrige_cliente_retira_inferido_indevidamente.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\047_corrige_cliente_retira_inferido_indevidamente.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
+  call :log "Aplicando migration 048_protege_gatilhos_escolha_automatica.sql..."
+  psql "%DATABASE_URL%" -v ON_ERROR_STOP=1 -f "%RAIZ%database\migrations\048_protege_gatilhos_escolha_automatica.sql" >> "%LOG%" 2>&1
+  if errorlevel 1 goto :falha_popd
 ) else (
   call :log "Migrations nao aplicadas por opcao do operador."
 )

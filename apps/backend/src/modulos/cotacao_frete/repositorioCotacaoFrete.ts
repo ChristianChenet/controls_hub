@@ -84,36 +84,11 @@ function inferirTransportadoraPedidoNome(dados: any) {
     'nome_transportadora_pedido',
     'nome_transportadora',
     'transportadora_nome',
-    'transportadora',
-    'modalidade_frete',
-    'tipo_frete',
-    'tipo_entrega',
-    'forma_entrega',
-    'descricao_entrega',
-    'retira_entrega'
+    'transportadora'
   ]);
 
   if (nomeInformado) {
     return nomeInformado;
-  }
-
-  const camposReferencia = [
-    dados?.origem_comercial,
-    dados?.origem,
-    dados?.loja_origem,
-    dados?.loja_destino,
-    dados?.observacao,
-    dados?.observacoes
-  ].map((valor) => String(valor ?? '').toUpperCase());
-
-  if (camposReferencia.some((valor) => valor.includes('RETIRA'))) {
-    return 'CLIENTE RETIRA';
-  }
-
-  const valorFretePedido = Number(dados?.valor_frete_pedido ?? dados?.valor_frete_venda ?? dados?.valor_solicitado ?? 0);
-  const semCodigoTransportadora = !inferirTransportadoraPedidoCodigo(dados);
-  if (semCodigoTransportadora && Number.isFinite(valorFretePedido) && valorFretePedido === 0) {
-    return 'CLIENTE RETIRA';
   }
 
   return null;

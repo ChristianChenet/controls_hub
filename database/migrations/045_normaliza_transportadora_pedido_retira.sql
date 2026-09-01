@@ -1,7 +1,6 @@
 -- CONTROL S HUB
 -- Normaliza a transportadora do pedido antes das regras automaticas.
--- Regra operacional: pedido sem transportadora informada e frete do pedido zerado
--- deve usar CLIENTE RETIRA quando esta transportadora estiver marcada para escolha automatica.
+-- Regra operacional: apenas normaliza transportadora quando ela vier informada no pedido.
 
 ALTER TABLE transportadoras
   ADD COLUMN IF NOT EXISTS escolher_automaticamente_se_pedido BOOLEAN NOT NULL DEFAULT FALSE;
@@ -29,15 +28,6 @@ BEGIN
 
   NEW.transportadora_pedido_codigo := v_codigo;
   NEW.transportadora_pedido_nome := v_nome;
-
-  IF NEW.transportadora_pedido_id IS NULL
-    AND v_codigo IS NULL
-    AND v_nome IS NULL
-    AND COALESCE(NEW.valor_frete_pedido, 0) = 0
-  THEN
-    v_nome := 'CLIENTE RETIRA';
-    NEW.transportadora_pedido_nome := v_nome;
-  END IF;
 
   IF NEW.transportadora_pedido_id IS NULL
     AND (v_codigo IS NOT NULL OR v_nome IS NOT NULL)
@@ -95,8 +85,6 @@ SET transportadora_pedido_codigo = NULLIF(NULLIF(TRIM(COALESCE(transportadora_pe
   transportadora_pedido_nome = CASE
     WHEN NULLIF(NULLIF(TRIM(COALESCE(transportadora_pedido_nome, '')), ''), '0') IS NOT NULL
       THEN NULLIF(NULLIF(TRIM(COALESCE(transportadora_pedido_nome, '')), ''), '0')
-    WHEN transportadora_pedido_id IS NULL AND COALESCE(valor_frete_pedido, 0) = 0
-      THEN 'CLIENTE RETIRA'
     ELSE NULL
   END,
   alterado_em = NOW()
