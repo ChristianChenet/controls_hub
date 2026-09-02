@@ -114,6 +114,7 @@ import {
   CargaSqlServerPim,
     ConfiguracoesPim,
   ComparacaoConcorrentesPim,
+  ConcorrentesDeParaPim,
   ConexoesSqlServerPim,
 
   DashboardPim,
@@ -173,7 +174,8 @@ type TelaAtual =
   | 'pimComponentes'
   | 'pimSkus'
   | 'pimAtributos'
-    | 'pimCanais'
+  | 'pimCanais'
+  | 'pimConcorrentesDePara'
   | 'pimConcorrentes'
   | 'pimImportacao'
 
@@ -226,7 +228,8 @@ const menusCadastroProduto: { id: TelaAtual; nome: string; icone: typeof LayoutD
   { id: 'pimDashboard' as TelaAtual, nome: 'Dashboard', icone: LayoutDashboard },
   { id: 'pimConjuntos' as TelaAtual, nome: 'Conjuntos', icone: Boxes },
   { id: 'pimAtributos' as TelaAtual, nome: 'Atributos', icone: SlidersHorizontal },
-  { id: 'pimCanais' as TelaAtual, nome: 'Canais / Marketplaces', icone: Globe2 },
+  { id: 'pimCanais' as TelaAtual, nome: 'Plataformas', icone: Globe2 },
+  { id: 'pimConcorrentesDePara' as TelaAtual, nome: 'Concorrentes', icone: Globe2 },
   { id: 'pimConcorrentes' as TelaAtual, nome: 'Enriquecimento', icone: Sparkles },
   { id: 'pimConfiguracoes' as TelaAtual, nome: 'Configurações', icone: Settings }
 ];
@@ -255,6 +258,7 @@ const permissoesMenuPim: Partial<Record<TelaAtual, string[]>> = {
   pimSkus: ['PIM_VISUALIZAR_SKUS', 'PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimAtributos: ['PIM_VISUALIZAR_ATRIBUTOS', 'CONFIGURAR_ATRIBUTOS_PIM'],
     pimCanais: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM'],
+  pimConcorrentesDePara: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimConcorrentes: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimImportacao: ['PIM_VISUALIZAR_IMPORTACAO', 'PIM_IMPORTAR', 'IMPORTAR_PLANILHA_PIM'],
 
@@ -263,7 +267,7 @@ const permissoesMenuPim: Partial<Record<TelaAtual, string[]>> = {
   pimAssets: ['PIM_VISUALIZAR_ASSETS', 'GERENCIAR_IMAGENS_PIM'],
   pimWorkflows: ['PIM_VISUALIZAR_WORKFLOW', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimAprovacoes: ['PIM_VISUALIZAR_APROVACAO', 'PIM_APROVAR', 'APROVAR_PRODUTO_PIM'],
-  pimIa: ['PIM_VISUALIZAR_IA', 'USAR_IA_PIM', 'CONFIGURAR_IA_PIM'],
+  pimIa: ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'],
   pimIntegracoes: ['PIM_VISUALIZAR_INTEGRACOES', 'GERENCIAR_INTEGRACOES_PIM'],
   pimAuditoria: ['PIM_VISUALIZAR_AUDITORIA', 'VISUALIZAR_AUDITORIA_PIM'],
   pimConfiguracoes: ['PIM_VISUALIZAR_CONFIGURACOES', 'CONFIGURAR_MODULO_PIM'],
@@ -346,6 +350,7 @@ const rotasPorTela: Record<TelaAtual, string> = {
   pimSkus: '/Cadastro_Produto_Central/SKUs',
   pimAtributos: '/Cadastro_Produto_Central/Atributos',
     pimCanais: '/Cadastro_Produto_Central/Canais',
+  pimConcorrentesDePara: '/Cadastro_Produto_Central/Concorrentes_DePara',
   pimConcorrentes: '/Cadastro_Produto_Central/Concorrentes',
   pimImportacao: '/Cadastro_Produto_Central/Importacao',
 
@@ -6900,6 +6905,7 @@ export function App() {
         {tela === 'pimComponentes' && <ProdutosPim />}
         {tela === 'pimAtributos' && <AtributosPim />}
         {tela === 'pimCanais' && <AtributosPim modo="canais" />}
+        {tela === 'pimConcorrentesDePara' && <ConcorrentesDeParaPim />}
         {tela === 'pimConcorrentes' && <ComparacaoConcorrentesPim />}
         {tela === 'pimImportacao' && <ImportacaoPim />}
 
@@ -6908,7 +6914,7 @@ export function App() {
         {tela === 'pimAssets' && <PainelPimGenerico tela={tela} titulo="Imagens e Documentos" subtitulo="Biblioteca de imagens, manuais, fichas técnicas, vídeos e URLs." />}
         {tela === 'pimWorkflows' && <PainelPimGenerico tela={tela} titulo="Workflows" subtitulo="Fluxos de revisão, aprovação, publicação e arquivamento." />}
         {tela === 'pimAprovacoes' && <PainelPimGenerico tela={tela} titulo="Aprovações" subtitulo="Pendências de aprovação, comparação e histórico de decisão." />}
-        {tela === 'pimIa' && <PainelPimGenerico tela={tela} titulo="IA & Enriquecimento" subtitulo="Configurações, sugestões e validações assistidas por IA." />}
+        {tela === 'pimIa' && <ComparacaoConcorrentesPim />}
         {tela === 'pimAuditoria' && <PainelPimGenerico tela={tela} titulo="Auditoria" subtitulo="Trilha de alterações relevantes do Cadastro de Produto Central." />}
                 {tela === 'pimConfiguracoes' && <ConfiguracoesPim />}
 

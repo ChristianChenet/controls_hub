@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS bi_dashboard_widgets (
   exibir_exportacao BOOLEAN NOT NULL DEFAULT FALSE,
   exibir_tela_cheia BOOLEAN NOT NULL DEFAULT TRUE,
   colunas_visiveis_json JSONB NOT NULL DEFAULT '[]'::JSONB,
+  colunas_larguras_json JSONB NOT NULL DEFAULT '{}'::JSONB,
   ativo BOOLEAN NOT NULL DEFAULT TRUE
 );
 
@@ -218,6 +219,9 @@ ALTER TABLE bi_widget_cache
 
 ALTER TABLE bi_dashboard_widgets
   ADD COLUMN IF NOT EXISTS colunas_visiveis_json JSONB NOT NULL DEFAULT '[]'::JSONB;
+
+ALTER TABLE bi_dashboard_widgets
+  ADD COLUMN IF NOT EXISTS colunas_larguras_json JSONB NOT NULL DEFAULT '{}'::JSONB;
 
 ALTER TABLE bi_consultas
   ADD COLUMN IF NOT EXISTS fonte_dados_tipo VARCHAR(40) NOT NULL DEFAULT 'POSTGRESQL',

@@ -120,7 +120,10 @@ export async function listarPermissoesDashboardBi(empresaId: number, dashboardId
 export async function listarDashboardsBi(empresaId: number, usuarioId: number, perfilId?: number | null, administrador = false) {
   if (administrador) {
     return consultar<RegistroBi>(`
-      SELECT d.*, COUNT(DISTINCT p.id) AS quantidade_paginas, COUNT(DISTINCT w.id) AS quantidade_widgets
+      SELECT
+        d.*,
+        COUNT(DISTINCT p.id) FILTER (WHERE p.ativo = TRUE) AS quantidade_paginas,
+        COUNT(DISTINCT w.id) FILTER (WHERE w.ativo = TRUE) AS quantidade_widgets
       FROM bi_dashboards d
       LEFT JOIN bi_dashboard_paginas p ON p.dashboard_id = d.id
       LEFT JOIN bi_dashboard_widgets w ON w.dashboard_id = d.id
@@ -131,7 +134,10 @@ export async function listarDashboardsBi(empresaId: number, usuarioId: number, p
     `, [empresaId]);
   }
   return consultar<RegistroBi>(`
-    SELECT DISTINCT d.*, COUNT(DISTINCT p.id) AS quantidade_paginas, COUNT(DISTINCT w.id) AS quantidade_widgets
+    SELECT DISTINCT
+      d.*,
+      COUNT(DISTINCT p.id) FILTER (WHERE p.ativo = TRUE) AS quantidade_paginas,
+      COUNT(DISTINCT w.id) FILTER (WHERE w.ativo = TRUE) AS quantidade_widgets
     FROM bi_dashboards d
     LEFT JOIN bi_dashboard_paginas p ON p.dashboard_id = d.id
     LEFT JOIN bi_dashboard_widgets w ON w.dashboard_id = d.id
@@ -233,13 +239,24 @@ export async function salvarWidgetBi(empresaId: number, dashboardId: number, dad
       .split(',')
       .map((coluna) => coluna.trim())
       .filter(Boolean);
+  const colunasLarguras = typeof dados.colunas_larguras_json === 'string'
+    ? Object.fromEntries(String(dados.colunas_larguras_json)
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const [coluna, largura] = item.split('=').map((parte) => parte?.trim());
+        return [coluna, largura];
+      })
+      .filter(([coluna, largura]) => coluna && largura))
+    : dados.colunas_larguras_json ?? {};
   return consultarUm<RegistroBi>(`
     INSERT INTO bi_dashboard_widgets (id, dashboard_id, pagina_id, titulo, subtitulo, descricao, tipo_widget, consulta_id, ordem,
       posicao_x, posicao_y, largura, altura, cor_principal, icone, top_x_registros, ordenar_por, direcao_ordenacao,
       atualizar_automaticamente, intervalo_atualizacao_segundos, exibir_cabecalho, exibir_borda, exibir_sombra,
-      exibir_exportacao, exibir_tela_cheia, colunas_visiveis_json, ativo)
+      exibir_exportacao, exibir_tela_cheia, colunas_visiveis_json, colunas_larguras_json, ativo)
     VALUES (COALESCE($1, nextval(pg_get_serial_sequence('bi_dashboard_widgets','id'))), $2, $3, $4, $5, $6, $7, $8, $9,
-      $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+      $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
     ON CONFLICT (id) DO UPDATE SET pagina_id = EXCLUDED.pagina_id, titulo = EXCLUDED.titulo, subtitulo = EXCLUDED.subtitulo,
       descricao = EXCLUDED.descricao, tipo_widget = EXCLUDED.tipo_widget, consulta_id = EXCLUDED.consulta_id, ordem = EXCLUDED.ordem,
       posicao_x = EXCLUDED.posicao_x, posicao_y = EXCLUDED.posicao_y, largura = EXCLUDED.largura, altura = EXCLUDED.altura,
@@ -248,14 +265,14 @@ export async function salvarWidgetBi(empresaId: number, dashboardId: number, dad
       atualizar_automaticamente = EXCLUDED.atualizar_automaticamente, intervalo_atualizacao_segundos = EXCLUDED.intervalo_atualizacao_segundos,
       exibir_cabecalho = EXCLUDED.exibir_cabecalho, exibir_borda = EXCLUDED.exibir_borda, exibir_sombra = EXCLUDED.exibir_sombra,
       exibir_exportacao = EXCLUDED.exibir_exportacao, exibir_tela_cheia = EXCLUDED.exibir_tela_cheia,
-      colunas_visiveis_json = EXCLUDED.colunas_visiveis_json, ativo = EXCLUDED.ativo
+      colunas_visiveis_json = EXCLUDED.colunas_visiveis_json, colunas_larguras_json = EXCLUDED.colunas_larguras_json, ativo = EXCLUDED.ativo
     RETURNING *
   `, [dados.id ?? null, dashboardId, dados.pagina_id ?? null, dados.titulo, dados.subtitulo ?? null, dados.descricao ?? null, dados.tipo_widget ?? 'TABELA',
     dados.consulta_id ?? null, Number(dados.ordem ?? 1), Number(dados.posicao_x ?? 0), Number(dados.posicao_y ?? 0), Number(dados.largura ?? 4),
     Number(dados.altura ?? 3), dados.cor_principal ?? '#2563eb', dados.icone ?? null, dados.top_x_registros ?? null, dados.ordenar_por ?? null,
     dados.direcao_ordenacao ?? 'DESC', dados.atualizar_automaticamente !== false, Number(dados.intervalo_atualizacao_segundos ?? 60),
     dados.exibir_cabecalho !== false, dados.exibir_borda !== false, dados.exibir_sombra !== false, Boolean(dados.exibir_exportacao),
-    dados.exibir_tela_cheia !== false, JSON.stringify(colunasVisiveis), dados.ativo !== false]);
+    dados.exibir_tela_cheia !== false, JSON.stringify(colunasVisiveis), JSON.stringify(colunasLarguras), dados.ativo !== false]);
 }
 
 export async function excluirWidgetBi(_empresaId: number, _dashboardId: number, widgetId: number) {
@@ -452,13 +469,13 @@ export async function executarWidgetBi(empresaId: number, widgetId: number, filt
     WHERE w.id = $2 AND w.ativo = TRUE
   `, [empresaId, widgetId]);
   if (!widget) throw new Error('Widget nao encontrado.');
-  const cache = await consultarUm<RegistroBi>('SELECT * FROM bi_widget_cache WHERE widget_id = $1 AND valido_ate > NOW() ORDER BY atualizado_em DESC LIMIT 1', [widgetId]);
   const filtrosComEmpresa = { empresa_id: empresaId, ...(filtros ?? {}) };
+  const filtrosTexto = JSON.stringify(filtrosComEmpresa);
+  const filtrosHash = createHash('sha1').update(filtrosTexto).digest('hex');
+  const cache = await consultarUm<RegistroBi>('SELECT * FROM bi_widget_cache WHERE widget_id = $1 AND filtros_hash = $2 AND valido_ate > NOW() ORDER BY atualizado_em DESC LIMIT 1', [widgetId, filtrosHash]);
   const linhas = cache?.dados_json ? cache.dados_json : (await executarConsultaBi(empresaId, widget, filtrosComEmpresa, usuarioId, widgetId)).dados;
   if (!cache) {
     const validade = Number(widget.tempo_cache_segundos ?? widget.intervalo_atualizacao_segundos ?? 60);
-    const filtrosTexto = JSON.stringify(filtrosComEmpresa);
-    const filtrosHash = createHash('sha1').update(filtrosTexto).digest('hex');
     await consultar(`
       INSERT INTO bi_widget_cache (widget_id, consulta_id, filtros_hash, filtros_json, dados_json, quantidade_registros, expira_em, valido_ate)
       VALUES ($1, $2, $3, $4, $5, $6, NOW() + ($7 || ' seconds')::interval, NOW() + ($7 || ' seconds')::interval)

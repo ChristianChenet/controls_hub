@@ -19,6 +19,22 @@ ON CONFLICT (codigo) DO UPDATE SET
   ordem = EXCLUDED.ordem,
   ativo = TRUE;
 
+INSERT INTO modulos (codigo, nome, descricao, icone, ordem, ativo)
+VALUES (
+  'KM_MOBILE',
+  'KM Mobile',
+  'Aplicativo mobile para motoristas e mecanicos apontarem KM pelo celular.',
+  'Smartphone',
+  36,
+  TRUE
+)
+ON CONFLICT (codigo) DO UPDATE SET
+  nome = EXCLUDED.nome,
+  descricao = EXCLUDED.descricao,
+  icone = EXCLUDED.icone,
+  ordem = EXCLUDED.ordem,
+  ativo = TRUE;
+
 CREATE TABLE IF NOT EXISTS frota_configuracoes (
   id BIGSERIAL PRIMARY KEY,
   empresa_id BIGINT REFERENCES empresas(id),
@@ -50,12 +66,21 @@ CREATE TABLE IF NOT EXISTS frota_departamentos (
 );
 
 ALTER TABLE frota_departamentos
-  ADD COLUMN IF NOT EXISTS filial_decis VARCHAR(60);
+  ADD COLUMN IF NOT EXISTS filial_decis VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS codigo_origem_decis VARCHAR(60);
 
 CREATE TABLE IF NOT EXISTS frota_motoristas (
   id BIGSERIAL PRIMARY KEY,
   codigo_decis VARCHAR(60) NOT NULL,
   nome VARCHAR(180) NOT NULL,
+  usuario_id BIGINT REFERENCES usuarios(id),
+  departamento_id BIGINT REFERENCES frota_departamentos(id),
+  ajudante BOOLEAN NOT NULL DEFAULT FALSE,
+  ajudante_padrao VARCHAR(180),
+  ajudante_padrao_motorista_id BIGINT REFERENCES frota_motoristas(id),
+  coordenador_padrao_motorista_id BIGINT REFERENCES frota_motoristas(id),
+  coordenador BOOLEAN NOT NULL DEFAULT FALSE,
+  codigo_coordenador_decis VARCHAR(60),
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   criado_por_usuario_id BIGINT REFERENCES usuarios(id),
@@ -66,6 +91,35 @@ CREATE TABLE IF NOT EXISTS frota_motoristas (
   excluido_por_usuario_id BIGINT REFERENCES usuarios(id),
   CONSTRAINT frota_motoristas_codigo_unico UNIQUE (codigo_decis)
 );
+
+ALTER TABLE frota_motoristas
+  ADD COLUMN IF NOT EXISTS usuario_id BIGINT REFERENCES usuarios(id),
+  ADD COLUMN IF NOT EXISTS departamento_id BIGINT REFERENCES frota_departamentos(id),
+  ADD COLUMN IF NOT EXISTS ajudante BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS ajudante_padrao VARCHAR(180),
+  ADD COLUMN IF NOT EXISTS ajudante_padrao_motorista_id BIGINT REFERENCES frota_motoristas(id),
+  ADD COLUMN IF NOT EXISTS coordenador_padrao_motorista_id BIGINT REFERENCES frota_motoristas(id),
+  ADD COLUMN IF NOT EXISTS coordenador BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS codigo_coordenador_decis VARCHAR(60);
+
+DROP INDEX IF EXISTS idx_frota_motoristas_usuario_unico;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM frota_motoristas
+    WHERE usuario_id IS NOT NULL
+      AND excluido = FALSE
+    GROUP BY usuario_id
+    HAVING COUNT(*) > 1
+  ) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_frota_motoristas_usuario_unico
+    ON frota_motoristas(usuario_id)
+    WHERE usuario_id IS NOT NULL
+      AND excluido = FALSE;
+  END IF;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS frota_tipos_despesas (
   id BIGSERIAL PRIMARY KEY,
@@ -188,6 +242,21 @@ CREATE TABLE IF NOT EXISTS frota_motivos_cancelamento (
   CONSTRAINT frota_motivos_cancelamento_descricao_unica UNIQUE (descricao)
 );
 
+CREATE TABLE IF NOT EXISTS frota_motivos_sem_pedido (
+  id BIGSERIAL PRIMARY KEY,
+  codigo_decis VARCHAR(60),
+  descricao VARCHAR(180) NOT NULL,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  criado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  alterado_em TIMESTAMPTZ,
+  alterado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  excluido BOOLEAN NOT NULL DEFAULT FALSE,
+  excluido_em TIMESTAMPTZ,
+  excluido_por_usuario_id BIGINT REFERENCES usuarios(id),
+  CONSTRAINT frota_motivos_sem_pedido_descricao_unica UNIQUE (descricao)
+);
+
 CREATE TABLE IF NOT EXISTS frota_lotes_importacao (
   id BIGSERIAL PRIMARY KEY,
   empresa_id BIGINT REFERENCES empresas(id),
@@ -219,6 +288,113 @@ CREATE TABLE IF NOT EXISTS frota_integracoes_status (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   criado_por_usuario_id BIGINT REFERENCES usuarios(id)
 );
+
+CREATE TABLE IF NOT EXISTS frota_pedidos_venda (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id BIGINT NOT NULL REFERENCES empresas(id),
+  filial_decis VARCHAR(60),
+  pedido VARCHAR(80) NOT NULL,
+  departamento_codigo_decis VARCHAR(60),
+  departamento_nome VARCHAR(180),
+  departamento_vendedor VARCHAR(120),
+  data_pedido DATE,
+  cliente_codigo_decis VARCHAR(60),
+  cliente_nome VARCHAR(220),
+  cliente VARCHAR(220) NOT NULL,
+  valor NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  codigo_coordenador_decis VARCHAR(60),
+  coordenador_nome VARCHAR(180),
+  coordenador VARCHAR(180),
+  pedido_sequencial VARCHAR(80),
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  criado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  alterado_em TIMESTAMPTZ,
+  alterado_por_usuario_id BIGINT REFERENCES usuarios(id),
+  excluido BOOLEAN NOT NULL DEFAULT FALSE,
+  excluido_em TIMESTAMPTZ,
+  excluido_por_usuario_id BIGINT REFERENCES usuarios(id),
+  CONSTRAINT frota_pedidos_venda_empresa_pedido_unico UNIQUE (empresa_id, pedido)
+);
+
+ALTER TABLE frota_pedidos_venda
+  ADD COLUMN IF NOT EXISTS departamento_codigo_decis VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS departamento_nome VARCHAR(180),
+  ADD COLUMN IF NOT EXISTS cliente_codigo_decis VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS cliente_nome VARCHAR(220),
+  ADD COLUMN IF NOT EXISTS codigo_coordenador_decis VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS coordenador_nome VARCHAR(180);
+
+UPDATE frota_pedidos_venda
+SET cliente_nome = COALESCE(cliente_nome, cliente),
+  coordenador_nome = COALESCE(coordenador_nome, coordenador),
+  departamento_nome = COALESCE(departamento_nome, departamento_vendedor)
+WHERE cliente_nome IS NULL
+  OR coordenador_nome IS NULL
+  OR departamento_nome IS NULL;
+
+CREATE TABLE IF NOT EXISTS frota_apontamentos_km (
+  id BIGSERIAL PRIMARY KEY,
+  empresa_id BIGINT NOT NULL REFERENCES empresas(id),
+  pedido_venda_id BIGINT REFERENCES frota_pedidos_venda(id),
+  sem_pedido BOOLEAN NOT NULL DEFAULT FALSE,
+  motivo_sem_pedido_id BIGINT REFERENCES frota_motivos_sem_pedido(id),
+  motorista_id BIGINT REFERENCES frota_motoristas(id),
+  veiculo_id BIGINT REFERENCES frota_veiculos(id),
+  departamento_id BIGINT REFERENCES frota_departamentos(id),
+  data_apontamento DATE NOT NULL,
+  km_inicial NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  km_final NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  km_total NUMERIC(15, 2) GENERATED ALWAYS AS (GREATEST(km_final - km_inicial, 0)) STORED,
+  ajudante_motorista_id BIGINT REFERENCES frota_motoristas(id),
+  ajudante_motorista2_id BIGINT REFERENCES frota_motoristas(id),
+  ajudante VARCHAR(180),
+  manha_inicio TIME,
+  manha_fim TIME,
+  tarde_inicio TIME,
+  tarde_fim TIME,
+  noite_inicio TIME,
+  noite_fim TIME,
+  observacao TEXT,
+  validado BOOLEAN NOT NULL DEFAULT FALSE,
+  usuario_validacao_id BIGINT REFERENCES usuarios(id),
+  data_hora_validacao TIMESTAMPTZ,
+  integrado BOOLEAN NOT NULL DEFAULT FALSE,
+  data_hora_integracao TIMESTAMPTZ,
+  usuario_inclusao_id BIGINT REFERENCES usuarios(id),
+  data_hora_inclusao TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  usuario_ultima_alteracao_id BIGINT REFERENCES usuarios(id),
+  data_hora_ultima_alteracao TIMESTAMPTZ,
+  excluido BOOLEAN NOT NULL DEFAULT FALSE,
+  excluido_em TIMESTAMPTZ,
+  excluido_por_usuario_id BIGINT REFERENCES usuarios(id),
+  cancelado BOOLEAN NOT NULL DEFAULT FALSE,
+  motivo_cancelamento_id BIGINT REFERENCES frota_motivos_cancelamento(id),
+  motivo_cancelamento_texto TEXT,
+  usuario_cancelamento_id BIGINT REFERENCES usuarios(id),
+  data_hora_cancelamento TIMESTAMPTZ,
+  CONSTRAINT frota_apontamentos_km_valores_chk CHECK (km_inicial >= 0 AND km_final >= 0)
+);
+
+ALTER TABLE frota_apontamentos_km
+  ALTER COLUMN pedido_venda_id DROP NOT NULL,
+  ADD COLUMN IF NOT EXISTS sem_pedido BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS motivo_sem_pedido_id BIGINT REFERENCES frota_motivos_sem_pedido(id),
+  ADD COLUMN IF NOT EXISTS ajudante_motorista_id BIGINT REFERENCES frota_motoristas(id),
+  ADD COLUMN IF NOT EXISTS ajudante_motorista2_id BIGINT REFERENCES frota_motoristas(id),
+  ADD COLUMN IF NOT EXISTS cancelado BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS motivo_cancelamento_id BIGINT REFERENCES frota_motivos_cancelamento(id),
+  ADD COLUMN IF NOT EXISTS motivo_cancelamento_texto TEXT,
+  ADD COLUMN IF NOT EXISTS usuario_cancelamento_id BIGINT REFERENCES usuarios(id),
+  ADD COLUMN IF NOT EXISTS data_hora_cancelamento TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_frota_pedidos_venda_empresa ON frota_pedidos_venda(empresa_id, pedido);
+CREATE INDEX IF NOT EXISTS idx_frota_pedidos_venda_coordenador ON frota_pedidos_venda(codigo_coordenador_decis);
+CREATE INDEX IF NOT EXISTS idx_frota_apontamentos_km_periodo ON frota_apontamentos_km(empresa_id, data_apontamento DESC);
+CREATE INDEX IF NOT EXISTS idx_frota_apontamentos_km_motorista ON frota_apontamentos_km(motorista_id);
+CREATE INDEX IF NOT EXISTS idx_frota_apontamentos_km_veiculo ON frota_apontamentos_km(veiculo_id);
+CREATE INDEX IF NOT EXISTS idx_frota_apontamentos_km_validado ON frota_apontamentos_km(validado);
+CREATE INDEX IF NOT EXISTS idx_frota_apontamentos_km_integrado ON frota_apontamentos_km(integrado);
 
 CREATE TABLE IF NOT EXISTS frota_despesas (
   id BIGSERIAL PRIMARY KEY,
@@ -342,6 +518,7 @@ DROP FUNCTION IF EXISTS fn_frota_bloquear_reducao_odometro();
 
 CREATE INDEX IF NOT EXISTS idx_frota_departamentos_empresa ON frota_departamentos(empresa_id, descricao);
 CREATE INDEX IF NOT EXISTS idx_frota_motoristas_nome ON frota_motoristas(nome);
+CREATE INDEX IF NOT EXISTS idx_frota_motoristas_coordenador_padrao ON frota_motoristas(coordenador_padrao_motorista_id);
 CREATE INDEX IF NOT EXISTS idx_frota_veiculos_departamento ON frota_veiculos(departamento_id);
 CREATE INDEX IF NOT EXISTS idx_frota_despesas_placa ON frota_despesas(placa);
 CREATE INDEX IF NOT EXISTS idx_frota_despesas_fornecedor ON frota_despesas(fornecedor_id);
@@ -352,6 +529,7 @@ CREATE INDEX IF NOT EXISTS idx_frota_despesas_integrado ON frota_despesas(integr
 CREATE INDEX IF NOT EXISTS idx_frota_despesas_cancelado ON frota_despesas(cancelado);
 CREATE INDEX IF NOT EXISTS idx_frota_historicos_registro ON frota_historicos(tabela_afetada, registro_id, criado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_frota_motivos_cancelamento_descricao ON frota_motivos_cancelamento(descricao);
+CREATE INDEX IF NOT EXISTS idx_frota_motivos_sem_pedido_descricao ON frota_motivos_sem_pedido(descricao);
 CREATE INDEX IF NOT EXISTS idx_frota_integracoes_status_empresa ON frota_integracoes_status(empresa_id, criado_em DESC);
 
 INSERT INTO frota_motivos_cancelamento (codigo_decis, descricao, ativo)
@@ -359,6 +537,15 @@ VALUES
   ('DUPLICADO', 'Documento duplicado', TRUE),
   ('INDEVIDO', 'Lancamento indevido', TRUE),
   ('CORRECAO', 'Cancelamento para correcao', TRUE)
+ON CONFLICT (descricao) DO UPDATE SET
+  codigo_decis = EXCLUDED.codigo_decis,
+  ativo = TRUE;
+
+INSERT INTO frota_motivos_sem_pedido (codigo_decis, descricao, ativo)
+VALUES
+  ('INTERNO', 'Atendimento interno', TRUE),
+  ('MANUTENCAO', 'Manutencao sem pedido', TRUE),
+  ('DESLOCAMENTO', 'Deslocamento sem pedido', TRUE)
 ON CONFLICT (descricao) DO UPDATE SET
   codigo_decis = EXCLUDED.codigo_decis,
   ativo = TRUE;
@@ -376,11 +563,35 @@ CROSS JOIN (
     ('FROTA_FORNECEDORES', 'Fornecedores', '/Frota/Fornecedores', 'Store', 60),
     ('FROTA_DESPESA_TIPO', 'Despesa por Tipo', '/Frota/Despesa_Tipo', 'Settings', 70),
     ('FROTA_MOTIVOS_CANCELAMENTO', 'Motivos de Cancelamento', '/Frota/Motivos_Cancelamento', 'Ban', 80),
+    ('FROTA_MOTIVOS_SEM_PEDIDO', 'Motivos Sem Pedido', '/Frota/Motivos_Sem_Pedido', 'CircleSlash', 82),
+    ('FROTA_PEDIDOS_VENDA', 'Pedidos de Venda', '/Frota/Pedidos_Venda', 'ClipboardList', 85),
     ('FROTA_IMPORTACAO', 'Importacao de Despesas', '/Frota/Importacao', 'FileUp', 90),
+    ('FROTA_KM_APONTAMENTO', 'Apontamento KM', '/Frota/KM_Apontamento', 'CalendarDays', 95),
+    ('FROTA_KM_MOBILE', 'KM Mobile', '/Frota/KM_Mobile', 'Smartphone', 96),
     ('FROTA_VALIDACAO', 'Validacao de Despesas', '/Frota/Validacao', 'ShieldCheck', 100),
+    ('FROTA_KM_VALIDACAO', 'Validacao KM', '/Frota/KM_Validacao', 'Gauge', 105),
     ('FROTA_CONFIGURACOES', 'Configuracoes', '/Frota/Configuracoes', 'Settings', 110)
 ) AS item(codigo, nome, rota, icone, ordem)
 WHERE modulos.codigo = 'FROTA'
+ON CONFLICT (codigo) DO UPDATE SET
+  nome = EXCLUDED.nome,
+  rota = EXCLUDED.rota,
+  icone = EXCLUDED.icone,
+  ordem = EXCLUDED.ordem,
+  ativo = TRUE;
+
+UPDATE menus
+SET ativo = FALSE
+WHERE codigo = 'FROTA_KM_MOBILE';
+
+INSERT INTO menus (modulo_id, codigo, nome, rota, icone, ordem, ativo)
+SELECT modulos.id, item.codigo, item.nome, item.rota, item.icone, item.ordem, TRUE
+FROM modulos
+CROSS JOIN (
+  VALUES
+    ('KM_MOBILE_APONTAMENTO', 'Apontamento KM', '/KM_Mobile', 'Smartphone', 1)
+) AS item(codigo, nome, rota, icone, ordem)
+WHERE modulos.codigo = 'KM_MOBILE'
 ON CONFLICT (codigo) DO UPDATE SET
   nome = EXCLUDED.nome,
   rota = EXCLUDED.rota,
@@ -392,7 +603,7 @@ INSERT INTO telas (modulo_id, menu_id, codigo, nome, rota, arquivo_fonte, compon
 SELECT m.id, me.id, me.codigo || '_TELA', me.nome, me.rota, 'apps/frontend/src/modulos/frota/Frota.tsx', 'ModuloFrota, FonteDaTela', '/api/frota/*', 'frota_departamentos, frota_motoristas, frota_veiculos, frota_despesas', 'repositorioFrota', TRUE
 FROM modulos m
 INNER JOIN menus me ON me.modulo_id = m.id
-WHERE m.codigo = 'FROTA'
+WHERE m.codigo IN ('FROTA', 'KM_MOBILE')
 ON CONFLICT (codigo) DO UPDATE SET
   nome = EXCLUDED.nome,
   rota = EXCLUDED.rota,
@@ -407,12 +618,20 @@ INSERT INTO acoes (codigo, nome, descricao, ativo)
 VALUES
   ('FROTA_ACESSAR', 'Acessar Modulo Frota', 'Permite acessar o modulo Frota.', TRUE),
   ('FROTA_CONSULTAR', 'Consultar Frota', 'Permite consultar cadastros e despesas da frota.', TRUE),
+  ('FROTA_VISUALIZAR_DASHBOARD', 'Visualizar Dashboard Frota', 'Permite visualizar o dashboard do modulo Frota.', TRUE),
+  ('FROTA_CONSULTAR_CADASTROS', 'Consultar Cadastros Frota', 'Permite consultar os cadastros administrativos do modulo Frota.', TRUE),
+  ('FROTA_CONSULTAR_PEDIDOS_KM', 'Consultar Pedidos de KM', 'Permite consultar a tela de pedidos de venda usada no apontamento de KM.', TRUE),
   ('FROTA_INCLUIR', 'Incluir Frota', 'Permite incluir registros da frota.', TRUE),
   ('FROTA_ALTERAR', 'Alterar Frota', 'Permite alterar registros da frota.', TRUE),
   ('FROTA_EXCLUIR', 'Excluir Frota', 'Permite excluir registros da frota.', TRUE),
   ('FROTA_IMPORTAR_DESPESAS', 'Importar Despesas Frota', 'Permite importar despesas por planilha.', TRUE),
   ('FROTA_VALIDAR_DESPESAS', 'Validar Despesas Frota', 'Permite validar e remover validacao de despesas.', TRUE),
   ('FROTA_CANCELAR_DESPESAS', 'Cancelar Despesas Frota', 'Permite cancelar documentos de despesas com motivo.', TRUE),
+  ('FROTA_LANCAR_KM', 'Lancar KM Frota', 'Permite incluir e alterar apontamentos de KM.', TRUE),
+  ('FROTA_MOBILE_KM', 'Usar KM Mobile', 'Permite usar o aplicativo mobile de apontamento de KM.', TRUE),
+  ('FROTA_CONSULTAR_KM_TERCEIROS', 'Consultar KM de Terceiros', 'Permite consultar apontamentos de outros motoristas.', TRUE),
+  ('FROTA_CONSULTAR_KM_COORDENADOR', 'Consultar KM da Coordenacao', 'Permite ao coordenador consultar apontamentos vinculados aos pedidos da sua coordenacao.', TRUE),
+  ('FROTA_VALIDAR_KM', 'Validar KM Frota', 'Permite validar e remover validacao de apontamentos de KM.', TRUE),
   ('FROTA_EXPORTAR', 'Exportar Frota', 'Permite exportar dados de frota.', TRUE),
   ('FROTA_CONFIGURAR', 'Configurar Frota', 'Permite acessar configuracoes e De/Para da frota.', TRUE),
   ('FROTA_VISUALIZAR_FONTE_TELA', 'Visualizar Fonte da Tela Frota', 'Acao tecnica limitada a superadmin.', TRUE)
@@ -428,7 +647,9 @@ SELECT e.id, m.id, 'FROTA_GERAL', jsonb_build_object(
   'moeda_padrao', 'BRL',
   'permitir_reimportacao_nao_validada', TRUE,
   'bloquear_registro_integrado', TRUE,
-  'atualizar_odometro_automaticamente', TRUE
+  'atualizar_odometro_automaticamente', TRUE,
+  'dia_inicio_periodo_km', 26,
+  'dia_fim_periodo_km', 25
 ), FALSE
 FROM empresas e
 CROSS JOIN modulos m
@@ -442,16 +663,24 @@ CROSS JOIN empresas e
 CROSS JOIN modulos m
 CROSS JOIN acoes a
 WHERE p.administrador = TRUE
-  AND m.codigo = 'FROTA'
+  AND m.codigo IN ('FROTA', 'KM_MOBILE')
   AND a.codigo IN (
     'FROTA_ACESSAR',
     'FROTA_CONSULTAR',
+    'FROTA_VISUALIZAR_DASHBOARD',
+    'FROTA_CONSULTAR_CADASTROS',
+    'FROTA_CONSULTAR_PEDIDOS_KM',
     'FROTA_INCLUIR',
     'FROTA_ALTERAR',
     'FROTA_EXCLUIR',
     'FROTA_IMPORTAR_DESPESAS',
     'FROTA_VALIDAR_DESPESAS',
     'FROTA_CANCELAR_DESPESAS',
+    'FROTA_LANCAR_KM',
+    'FROTA_MOBILE_KM',
+    'FROTA_CONSULTAR_KM_TERCEIROS',
+    'FROTA_CONSULTAR_KM_COORDENADOR',
+    'FROTA_VALIDAR_KM',
     'FROTA_EXPORTAR',
     'FROTA_CONFIGURAR'
   )

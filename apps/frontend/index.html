@@ -2,9 +2,24 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" type="image/jpeg" href="/brand/favicon-control-s.jpg" />
     <link rel="apple-touch-icon" href="/brand/logo-s-novo.jpg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      (function () {
+        var rota = window.location.pathname.toLowerCase();
+        if (rota === '/km_mobile' || rota === '/frota/km_mobile') {
+          document.querySelector('link[rel="manifest"]').setAttribute('href', '/manifest-km.webmanifest');
+          document.querySelector('link[rel="apple-touch-icon"]').setAttribute('href', '/brand/logo-km-512.png');
+          document.title = 'KM Mobile';
+        }
+      })();
+    </script>
+    <meta name="theme-color" content="#0b1f3b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="KM Frota" />
     <title>Control S Hub</title>
   </head>
   <body>

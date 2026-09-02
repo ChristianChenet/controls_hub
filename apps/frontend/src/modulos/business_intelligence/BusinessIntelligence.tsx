@@ -1,5 +1,5 @@
 ﻿import { Activity, ArrowLeft, BarChart3, Copy, Database, Download, Eye, FileCode2, Filter, Info, LayoutDashboard, Maximize2, Monitor, PanelsTopLeft, Plus, RefreshCw, Save, Settings, Sparkles, Table2, Trash2, Upload, UserCheck, X } from 'lucide-react';
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   duplicarDashboardBi,
@@ -73,7 +73,70 @@ function colunaPedidoBi(coluna: string) {
 
 function colunaValorBi(coluna: string) {
   const chave = normalizarChaveBi(coluna);
-  return chave === 'valor' || chave.includes('valor') || chave.includes('total');
+  return chave === 'valor'
+    || chave.startsWith('valor_')
+    || chave.includes('valor_total')
+    || chave.includes('custo')
+    || chave.includes('preco')
+    || chave.includes('financeiro');
+}
+
+function rotuloCampoBi(campo: string) {
+  const chave = normalizarChaveBi(campo);
+  const rotulos: Record<string, string> = {
+    valor: 'Valor',
+    valor_monetario: 'Valor parado preço venda',
+    valor_unitario: 'Custo unitário',
+    valor_total_estoque: 'Valor custo estoque',
+    valor_total_endereco: 'Valor custo endereço',
+    valor_produtos_sem_giro_endereco: 'Valor parado preço venda',
+    valor_vendido_ultimos_90_dias: 'Valor vendido 90 dias',
+    saldo_estoque: 'Saldo estoque',
+    saldo_disponivel: 'Saldo disponível',
+    saldo_reservado: 'Saldo reservado',
+    volume_unitario_m3: 'Volume unitário m3',
+    volume_total_m3: 'Volume total m3',
+    ocupacao_percentual: 'Ocupação percentual',
+    quantidade_vendas_ultimos_90_dias: 'Vendas últimos 90 dias',
+    quantidade_vendida_ultimos_90_dias: 'Quantidade vendida 90 dias',
+    numeros_serie: 'Números de série',
+    quantidade_numeros_serie: 'Qtd. números de série'
+  };
+  return rotulos[chave] ?? campo.replace(/_/g, ' ');
+}
+
+function formatarCampoBi(coluna: string, valor: unknown) {
+  const chave = normalizarChaveBi(coluna);
+  const numero = Number(valor);
+  if (Number.isFinite(numero)) {
+    if (chave.includes('ocupacao') || chave.includes('percentual') || chave.includes('porcentagem')) {
+      return `${numero.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+    }
+    if (chave.includes('volume') || chave.endsWith('_m3')) {
+      return `${numero.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} m3`;
+    }
+    if (chave.includes('peso') || chave.endsWith('_kg')) {
+      return `${numero.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg`;
+    }
+  }
+  return formatarValorBi(valor, colunaValorBi(coluna));
+}
+
+function formatarCampoGraficoBi(coluna: string, valor: unknown, contexto = '') {
+  const chave = normalizarChaveBi(coluna);
+  const contextoNormalizado = normalizarChaveBi(contexto);
+  if (chave === 'valor') {
+    if (contextoNormalizado.includes('ocupacao') || contextoNormalizado.includes('percentual')) {
+      return formatarCampoBi('ocupacao_percentual', valor);
+    }
+    if (contextoNormalizado.includes('volume')) {
+      return formatarCampoBi('volume_total_m3', valor);
+    }
+    if (contextoNormalizado.includes('quantidade') || contextoNormalizado.includes('produto') || contextoNormalizado.includes('sku') || contextoNormalizado.includes('giro') || contextoNormalizado.includes('localizacao')) {
+      return formatarValorBi(valor);
+    }
+  }
+  return formatarCampoBi(coluna, valor);
 }
 
 function formatarCelulaBi(coluna: string, valor: unknown) {
@@ -81,7 +144,7 @@ function formatarCelulaBi(coluna: string, valor: unknown) {
     const numero = Number(valor);
     return Number.isFinite(numero) ? String(Math.trunc(numero)) : String(valor ?? '-');
   }
-  return formatarValorBi(valor, colunaValorBi(coluna));
+  return formatarCampoBi(coluna, valor);
 }
 
 function rotuloMetricaKpi(campo: string) {
@@ -91,7 +154,7 @@ function rotuloMetricaKpi(campo: string) {
     aguardando_faturamento: 'Aguardando faturamento',
     aguardando_escolha_transportadora: 'Aguardando escolha da transportadora'
   };
-  return rotulos[campo] ?? campo.replace(/_/g, ' ');
+  return rotulos[campo] ?? rotuloCampoBi(campo);
 }
 
 function EstadoBi({ titulo, descricao }: { titulo: string; descricao: string }) {
@@ -110,7 +173,7 @@ function BiTabelaSimples({ linhas, colunas, acoes }: { linhas: RegistroGenerico[
       <table>
         <thead>
           <tr>
-            {colunas.map((coluna) => <th key={coluna}>{coluna.replace(/_/g, ' ')}</th>)}
+            {colunas.map((coluna) => <th key={coluna}>{rotuloCampoBi(coluna)}</th>)}
             {acoes && <th>Acoes</th>}
           </tr>
         </thead>
@@ -169,8 +232,721 @@ function BiGraficoLinhas({ registros, cor }: { registros: RegistroGenerico[]; co
   );
 }
 
+function obterCampoNumericoBi(registros: RegistroGenerico[], preferidos: string[]) {
+  const colunas = Array.from(new Set(registros.flatMap((registro) => Object.keys(registro))));
+  return preferidos.flatMap((preferido) => [
+      colunas.find((coluna) => normalizarChaveBi(coluna) === normalizarChaveBi(preferido)),
+      colunas.find((coluna) => normalizarChaveBi(coluna).includes(normalizarChaveBi(preferido)))
+    ]).find(Boolean)
+    ?? colunas.find((coluna) => registros.some((registro) => Number.isFinite(Number(registro[coluna]))))
+    ?? 'valor';
+}
+
+function obterCampoRotuloBi(registros: RegistroGenerico[], preferidos: string[]) {
+  const colunas = Array.from(new Set(registros.flatMap((registro) => Object.keys(registro))));
+  return preferidos.find((coluna) => colunas.includes(coluna)) ?? colunas[0] ?? 'categoria';
+}
+
+function BiGraficoBarras({ registros, cor, titulo = '' }: { registros: RegistroGenerico[]; cor: string; titulo?: string }) {
+  const campoRotulo = obterCampoRotuloBi(registros, ['categoria', 'marca_nome', 'categoria_nome', 'setor', 'rua', 'produto_codigo']);
+  const campoValor = obterCampoNumericoBi(registros, ['ocupacao', 'percentual', 'valor_total_estoque', 'volume_total_m3', 'quantidade', 'total', 'valor']);
+  const maiorValor = Math.max(1, ...registros.map((registro) => Number(registro[campoValor] ?? 0)));
+
+  return (
+    <div className="biGraficoBarras">
+      {registros.slice(0, 12).map((registro, indice) => {
+        const valor = Number(registro[campoValor] ?? 0);
+        return (
+          <div key={`${String(registro[campoRotulo])}-${indice}`} className="biBarraLinha">
+            <span>{String(registro[campoRotulo] ?? '-')}</span>
+            <strong>{formatarCampoGraficoBi(campoValor, valor, titulo)}</strong>
+            <i style={{ width: `${Math.max(3, (valor / maiorValor) * 100)}%`, background: cor }} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BiGraficoRosca({ registros, cor, titulo = '' }: { registros: RegistroGenerico[]; cor: string; titulo?: string }) {
+  const campoRotulo = obterCampoRotuloBi(registros, ['categoria', 'classificacao_giro', 'situacao']);
+  const campoValor = obterCampoNumericoBi(registros, ['valor', 'quantidade', 'total']);
+  const paleta = [cor, '#16a34a', '#f59e0b', '#dc2626', '#0891b2', '#7c3aed', '#64748b'];
+  const total = registros.reduce((soma, registro) => soma + Math.max(0, Number(registro[campoValor] ?? 0)), 0);
+  let acumulado = 0;
+  const segmentos = total > 0
+    ? registros.map((registro, indice) => {
+        const valor = Math.max(0, Number(registro[campoValor] ?? 0));
+        const inicio = acumulado;
+        const fim = acumulado + (valor / total) * 100;
+        acumulado = fim;
+        return `${paleta[indice % paleta.length]} ${inicio}% ${fim}%`;
+      }).join(', ')
+    : '#e2e8f0 0% 100%';
+
+  return (
+    <div className="biRoscaPainel">
+      <div className="biRosca" style={{ background: `conic-gradient(${segmentos})` }}>
+        <strong>{formatarCampoGraficoBi(campoValor, total, titulo)}</strong>
+        <span>Total</span>
+      </div>
+      <div className="biRoscaLegenda">
+        {registros.slice(0, 7).map((registro, indice) => (
+          <div key={`${String(registro[campoRotulo])}-${indice}`}>
+            <i style={{ background: paleta[indice % paleta.length] }} />
+            <span>{String(registro[campoRotulo] ?? '-')}</span>
+            <strong>{formatarCampoGraficoBi(campoValor, registro[campoValor], titulo)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BiRanking({ registros, colunas, cor }: { registros: RegistroGenerico[]; colunas: string[]; cor: string }) {
+  const campoTitulo = colunas.find((coluna) => coluna.includes('descricao')) ?? colunas[1] ?? colunas[0];
+  const campoCodigo = colunas.find((coluna) => coluna.includes('codigo')) ?? colunas[0];
+  const campoValor = colunas.find((coluna) => colunaValorBi(coluna)) ?? obterCampoNumericoBi(registros, ['valor_total_estoque', 'volume_total_m3', 'valor']);
+  const maiorValor = Math.max(1, ...registros.map((registro) => Number(registro[campoValor] ?? 0)));
+
+  return (
+    <div className="biRanking">
+      {registros.slice(0, 10).map((registro, indice) => {
+        const valor = Number(registro[campoValor] ?? 0);
+        return (
+          <button key={`${String(registro[campoCodigo])}-${indice}`} type="button" className="biRankingItem" title="Abrir detalhe do item">
+            <b>{String(indice + 1).padStart(2, '0')}</b>
+            <div>
+              <strong>{String(registro[campoTitulo] ?? registro[campoCodigo] ?? '-')}</strong>
+              <span>{String(registro[campoCodigo] ?? '')} {registro.classificacao_giro ? `- ${String(registro.classificacao_giro)}` : ''}</span>
+              <i style={{ width: `${Math.max(4, (valor / maiorValor) * 100)}%`, background: cor }} />
+            </div>
+            <em>{formatarValorBi(registro[campoValor], colunaValorBi(campoValor))}</em>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function corEnderecoMapaBi(registro: RegistroGenerico) {
+  if (String(registro.localizacao_bloqueada) === 'true') return '#1f2937';
+  if (Number(registro.quantidade_produtos_sem_giro_endereco ?? 0) > 0) return '#7c3aed';
+  const ocupacao = Number(registro.ocupacao_percentual);
+  if (!Number.isFinite(ocupacao)) return '#94a3b8';
+  if (ocupacao >= 100) return '#dc2626';
+  if (ocupacao >= 80) return '#f97316';
+  if (ocupacao >= 50) return '#f59e0b';
+  return '#16a34a';
+}
+
+function corEnderecoMapaPorModoBi(registro: RegistroGenerico, modo: string) {
+  const valor = (campo: string) => Number(registro[campo] ?? 0);
+  if (registro.__livre) return '#16a34a';
+  if (modo === 'giro') return valor('quantidade_produtos_sem_giro_endereco') > 0 ? '#7c3aed' : '#16a34a';
+  if (modo === 'valor') {
+    const total = valor('valor_total_endereco');
+    if (total >= 180000) return '#dc2626';
+    if (total >= 100000) return '#f97316';
+    if (total >= 50000) return '#f59e0b';
+    return '#16a34a';
+  }
+  if (modo === 'volume') {
+    const volume = valor('volume_ocupado_m3');
+    if (volume >= 10) return '#dc2626';
+    if (volume >= 6) return '#f97316';
+    if (volume >= 2) return '#f59e0b';
+    return '#16a34a';
+  }
+  if (modo === 'skus') {
+    const skus = valor('quantidade_skus_endereco');
+    if (skus >= 3) return '#dc2626';
+    if (skus === 2) return '#f59e0b';
+    return '#16a34a';
+  }
+  return corEnderecoMapaBi(registro);
+}
+
+type ConfiguracaoRuaMapaBi = {
+  barracao: string;
+  rua: string;
+  setor: string;
+  colunas: number;
+  niveis: number;
+  posicoes: number;
+  larguraCm: number;
+  profundidadeCm: number;
+  alturaNivelCm: number;
+  capacidadeM3: number;
+};
+
+const CHAVE_ESTRUTURA_MAPA_CD_BI = 'bi_estoque_cd_estrutura_mapa_v2';
+const RUAS_PADRAO_BARRACAO_MAPA_BI = Array.from({ length: 15 }, (_, indice) => nomeSequencialMapaBi('R', indice + 1));
+
+function extrairNumeroMapaBi(valor: unknown, fallback = 1) {
+  const encontrado = String(valor ?? '').match(/\d+/)?.[0];
+  const numero = Number(encontrado ?? fallback);
+  return Number.isFinite(numero) && numero > 0 ? numero : fallback;
+}
+
+function nomeSequencialMapaBi(prefixo: string, indice: number) {
+  return `${prefixo}${String(indice).padStart(2, '0')}`;
+}
+
+function chaveEnderecoMapaBi(registro: RegistroGenerico) {
+  return [
+    String(registro.barracao ?? registro.deposito_nome ?? 'Barracao 01'),
+    String(registro.rua ?? 'Sem rua'),
+    String(registro.coluna ?? 'C01'),
+    String(registro.nivel ?? 'N01'),
+    String(registro.posicao ?? 'P01')
+  ].join('|');
+}
+
+function consolidarEnderecosMapaBi(registros: RegistroGenerico[]) {
+  const mapa = new Map<string, RegistroGenerico>();
+  registros.forEach((registro) => {
+    const chave = chaveEnderecoMapaBi(registro);
+    const atual = mapa.get(chave);
+    if (!atual) {
+      mapa.set(chave, { ...registro });
+      return;
+    }
+    const somar = [
+      'quantidade_skus_endereco',
+      'quantidade_itens_endereco',
+      'quantidade_numeros_serie_endereco',
+      'valor_total_endereco',
+      'volume_total_endereco',
+      'volume_ocupado_m3',
+      'peso_ocupado_kg',
+      'quantidade_produtos_sem_giro_endereco',
+      'valor_produtos_sem_giro_endereco',
+      'volume_produtos_sem_giro_endereco'
+    ];
+    somar.forEach((campo) => {
+      const total = Number(atual[campo] ?? 0) + Number(registro[campo] ?? 0);
+      if (Number.isFinite(total)) atual[campo] = total;
+    });
+    const capacidade = Number(atual.capacidade_util_volume_m3 ?? registro.capacidade_util_volume_m3);
+    const volume = Number(atual.volume_ocupado_m3 ?? 0);
+    atual.ocupacao_percentual = Number.isFinite(capacidade) && capacidade > 0 ? (volume / capacidade) * 100 : null;
+    atual.detalhes_json = [
+      ...(Array.isArray(atual.detalhes_json) ? atual.detalhes_json : []),
+      ...(Array.isArray(registro.detalhes_json) ? registro.detalhes_json : [registro])
+    ];
+  });
+  return mapa;
+}
+
+function estruturaPadraoMapaBi(registros: RegistroGenerico[]): ConfiguracaoRuaMapaBi[] {
+  const porRua = new Map<string, RegistroGenerico[]>();
+  registros.forEach((registro) => {
+    const rua = String(registro.rua ?? 'R01');
+    porRua.set(rua, [...(porRua.get(rua) ?? []), registro]);
+  });
+  const ruas = Array.from(new Set([...RUAS_PADRAO_BARRACAO_MAPA_BI, ...porRua.keys()]))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+  const base = ruas.map((rua, indiceRua) => {
+    const itens = porRua.get(rua) ?? [];
+    const maiorColuna = Math.max(1, ...itens.map((item) => extrairNumeroMapaBi(item.coluna)));
+    const maiorNivel = Math.max(1, ...itens.map((item) => extrairNumeroMapaBi(item.nivel)));
+    const maiorPosicao = Math.max(1, ...itens.map((item) => extrairNumeroMapaBi(item.posicao)));
+    const capacidadeMedia = itens
+      .map((item) => Number(item.capacidade_util_volume_m3))
+      .filter((valor) => Number.isFinite(valor) && valor > 0);
+    return {
+      barracao: String(itens[0]?.barracao ?? itens[0]?.deposito_nome ?? 'Barracao 01'),
+      rua,
+      setor: String(itens[0]?.setor ?? `S${Math.floor(indiceRua / 5) + 1}`),
+      colunas: Math.max(maiorColuna, 16),
+      niveis: Math.max(maiorNivel, 4),
+      posicoes: Math.max(maiorPosicao, 2),
+      larguraCm: 120,
+      profundidadeCm: 110,
+      alturaNivelCm: 95,
+      capacidadeM3: capacidadeMedia.length
+        ? Number((capacidadeMedia.reduce((soma, valor) => soma + valor, 0) / capacidadeMedia.length).toFixed(2))
+        : 1.25
+    };
+  });
+  return base.length ? base : RUAS_PADRAO_BARRACAO_MAPA_BI.map((rua, indiceRua) => ({
+    barracao: 'Barracao 01',
+    rua,
+    setor: `S${Math.floor(indiceRua / 5) + 1}`,
+    colunas: 16,
+    niveis: 4,
+    posicoes: 2,
+    larguraCm: 120,
+    profundidadeCm: 110,
+    alturaNivelCm: 95,
+    capacidadeM3: 1.25
+  }));
+}
+
+function textoEstruturaMapaBi(estrutura: ConfiguracaoRuaMapaBi[]) {
+  return estrutura.map((rua) => [
+    `barracao=${rua.barracao || 'Barracao 01'}`,
+    `rua=${rua.rua}`,
+    `setor=${rua.setor || '-'}`,
+    `colunas=${rua.colunas}`,
+    `niveis=${rua.niveis}`,
+    `posicoes=${rua.posicoes}`,
+    `largura_cm=${rua.larguraCm}`,
+    `profundidade_cm=${rua.profundidadeCm}`,
+    `altura_nivel_cm=${rua.alturaNivelCm}`,
+    `capacidade_m3=${rua.capacidadeM3}`
+  ].join('; ')).join('\n');
+}
+
+function lerEstruturaMapaBi(registros: RegistroGenerico[]) {
+  try {
+    const salvo = window.localStorage.getItem(CHAVE_ESTRUTURA_MAPA_CD_BI);
+    if (salvo) {
+      const estrutura = JSON.parse(salvo) as ConfiguracaoRuaMapaBi[];
+      if (Array.isArray(estrutura) && estrutura.length) return estrutura;
+    }
+  } catch {
+    return estruturaPadraoMapaBi(registros);
+  }
+  return estruturaPadraoMapaBi(registros);
+}
+
+function parseEstruturaMapaBi(texto: string, registros: RegistroGenerico[]) {
+  const linhas = texto.split(/\r?\n/).map((linha) => linha.trim()).filter(Boolean);
+  const estrutura = linhas.map((linha) => {
+    const partes = Object.fromEntries(linha.split(';').map((parte) => {
+      const [campo, ...resto] = parte.split('=');
+      return [normalizarChaveBi(campo ?? ''), resto.join('=').trim()];
+    }).filter(([campo]) => campo));
+    return {
+      barracao: partes.barracao || partes.barracão || partes.deposito || 'Barracao 01',
+      rua: partes.rua || partes.endereco || 'R01',
+      setor: partes.setor === '-' ? '' : partes.setor || '',
+      colunas: Math.max(1, Number(partes.colunas ?? 1)),
+      niveis: Math.max(1, Number(partes.niveis ?? 1)),
+      posicoes: Math.max(1, Number(partes.posicoes ?? 1)),
+      larguraCm: Math.max(1, Number(partes.largura_cm ?? partes.largura ?? 120)),
+      profundidadeCm: Math.max(1, Number(partes.profundidade_cm ?? partes.profundidade ?? 110)),
+      alturaNivelCm: Math.max(1, Number(partes.altura_nivel_cm ?? partes.altura_cm ?? 95)),
+      capacidadeM3: Math.max(0, Number(partes.capacidade_m3 ?? 1.25))
+    };
+  }).filter((item) => item.rua && Number.isFinite(item.colunas) && Number.isFinite(item.niveis) && Number.isFinite(item.posicoes));
+  return estrutura.length ? estrutura : estruturaPadraoMapaBi(registros);
+}
+
+function gerarPosicoesCompletasMapaBi(registros: RegistroGenerico[], estrutura: ConfiguracaoRuaMapaBi[]) {
+  const enderecosOcupados = consolidarEnderecosMapaBi(registros);
+  const posicoes: RegistroGenerico[] = [];
+  estrutura.forEach((ruaConfig) => {
+    for (let colunaIndice = 1; colunaIndice <= ruaConfig.colunas; colunaIndice += 1) {
+      for (let nivelIndice = 1; nivelIndice <= ruaConfig.niveis; nivelIndice += 1) {
+        for (let posicaoIndice = 1; posicaoIndice <= ruaConfig.posicoes; posicaoIndice += 1) {
+          const enderecoBase = {
+            barracao: ruaConfig.barracao || 'Barracao 01',
+            setor: ruaConfig.setor || undefined,
+            rua: ruaConfig.rua,
+            coluna: nomeSequencialMapaBi('C', colunaIndice),
+            nivel: nomeSequencialMapaBi('N', nivelIndice),
+            posicao: nomeSequencialMapaBi('P', posicaoIndice)
+          };
+          const chave = chaveEnderecoMapaBi(enderecoBase);
+          const ocupado = enderecosOcupados.get(chave);
+          const capacidade = Number(ocupado?.capacidade_util_volume_m3 ?? ruaConfig.capacidadeM3);
+          const volume = Number(ocupado?.volume_ocupado_m3 ?? ocupado?.volume_total_endereco ?? 0);
+          posicoes.push({
+            ...enderecoBase,
+            endereco_completo: ocupado?.endereco_completo ?? `${enderecoBase.barracao}-${ruaConfig.setor ? `${ruaConfig.setor}-` : ''}${ruaConfig.rua}-${enderecoBase.coluna}-${enderecoBase.nivel}-${enderecoBase.posicao}`,
+            tipo_estrutura: ocupado?.tipo_estrutura ?? 'Porta-palete',
+            localizacao_bloqueada: ocupado?.localizacao_bloqueada ?? false,
+            capacidade_util_volume_m3: Number.isFinite(capacidade) && capacidade > 0 ? capacidade : null,
+            volume_ocupado_m3: Number.isFinite(volume) ? volume : 0,
+            ocupacao_percentual: Number.isFinite(capacidade) && capacidade > 0 ? (volume / capacidade) * 100 : null,
+            quantidade_skus_endereco: ocupado?.quantidade_skus_endereco ?? 0,
+            quantidade_itens_endereco: ocupado?.quantidade_itens_endereco ?? 0,
+            quantidade_numeros_serie_endereco: ocupado?.quantidade_numeros_serie_endereco ?? 0,
+            valor_total_endereco: ocupado?.valor_total_endereco ?? 0,
+            peso_ocupado_kg: ocupado?.peso_ocupado_kg ?? 0,
+            quantidade_produtos_sem_giro_endereco: ocupado?.quantidade_produtos_sem_giro_endereco ?? 0,
+            detalhes_json: ocupado?.detalhes_json ?? [],
+            __livre: !ocupado,
+            __estrutura: true,
+            __dimensoes: `${ruaConfig.larguraCm} x ${ruaConfig.profundidadeCm} x ${ruaConfig.alturaNivelCm} cm`
+          });
+        }
+      }
+    }
+  });
+  return posicoes;
+}
+
+function BiMapaCd({ registros }: { registros: RegistroGenerico[] }) {
+  const compararNatural = (a: string, b: string) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
+  const chaveRegistros = useMemo(() => registros.map((registro) => String(registro.endereco_completo ?? registro.produto_id ?? '')).join('|'), [registros]);
+  const [estrutura, setEstrutura] = useState<ConfiguracaoRuaMapaBi[]>(() => lerEstruturaMapaBi(registros));
+  const [textoEstrutura, setTextoEstrutura] = useState(() => textoEstruturaMapaBi(lerEstruturaMapaBi(registros)));
+  const [estruturaAberta, setEstruturaAberta] = useState(false);
+  const posicoesMapa = useMemo(() => gerarPosicoesCompletasMapaBi(registros, estrutura), [registros, estrutura]);
+  const barracoes = useMemo(() => Array.from(new Set(posicoesMapa.map((registro) => String(registro.barracao ?? 'Barracao 01')))).sort(compararNatural), [posicoesMapa]);
+  const [focoBarracao, setFocoBarracao] = useState('');
+  const ruas = useMemo(() => Array.from(new Set(posicoesMapa.map((registro) => String(registro.rua ?? 'Sem rua')))).sort(compararNatural), [posicoesMapa]);
+  const [selecionado, setSelecionado] = useState<RegistroGenerico | null>(posicoesMapa.find((item) => !item.__livre) ?? posicoesMapa[0] ?? null);
+  const [modoCor, setModoCor] = useState('ocupacao');
+  const [zoom, setZoom] = useState(0.68);
+  const [rotacao, setRotacao] = useState(-20);
+  const [focoRua, setFocoRua] = useState('');
+  const posicoesFiltradas = useMemo(() => posicoesMapa.filter((registro) =>
+    (!focoBarracao || String(registro.barracao ?? 'Barracao 01') === focoBarracao)
+    && (!focoRua || String(registro.rua ?? 'Sem rua') === focoRua)
+  ), [posicoesMapa, focoBarracao, focoRua]);
+  const ruasVisiveis = useMemo(() => Array.from(new Set(posicoesFiltradas.map((registro) => String(registro.rua ?? 'Sem rua')))).sort(compararNatural), [posicoesFiltradas]);
+  const enderecosVisiveis = posicoesFiltradas;
+  const ruasEstruturadas = useMemo(() => ruasVisiveis.map((rua) => {
+    const itensRua = posicoesFiltradas.filter((registro) => String(registro.rua ?? 'Sem rua') === rua);
+    const colunas = Array.from(new Set(itensRua.map((registro) => String(registro.coluna ?? 'S/C')))).sort(compararNatural);
+    return { rua, itensRua, colunas };
+  }), [ruasVisiveis, posicoesFiltradas]);
+  const totalOcupados = useMemo(() => posicoesMapa.filter((item) => !item.__livre).length, [posicoesMapa]);
+  const totalLivres = useMemo(() => posicoesMapa.filter((item) => item.__livre).length, [posicoesMapa]);
+  const renderDetalhado = Boolean(focoRua) || posicoesFiltradas.length <= 360;
+
+  useEffect(() => {
+    const primeiroOcupado = posicoesMapa.find((item) => !item.__livre) ?? null;
+    setSelecionado(primeiroOcupado ?? posicoesMapa[0] ?? null);
+    if (registros.length > 0 && registros.length <= 5 && primeiroOcupado?.rua) {
+      setFocoBarracao(String(primeiroOcupado.barracao ?? 'Barracao 01'));
+      setFocoRua(String(primeiroOcupado.rua));
+      setZoom(1.05);
+      setRotacao(-8);
+      return;
+    }
+    setFocoRua('');
+    setFocoBarracao('');
+    setZoom(0.68);
+    setRotacao(-20);
+  }, [chaveRegistros]);
+
+  function focarEnderecoMapa(registro?: RegistroGenerico | null) {
+    const alvo = registro && !registro.__livre ? registro : posicoesMapa.find((item) => !item.__livre);
+    if (!alvo) return;
+    setSelecionado(alvo);
+    setFocoBarracao(String(alvo.barracao ?? 'Barracao 01'));
+    setFocoRua(String(alvo.rua ?? 'Sem rua'));
+    setZoom(1.08);
+    setRotacao(-8);
+  }
+
+  function resumoColunaMapa(itensColuna: RegistroGenerico[]) {
+    const ocupados = itensColuna.filter((item) => !item.__livre);
+    const principal = ocupados[0] ?? itensColuna[0] ?? null;
+    const volume = ocupados.reduce((total, item) => total + Number(item.volume_ocupado_m3 ?? 0), 0);
+    const skus = ocupados.reduce((total, item) => total + Number(item.quantidade_skus_endereco ?? 0), 0);
+    const semGiro = ocupados.some((item) => Number(item.quantidade_produtos_sem_giro_endereco ?? 0) > 0);
+    const capacidade = itensColuna.reduce((total, item) => total + Number(item.capacidade_util_volume_m3 ?? 0), 0);
+    const ocupacao = capacidade > 0 ? (volume / capacidade) * 100 : null;
+    return { principal, ocupados, volume, skus, semGiro, ocupacao };
+  }
+
+  function salvarEstrutura() {
+    const proxima = parseEstruturaMapaBi(textoEstrutura, registros);
+    setEstrutura(proxima);
+    setTextoEstrutura(textoEstruturaMapaBi(proxima));
+    window.localStorage.setItem(CHAVE_ESTRUTURA_MAPA_CD_BI, JSON.stringify(proxima));
+    setEstruturaAberta(false);
+  }
+
+  function gerarEstruturaDosDados() {
+    const proxima = estruturaPadraoMapaBi(registros);
+    setEstrutura(proxima);
+    setTextoEstrutura(textoEstruturaMapaBi(proxima));
+  }
+
+  function limparEstrutura() {
+    const proxima = estruturaPadraoMapaBi(registros);
+    window.localStorage.removeItem(CHAVE_ESTRUTURA_MAPA_CD_BI);
+    setEstrutura(proxima);
+    setTextoEstrutura(textoEstruturaMapaBi(proxima));
+  }
+
+  function fecharCadastroEstrutura() {
+    document.querySelectorAll('.biMapaEstruturaOverlay').forEach((elemento) => elemento.remove());
+    window.setTimeout(() => setEstruturaAberta(false), 0);
+  }
+
+  useEffect(() => {
+    if (!estruturaAberta) return;
+    const fecharPorAtributo = (evento: Event) => {
+      const alvo = evento.target instanceof Element ? evento.target : null;
+      if (!alvo?.closest('[data-bi-fechar-estrutura="true"]')) return;
+      evento.preventDefault();
+      evento.stopPropagation();
+      fecharCadastroEstrutura();
+    };
+    document.addEventListener('pointerup', fecharPorAtributo, true);
+    document.addEventListener('click', fecharPorAtributo, true);
+    return () => {
+      document.removeEventListener('pointerup', fecharPorAtributo, true);
+      document.removeEventListener('click', fecharPorAtributo, true);
+    };
+  }, [estruturaAberta]);
+
+  return (
+    <div className="biMapaCd">
+      <div className="biMapaToolbar">
+        <div>
+          <strong>Mapa 3D completo</strong>
+          <span>{enderecosVisiveis.length} posições · {totalOcupados} ocupadas · {totalLivres} livres</span>
+        </div>
+        <label>
+          Cor
+          <select value={modoCor} onChange={(evento) => setModoCor(evento.target.value)}>
+            <option value="ocupacao">Ocupação</option>
+            <option value="giro">Giro</option>
+            <option value="valor">Valor</option>
+            <option value="volume">Volume</option>
+            <option value="skus">Quantidade de SKUs</option>
+          </select>
+        </label>
+        <label>
+          Barracão
+          <select value={focoBarracao} onChange={(evento) => setFocoBarracao(evento.target.value)}>
+            <option value="">Todos</option>
+            {barracoes.map((barracao) => <option key={barracao} value={barracao}>{barracao}</option>)}
+          </select>
+        </label>
+        <label>
+          Rua
+          <select value={focoRua} onChange={(evento) => {
+            setFocoRua(evento.target.value);
+            setZoom(evento.target.value ? 1.02 : 0.68);
+          }}>
+            <option value="">Todas</option>
+            {ruas.map((rua) => <option key={rua} value={rua}>{rua}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={() => setZoom((atual) => Math.max(0.5, Number((atual - 0.1).toFixed(2))))}>-</button>
+        <button type="button" onClick={() => setZoom((atual) => Math.min(1.25, Number((atual + 0.1).toFixed(2))))}>+</button>
+        <button type="button" onClick={() => setRotacao((atual) => atual - 8)}>Girar</button>
+        <button type="button" onClick={() => focarEnderecoMapa(selecionado)}>Entrar no produto</button>
+        <button type="button" onClick={() => { setZoom(0.68); setRotacao(-20); setFocoRua(''); setFocoBarracao(''); }}>Visão geral</button>
+        <button type="button" onClick={() => setEstruturaAberta((atual) => !atual)}><Settings size={15} /> {estruturaAberta ? 'Fechar estrutura' : 'Estrutura do CD'}</button>
+      </div>
+      {estruturaAberta && (
+        <section className="biMapaEstruturaInline" aria-label="Cadastro da estrutura do Centro de Distribuicao">
+          <header>
+            <div>
+              <span>Cadastro do mapa físico</span>
+              <h3>Estrutura completa do CD</h3>
+              <p>Informe uma rua por linha. O mapa 3D usa este cadastro para desenhar posições livres e ocupadas.</p>
+            </div>
+            <button type="button" onClick={() => setEstruturaAberta(false)} aria-label="Fechar cadastro da estrutura"><X size={18} /></button>
+          </header>
+          <textarea
+            value={textoEstrutura}
+            onChange={(evento) => setTextoEstrutura(evento.target.value)}
+            spellCheck={false}
+          />
+          <div className="biMapaEstruturaAjuda">
+            <strong>Formato</strong>
+            <span>rua=R01; setor=S1; colunas=8; niveis=4; posicoes=3; largura_cm=120; profundidade_cm=110; altura_nivel_cm=95; capacidade_m3=1.25</span>
+          </div>
+          <footer>
+            <button type="button" onClick={limparEstrutura}>Limpar cadastro</button>
+            <button type="button" onClick={gerarEstruturaDosDados}>Gerar pelos dados</button>
+            <button type="button" className="primary" onClick={salvarEstrutura}><Save size={16} />Salvar estrutura</button>
+          </footer>
+        </section>
+      )}
+      <div className="biMapaCena" role="img" aria-label="Mapa logico tridimensional do Centro de Distribuicao">
+        <div className="biMapaPerspectivaInfo">
+          <strong>Estoque vertical</strong>
+          <span>Planta horizontal do barracao com armazenagem vertical</span>
+        </div>
+        <div className="biMapaPlano" style={{ '--bi-mapa-zoom': zoom, '--bi-mapa-rotacao': `${rotacao}deg` } as CSSProperties}>
+          {ruasEstruturadas.map(({ rua, itensRua, colunas }, indiceRua) => (
+            <div key={rua} className="biMapaRua" style={{ '--rua-offset': indiceRua, '--qtd-colunas': colunas.length } as CSSProperties}>
+              <span>{rua}</span>
+              <div className="biMapaCorredor" />
+              <div className="biMapaEstruturas">
+                {colunas.map((coluna) => {
+                  const itensColuna = itensRua
+                    .filter((registro) => String(registro.coluna ?? 'S/C') === coluna)
+                    .sort((a, b) => compararNatural(String(b.nivel ?? ''), String(a.nivel ?? '')));
+                  return (
+                    <div key={`${rua}-${coluna}`} className="biMapaColuna">
+                      <strong>{coluna}</strong>
+                      <div>
+                        {!renderDetalhado ? (() => {
+                          const resumo = resumoColunaMapa(itensColuna);
+                          const selecionadoNaColuna = Boolean(selecionado && itensColuna.some((item) => item.endereco_completo === selecionado.endereco_completo));
+                          return (
+                            <button
+                              type="button"
+                              className={`biMapaPilhaResumo ${selecionadoNaColuna ? 'selecionado' : ''} ${resumo.ocupados.length ? 'ocupado' : 'livre'} ${resumo.semGiro ? 'semGiro' : ''}`}
+                              onClick={() => setSelecionado(resumo.principal)}
+                              onDoubleClick={() => focarEnderecoMapa(resumo.principal)}
+                              title={`${rua}-${coluna} - ${resumo.ocupados.length} posicoes ocupadas. Duplo clique para entrar na rua.`}
+                              style={{
+                                '--endereco-cor': resumo.semGiro ? '#7c3aed' : resumo.principal ? corEnderecoMapaPorModoBi({ ...resumo.principal, ocupacao_percentual: resumo.ocupacao, quantidade_skus_endereco: resumo.skus, volume_ocupado_m3: resumo.volume }, modoCor) : '#16a34a',
+                                '--ocupacao-altura': `${Math.max(8, Math.min(100, Number.isFinite(Number(resumo.ocupacao)) ? Number(resumo.ocupacao) : 0))}%`
+                              } as CSSProperties}
+                            >
+                              <span>{coluna}</span>
+                            </button>
+                          );
+                        })() : itensColuna.map((registro, indice) => {
+                          const selecionadoAtual = selecionado?.endereco_completo === registro.endereco_completo;
+                          const ocupacao = Number(registro.ocupacao_percentual);
+                          return (
+                            <button
+                              key={`${String(registro.endereco_completo ?? `${rua}-${coluna}`)}-${String(registro.localizacao_id ?? registro.produto_id ?? '')}-${indice}`}
+                              type="button"
+                              className={`${selecionadoAtual ? 'selecionado' : ''} ${registro.__livre ? 'livre' : 'ocupado'}`}
+                              onClick={() => setSelecionado(registro)}
+                              title={`${String(registro.endereco_completo)} - ${registro.__livre ? 'livre' : registro.ocupacao_percentual === null ? 'capacidade nao informada' : `${formatarValorBi(registro.ocupacao_percentual)}% ocupacao`}`}
+                              style={{
+                                '--endereco-cor': corEnderecoMapaPorModoBi(registro, modoCor),
+                                '--ocupacao-altura': `${Math.max(8, Math.min(100, Number.isFinite(ocupacao) ? ocupacao : 0))}%`
+                              } as CSSProperties}
+                            >
+                              <span>{String(registro.nivel ?? '-')}</span>
+                              <b>{String(registro.posicao ?? '-')}</b>
+                              <small>{formatarValorBi(registro.quantidade_itens_endereco ?? 0)}</small>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <aside className="biMapaDetalhe">
+        <strong>{String(selecionado?.endereco_completo ?? 'Selecione um endereco')}</strong>
+        <div><span>Situação</span><b>{selecionado?.__livre ? 'Livre' : String(selecionado?.localizacao_bloqueada) === 'true' ? 'Bloqueado' : 'Ocupado'}</b></div>
+        <div><span>Ocupacao</span><b>{selecionado?.ocupacao_percentual === null || selecionado?.ocupacao_percentual === undefined ? 'Capacidade nao informada' : `${formatarValorBi(selecionado.ocupacao_percentual)}%`}</b></div>
+        <div><span>SKUs</span><b>{formatarValorBi(selecionado?.quantidade_skus_endereco ?? 0)}</b></div>
+        <div><span>Itens</span><b>{formatarValorBi(selecionado?.quantidade_itens_endereco ?? 0)}</b></div>
+        <div><span>Volume</span><b>{formatarValorBi(selecionado?.volume_ocupado_m3 ?? 0)} m3</b></div>
+        <small>{String(selecionado?.setor ?? '-')} · {String(selecionado?.__dimensoes ?? 'dimensao nao informada')}</small>
+      </aside>
+      <div className="biMapaLegenda">
+        {[
+          ['#16a34a', 'Livre/baixa'], ['#f59e0b', 'Intermediaria'], ['#f97316', 'Alta'],
+          ['#dc2626', 'Lotado'], ['#7c3aed', 'Sem giro'], ['#94a3b8', 'Sem capacidade'], ['#1f2937', 'Bloqueado']
+        ].map(([cor, label]) => <span key={label}><i style={{ background: cor }} />{label}</span>)}
+      </div>
+      {false && estruturaAberta && (
+        <div className="biMapaEstruturaOverlay" role="dialog" aria-modal="true" aria-label="Cadastro da estrutura do Centro de Distribuicao">
+          <section className="biMapaEstruturaModal">
+            <header>
+              <div>
+                <span>Cadastro do mapa físico</span>
+                <h3>Estrutura completa do CD</h3>
+                <p>Informe uma rua por linha. O mapa 3D usa este cadastro para desenhar posições livres e ocupadas.</p>
+              </div>
+              <button
+                type="button"
+                onMouseUp={(evento) => {
+                  evento.preventDefault();
+                  evento.stopPropagation();
+                  fecharCadastroEstrutura();
+                }}
+                onClick={(evento) => {
+                  evento.preventDefault();
+                  evento.stopPropagation();
+                  fecharCadastroEstrutura();
+                }}
+                aria-label="Fechar cadastro da estrutura"
+                data-bi-fechar-estrutura="true"
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <textarea
+              value={textoEstrutura}
+              onChange={(evento) => setTextoEstrutura(evento.target.value)}
+              spellCheck={false}
+            />
+            <div className="biMapaEstruturaAjuda">
+              <strong>Formato</strong>
+              <span>rua=R01; setor=S1; colunas=8; niveis=4; posicoes=3; largura_cm=120; profundidade_cm=110; altura_nivel_cm=95; capacidade_m3=1.25</span>
+            </div>
+            <footer>
+              <button type="button" onClick={limparEstrutura}>Limpar cadastro</button>
+              <button type="button" onClick={gerarEstruturaDosDados}>Gerar pelos dados</button>
+              <button type="button" className="primary" onClick={salvarEstrutura}><Save size={16} />Salvar estrutura</button>
+            </footer>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function normalizarChaveBi(chave: string) {
   return chave.trim().toLocaleLowerCase('pt-BR');
+}
+
+function classeColunaTabelaBi(coluna: string) {
+  const chave = normalizarChaveBi(coluna);
+  if (['pedido', 'numero_pedido', 'id_pedido'].includes(chave) || chave.endsWith('_pedido')) return 'biColPedido';
+  if (['fluxo', 'fl_fluxo'].includes(chave)) return 'biColFluxo';
+  if (['codigo', 'cod', 'id_codigo'].includes(chave) || chave.endsWith('_codigo')) return 'biColCodigo';
+  if (['dias', 'qtd', 'quantidade', 'falt', 'fat_entr'].includes(chave)) return 'biColNumeroCurto';
+  if (chave.includes('cliente')) return 'biColCliente';
+  if (chave.includes('transportadora') || chave === 'transp') return 'biColTransportadora';
+  if (chave.includes('vendedor')) return 'biColVendedor';
+  return '';
+}
+
+function larguraColunaTabelaTvBi(coluna: string, registros: RegistroGenerico[]) {
+  const chave = normalizarChaveBi(coluna);
+  // No modo TV usamos CSS Grid para travar campos pequenos e cortar textos longos.
+  // Assim PEDIDO/FLUXO/CODIGO nao crescem sozinhos e sobram colunas visiveis no painel.
+  if (['pedido', 'numero_pedido', 'id_pedido'].includes(chave) || chave.endsWith('_pedido')) return '6.6ch';
+  if (['fluxo', 'fl_fluxo'].includes(chave)) return '4.2ch';
+  if (['codigo', 'cod', 'id_codigo'].includes(chave) || chave.endsWith('_codigo')) return '6.8ch';
+  if (['dias', 'qtd', 'quantidade', 'falt', 'fat_entr'].includes(chave)) return '4.8ch';
+  if (chave.includes('valor') || chave.includes('total')) return '12.5ch';
+  if (chave.includes('data') || chave.includes('dt')) return '10.5ch';
+  if (['sit', 'status', 'situacao'].includes(chave)) return 'minmax(6ch, .55fr)';
+  if (chave.includes('cliente')) return 'minmax(6ch, .8fr)';
+  if (chave.includes('transportadora') || chave === 'transp') return 'minmax(6ch, .78fr)';
+  if (chave.includes('vendedor')) return 'minmax(6ch, .65fr)';
+  return 'minmax(4.5ch, .75fr)';
+}
+
+function mapaLargurasColunasBi(valor: unknown) {
+  if (!valor) return {};
+  if (typeof valor === 'object' && !Array.isArray(valor)) return valor as Record<string, string>;
+  return Object.fromEntries(String(valor)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const [coluna, largura] = item.split('=').map((parte) => parte?.trim());
+      return [normalizarChaveBi(coluna ?? ''), largura ?? ''];
+    })
+    .filter(([coluna, largura]) => coluna && largura));
+}
+
+function larguraColunaWidgetTvBi(widget: RegistroGenerico, coluna: string, registros: RegistroGenerico[]) {
+  const larguras = mapaLargurasColunasBi(widget.colunas_larguras_json);
+  const manual = larguras[normalizarChaveBi(coluna)];
+  return manual || larguraColunaTabelaTvBi(coluna, registros);
+}
+
+function textoLargurasColunasBi(valor: unknown) {
+  if (!valor) return '';
+  if (typeof valor === 'string') return valor;
+  if (typeof valor === 'object' && !Array.isArray(valor)) {
+    return Object.entries(valor as Record<string, unknown>).map(([coluna, largura]) => `${coluna}=${String(largura)}`).join(', ');
+  }
+  return '';
 }
 
 function normalizarLinhaBi(linha: RegistroGenerico): RegistroGenerico {
@@ -216,11 +992,27 @@ function normalizarDetalheDashboardBi(dados: any): { dashboard: RegistroGenerico
   };
 }
 
-function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filtros: RegistroGenerico }) {
+function calcularLimiteLinhasTv() {
+  const altura = Math.min(window.innerHeight || 900, window.visualViewport?.height ?? window.innerHeight ?? 900);
+  if (altura <= 520) return 5;
+  if (altura <= 620) return 6;
+  if (altura <= 740) return 8;
+  return 10;
+}
+
+function calcularLimiteMetricasKpiTv() {
+  // No modo TV os cards superiores precisam mostrar o contexto completo do KPI.
+  // A compactacao para caber na tela fica no CSS, preservando as informacoes retornadas pela consulta.
+  return 99;
+}
+
+function BiWidgetContainer({ widget, filtros, modoTv = false }: { widget: RegistroGenerico; filtros: RegistroGenerico; modoTv?: boolean }) {
   const [dados, setDados] = useState<RegistroGenerico | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [detalheAberto, setDetalheAberto] = useState(false);
+  const [limiteLinhasTv, setLimiteLinhasTv] = useState(() => calcularLimiteLinhasTv());
+  const [limiteMetricasKpiTv, setLimiteMetricasKpiTv] = useState(() => calcularLimiteMetricasKpiTv());
 
   async function carregarWidget() {
     if (!widget.consulta_id) {
@@ -245,11 +1037,36 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
     return () => window.clearInterval(intervalo);
   }, [widget.id, JSON.stringify(filtros)]);
 
+  useEffect(() => {
+    if (!modoTv) return;
+    const atualizarLimite = () => {
+      setLimiteLinhasTv(calcularLimiteLinhasTv());
+      setLimiteMetricasKpiTv(calcularLimiteMetricasKpiTv());
+    };
+    atualizarLimite();
+    window.addEventListener('resize', atualizarLimite);
+    window.visualViewport?.addEventListener('resize', atualizarLimite);
+    return () => {
+      window.removeEventListener('resize', atualizarLimite);
+      window.visualViewport?.removeEventListener('resize', atualizarLimite);
+    };
+  }, [modoTv]);
+
+  useEffect(() => {
+    if (!detalheAberto) return;
+    const fecharComEsc = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') setDetalheAberto(false);
+    };
+    window.addEventListener('keydown', fecharComEsc);
+    return () => window.removeEventListener('keydown', fecharComEsc);
+  }, [detalheAberto]);
+
   const registros = ((dados?.registros ?? dados?.dados ?? []) as RegistroGenerico[]).map(normalizarLinhaBi);
   const registrosCompletos = ((dados?.registros_completos ?? dados?.dados_completos ?? dados?.registros ?? dados?.dados ?? []) as RegistroGenerico[]).map(normalizarLinhaBi);
   const primeiro = registros[0] ?? {};
   const tipo = String(widget.tipo_widget ?? 'KPI').toUpperCase();
-  const tipoGrafico = ['LINHAS', 'GRAFICO_LINHAS', 'AREA', 'BARRAS'].includes(tipo);
+  const tipoLinha = ['LINHAS', 'GRAFICO_LINHAS', 'AREA'].includes(tipo);
+  const tipoGraficoTv = ['LINHAS', 'GRAFICO_LINHAS', 'AREA', 'BARRAS'].includes(tipo);
   const colunasConfiguradas = Array.isArray(widget.colunas_visiveis_json)
     ? widget.colunas_visiveis_json.map((coluna) => normalizarChaveBi(String(coluna))).filter(Boolean)
     : String(widget.colunas_visiveis_json ?? '').split(',').map((coluna) => normalizarChaveBi(coluna)).filter(Boolean);
@@ -269,7 +1086,13 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
   const corWidget = String(widget.cor_principal ?? '#16a34a');
   const totalRegistros = Number(dados?.total_registros ?? registros.length);
   const registrosNaoExibidos = Number(dados?.registros_nao_exibidos ?? 0);
+  const registrosTabela = modoTv ? registros.slice(0, limiteLinhasTv) : registros;
+  const registrosNaoExibidosTabela = registrosNaoExibidos + Math.max(0, registros.length - registrosTabela.length);
   const camposMetricaKpi = Object.keys(primeiro).filter((campo) => !['valor', 'total', 'quantidade', 'valor_monetario', 'valor_secundario', 'situacao', 'comparacao_dia_anterior', 'detalhes_json'].includes(campo));
+  const camposMetricaKpiVisiveis = modoTv ? camposMetricaKpi.slice(0, limiteMetricasKpiTv) : camposMetricaKpi;
+  const metricasKpiNaoExibidas = Math.max(0, camposMetricaKpi.length - camposMetricaKpiVisiveis.length);
+  const carregamentoInicial = carregando && !dados;
+  const podeExibirConteudo = !erro && !carregamentoInicial;
 
   function exportarDetalheExcel() {
     const escaparHtml = (valor: unknown) => String(valor ?? '')
@@ -277,7 +1100,7 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-    const cabecalho = `<th>#</th>${colunasDetalhe.map((coluna) => `<th>${escaparHtml(coluna.replace(/_/g, ' '))}</th>`).join('')}`;
+    const cabecalho = `<th>#</th>${colunasDetalhe.map((coluna) => `<th>${escaparHtml(rotuloCampoBi(coluna))}</th>`).join('')}`;
     const linhas = registrosDetalhe.map((registro, indice) => `<tr><td>${indice + 1}</td>${colunasDetalhe.map((coluna) => `<td>${escaparHtml(formatarCelulaBi(coluna, registro[coluna]))}</td>`).join('')}</tr>`).join('');
     const rodape = colunasValorDetalhe.length > 0
       ? `<tfoot><tr><td></td>${colunasDetalhe.map((coluna, indice) => `<td>${escaparHtml(colunasValorDetalhe.includes(coluna) ? formatarValorBi(totaisDetalhe[coluna], true) : indice === 0 ? 'Total' : '')}</td>`).join('')}</tr></tfoot>`
@@ -293,6 +1116,140 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
     URL.revokeObjectURL(url);
   }
 
+  if (modoTv) {
+    return (
+      <article className={`biWidget biWidget${tipo}`} style={{ '--bi-cor': corWidget, borderTopColor: corWidget, gridColumn: `span ${Math.min(15, Math.max(2, Number(widget.largura ?? 3)))}` } as CSSProperties}>
+        {widget.exibir_cabecalho !== false && (
+          <header>
+            <div>
+              <span>{String(widget.subtitulo ?? tipo)}</span>
+              <h3>{String(widget.titulo ?? 'Widget')}</h3>
+            </div>
+            <button className="ghost" type="button" onClick={carregarWidget} title="Atualizar widget agora"><RefreshCw size={15} /></button>
+          </header>
+        )}
+        <button className="biWidgetDetalheBotao" type="button" onClick={() => setDetalheAberto(true)} title="Ver detalhe do calculo"><Info size={14} /></button>
+        <div className="biWidgetConteudo">
+          {carregando && <div className="biSkeleton" />}
+          {erro && <div className="biErroWidget">Erro na consulta: {erro}</div>}
+          {!erro && !carregando && tipo === 'KPI' && (
+            <div className="biKpi">
+              <strong>{formatarValorBi(primeiro.valor ?? primeiro.total ?? primeiro.quantidade)}</strong>
+              {primeiro.valor_monetario !== undefined && <em>{formatarValorBi(primeiro.valor_monetario, true)}</em>}
+              {primeiro.situacao && <span>{String(primeiro.situacao)}</span>}
+              {camposMetricaKpiVisiveis.length > 0 && (
+                <div className="biKpiMetricas">
+                  {camposMetricaKpiVisiveis.map((campo) => (
+                    <small key={campo}><b>{formatarValorBi(primeiro[campo])}</b> {rotuloMetricaKpi(campo)}</small>
+                  ))}
+                </div>
+              )}
+              <small>{Number(primeiro.comparacao_dia_anterior ?? 0) >= 0 ? '+' : ''}{formatarValorBi(primeiro.comparacao_dia_anterior ?? 0)}% versus dia anterior</small>
+            </div>
+          )}
+          {!erro && !carregando && tipoGraficoTv && registros.length > 0 && <BiGraficoLinhas registros={registros} cor={corWidget} />}
+          {!erro && !carregando && tipo !== 'KPI' && !tipoGraficoTv && registros.length > 0 && (
+            <div className="biTabelaWidget">
+              <div
+                className="biTabelaGradeTv"
+                style={{ gridTemplateColumns: colunas.map((coluna) => larguraColunaWidgetTvBi(widget, coluna, registros)).join(' ') } as CSSProperties}
+              >
+                {colunas.map((coluna) => (
+                  <div key={`cab-${coluna}`} className={`biTabelaGradeCabecalho ${classeColunaTabelaBi(coluna)}`}>{coluna.replace(/_/g, ' ')}</div>
+                ))}
+                {registrosTabela.map((registro, indice) => (
+                  colunas.map((coluna) => (
+                    <div key={`${indice}-${coluna}`} className={`biTabelaGradeCelula ${classeColunaTabelaBi(coluna)} ${Number(registro.dias ?? 0) > 2 ? 'biLinhaCritica' : ''}`}>
+                      {formatarCelulaBi(coluna, registro[coluna])}
+                    </div>
+                  ))
+                ))}
+              </div>
+              {registrosNaoExibidosTabela > 0 && <small className="biNaoExibidos">+ {String(registrosNaoExibidosTabela)} registro(s) nao exibido(s)</small>}
+            </div>
+          )}
+          {!erro && !carregando && registros.length === 0 && <EstadoBi titulo="Sem dados" descricao="A consulta executou com sucesso, mas nao retornou registros." />}
+        </div>
+        <footer>
+          <small>Ultima atualizacao: {dados?.atualizado_em ? new Date(String(dados.atualizado_em)).toLocaleString('pt-BR') : 'Aguardando execucao'}</small>
+          {dados?.origem_cache && <small>Cache aplicado</small>}
+        </footer>
+        {detalheAberto && (
+          <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label={`Detalhe de ${String(widget.titulo ?? 'widget')}`}>
+            <section className="biDetalheModal" onMouseDown={(evento) => evento.stopPropagation()}>
+              <header>
+                <div>
+                  <span>Detalhamento do calculo</span>
+                  <h3>{String(widget.titulo ?? 'Widget')}</h3>
+                  <p>{String(widget.descricao ?? widget.subtitulo ?? 'Registros usados para compor este indicador.')}</p>
+                </div>
+                <div className="biModalControles">
+                  <button type="button" onClick={exportarDetalheExcel} title="Exportar detalhe para Excel" aria-label="Exportar detalhe para Excel"><Download size={18} /></button>
+                  <button
+                    type="button"
+                    onPointerDown={(evento) => {
+                      evento.preventDefault();
+                      evento.stopPropagation();
+                      setDetalheAberto(false);
+                    }}
+                    onMouseDown={(evento) => {
+                      evento.preventDefault();
+                      evento.stopPropagation();
+                      setDetalheAberto(false);
+                    }}
+                    onClick={(evento) => evento.stopPropagation()}
+                    title="Fechar detalhe"
+                    aria-label="Fechar detalhe"
+                    data-bi-fechar-detalhe="true"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </header>
+              <div className="biDetalheResumo">
+                <div><span>Consulta</span><strong>{String(widget.consulta_nome ?? widget.consulta_id ?? '-')}</strong></div>
+                <div><span>Total retornado</span><strong>{formatarValorBi(totalRegistros)}</strong></div>
+                <div><span>Top X aplicado</span><strong>{String(widget.top_x_registros ?? 'Todos')}</strong></div>
+                <div><span>Nao exibidos</span><strong>{formatarValorBi(registrosNaoExibidos)}</strong></div>
+                <div><span>Origem</span><strong>{dados?.origem_cache ? 'Cache' : 'Consulta'}</strong></div>
+                <div><span>Atualizado em</span><strong>{dados?.atualizado_em ? new Date(String(dados.atualizado_em)).toLocaleString('pt-BR') : 'Aguardando'}</strong></div>
+              </div>
+              {erro && <div className="biErroWidget">Erro na consulta: {erro}</div>}
+              {!erro && registros.length > 0 && (
+                <div className="biDetalheTabela">
+                  <table>
+                    <thead><tr><th className="biIndiceDetalhe">#</th>{colunasDetalhe.map((coluna) => <th key={coluna}>{coluna.replace(/_/g, ' ')}</th>)}</tr></thead>
+                    <tbody>
+                      {registrosDetalhe.map((registro, indice) => (
+                        <tr key={indice}>
+                          <td className="biIndiceDetalhe">{indice + 1}</td>
+                          {colunasDetalhe.map((coluna) => <td key={coluna}>{formatarCelulaBi(coluna, registro[coluna])}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                    {colunasValorDetalhe.length > 0 && (
+                      <tfoot>
+                        <tr>
+                          <td className="biIndiceDetalhe" />
+                          {colunasDetalhe.map((coluna, indice) => (
+                            <td key={coluna} className={colunasValorDetalhe.includes(coluna) ? 'biTotalValor' : ''}>
+                              {colunasValorDetalhe.includes(coluna) ? formatarValorBi(totaisDetalhe[coluna], true) : indice === 0 ? 'Total' : ''}
+                            </td>
+                          ))}
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              )}
+              {!erro && registros.length === 0 && <EstadoBi titulo="Sem registros" descricao="Este widget nao possui registros detalhados para exibir agora." />}
+            </section>
+          </div>
+        )}
+      </article>
+    );
+  }
+
   return (
     <article className={`biWidget biWidget${tipo}`} style={{ '--bi-cor': corWidget, borderTopColor: corWidget, gridColumn: `span ${Math.min(15, Math.max(2, Number(widget.largura ?? 3)))}` } as CSSProperties}>
       {widget.exibir_cabecalho !== false && (
@@ -306,40 +1263,46 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
       )}
       <button className="biWidgetDetalheBotao" type="button" onClick={() => setDetalheAberto(true)} title="Ver detalhe do calculo"><Info size={14} /></button>
       <div className="biWidgetConteudo">
-        {carregando && <div className="biSkeleton" />}
+        {carregamentoInicial && <div className="biSkeleton" />}
+        {carregando && dados && <span className="biAtualizandoWidget">Atualizando</span>}
         {erro && <div className="biErroWidget">Erro na consulta: {erro}</div>}
-        {!erro && !carregando && tipo === 'KPI' && (
+        {podeExibirConteudo && tipo === 'KPI' && (
           <div className="biKpi">
             <strong>{formatarValorBi(primeiro.valor ?? primeiro.total ?? primeiro.quantidade)}</strong>
             {primeiro.valor_monetario !== undefined && <em>{formatarValorBi(primeiro.valor_monetario, true)}</em>}
             {primeiro.situacao && <span>{String(primeiro.situacao)}</span>}
-            {camposMetricaKpi.length > 0 && (
+            {camposMetricaKpiVisiveis.length > 0 && (
               <div className="biKpiMetricas">
-                {camposMetricaKpi.map((campo) => (
+                {camposMetricaKpiVisiveis.map((campo) => (
                   <small key={campo}><b>{formatarValorBi(primeiro[campo])}</b> {rotuloMetricaKpi(campo)}</small>
                 ))}
+                {metricasKpiNaoExibidas > 0 && <small className="biKpiMaisInfo">+ {metricasKpiNaoExibidas} info(s)</small>}
               </div>
             )}
             <small>{Number(primeiro.comparacao_dia_anterior ?? 0) >= 0 ? '+' : ''}{formatarValorBi(primeiro.comparacao_dia_anterior ?? 0)}% versus dia anterior</small>
           </div>
         )}
-        {!erro && !carregando && tipoGrafico && registros.length > 0 && <BiGraficoLinhas registros={registros} cor={corWidget} />}
-        {!erro && !carregando && tipo !== 'KPI' && !tipoGrafico && registros.length > 0 && (
+        {podeExibirConteudo && (modoTv ? tipoGraficoTv : tipoLinha) && registros.length > 0 && <BiGraficoLinhas registros={registros} cor={corWidget} />}
+        {podeExibirConteudo && !modoTv && tipo === 'BARRAS' && registros.length > 0 && <BiGraficoBarras registros={registros} cor={corWidget} titulo={String(widget.titulo ?? '')} />}
+        {podeExibirConteudo && !modoTv && ['ROSCA', 'GAUGE'].includes(tipo) && registros.length > 0 && <BiGraficoRosca registros={registros} cor={corWidget} titulo={String(widget.titulo ?? '')} />}
+        {podeExibirConteudo && !modoTv && tipo === 'RANKING' && registros.length > 0 && <BiRanking registros={registros} colunas={colunas} cor={corWidget} />}
+        {podeExibirConteudo && tipo === 'MAPA_CD' && registros.length > 0 && <BiMapaCd registros={registros} />}
+        {podeExibirConteudo && !['KPI', 'LINHAS', 'GRAFICO_LINHAS', 'AREA', ...(modoTv ? ['BARRAS'] : ['BARRAS', 'ROSCA', 'GAUGE', 'RANKING']), 'MAPA_CD'].includes(tipo) && registros.length > 0 && (
           <div className="biTabelaWidget">
             <table>
-              <thead><tr>{colunas.map((coluna) => <th key={coluna}>{coluna.replace(/_/g, ' ')}</th>)}</tr></thead>
+              <thead><tr>{colunas.map((coluna) => <th key={coluna} className={classeColunaTabelaBi(coluna)}>{modoTv ? coluna.replace(/_/g, ' ') : rotuloCampoBi(coluna)}</th>)}</tr></thead>
               <tbody>
-                {registros.map((registro, indice) => (
+                {registrosTabela.map((registro, indice) => (
                   <tr key={indice} className={Number(registro.dias ?? 0) > 2 ? 'biLinhaCritica' : ''}>
-                    {colunas.map((coluna) => <td key={coluna}>{formatarCelulaBi(coluna, registro[coluna])}</td>)}
+                    {colunas.map((coluna) => <td key={coluna} className={classeColunaTabelaBi(coluna)}>{formatarCelulaBi(coluna, registro[coluna])}</td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
-            {Number(dados?.registros_nao_exibidos ?? 0) > 0 && <small className="biNaoExibidos">+ {String(dados?.registros_nao_exibidos)} registro(s) nao exibido(s)</small>}
+            {registrosNaoExibidosTabela > 0 && <small className="biNaoExibidos">+ {String(registrosNaoExibidosTabela)} registro(s) nao exibido(s)</small>}
           </div>
         )}
-        {!erro && !carregando && registros.length === 0 && <EstadoBi titulo="Sem dados" descricao="A consulta executou com sucesso, mas nao retornou registros." />}
+        {podeExibirConteudo && registros.length === 0 && <EstadoBi titulo="Sem dados" descricao="A consulta executou com sucesso, mas nao retornou registros." />}
       </div>
       <footer>
         <small>Ultima atualizacao: {dados?.atualizado_em ? new Date(String(dados.atualizado_em)).toLocaleString('pt-BR') : 'Aguardando execucao'}</small>
@@ -347,7 +1310,7 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
       </footer>
       {detalheAberto && (
         <div className="biDetalheOverlay" role="dialog" aria-modal="true" aria-label={`Detalhe de ${String(widget.titulo ?? 'widget')}`}>
-          <section className="biDetalheModal">
+          <section className="biDetalheModal" onMouseDown={(evento) => evento.stopPropagation()}>
             <header>
               <div>
                 <span>Detalhamento do calculo</span>
@@ -355,8 +1318,26 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
                 <p>{String(widget.descricao ?? widget.subtitulo ?? 'Registros usados para compor este indicador.')}</p>
               </div>
               <div className="biModalControles">
-                <button type="button" onClick={exportarDetalheExcel} title="Exportar detalhe para Excel"><Download size={18} /></button>
-                <button type="button" onClick={() => setDetalheAberto(false)} title="Fechar detalhe"><X size={18} /></button>
+                <button type="button" onClick={exportarDetalheExcel} title="Exportar detalhe para Excel" aria-label="Exportar detalhe para Excel"><Download size={18} /></button>
+                <button
+                  type="button"
+                  onPointerDown={(evento) => {
+                    evento.preventDefault();
+                    evento.stopPropagation();
+                    setDetalheAberto(false);
+                  }}
+                  onMouseDown={(evento) => {
+                    evento.preventDefault();
+                    evento.stopPropagation();
+                    setDetalheAberto(false);
+                  }}
+                  onClick={(evento) => evento.stopPropagation()}
+                  title="Fechar detalhe"
+                  aria-label="Fechar detalhe"
+                  data-bi-fechar-detalhe="true"
+                >
+                  <X size={18} />
+                </button>
               </div>
             </header>
             <div className="biDetalheResumo">
@@ -371,7 +1352,7 @@ function BiWidgetContainer({ widget, filtros }: { widget: RegistroGenerico; filt
             {!erro && registros.length > 0 && (
               <div className="biDetalheTabela">
                 <table>
-                  <thead><tr><th className="biIndiceDetalhe">#</th>{colunasDetalhe.map((coluna) => <th key={coluna}>{coluna.replace(/_/g, ' ')}</th>)}</tr></thead>
+                  <thead><tr><th className="biIndiceDetalhe">#</th>{colunasDetalhe.map((coluna) => <th key={coluna}>{rotuloCampoBi(coluna)}</th>)}</tr></thead>
                   <tbody>
                     {registrosDetalhe.map((registro, indice) => (
                       <tr key={indice}>
@@ -414,6 +1395,10 @@ function BiDashboardVisualizador({ dashboardId, empresaAtiva, usuario, modoTvIni
   const [dados, setDados] = useState<{ dashboard: RegistroGenerico; paginas: RegistroGenerico[]; widgets: RegistroGenerico[]; filtros: RegistroGenerico[] } | null>(null);
   const [erro, setErro] = useState('');
   const [filtros, setFiltros] = useState<RegistroGenerico>({});
+  const [filtrosPainelAberto, setFiltrosPainelAberto] = useState(false);
+  const [filtrosRascunho, setFiltrosRascunho] = useState<RegistroGenerico>({});
+  const [buscaRapida, setBuscaRapida] = useState('');
+  const [buscaDebounced, setBuscaDebounced] = useState('');
   const [paginaAtual, setPaginaAtual] = useState(0);
   const [modoTv, setModoTv] = useState(modoTvInicial);
   const [mostrarRetornoTv, setMostrarRetornoTv] = useState(false);
@@ -431,6 +1416,36 @@ function BiDashboardVisualizador({ dashboardId, empresaAtiva, usuario, modoTvIni
   useEffect(() => {
     carregarDashboard();
   }, [dashboardId]);
+
+  useEffect(() => {
+    const filtrosSalvos = window.sessionStorage.getItem(`bi_dashboard_filtros_${dashboardId}`);
+    if (filtrosSalvos) {
+      try {
+        const salvos = JSON.parse(filtrosSalvos);
+        setFiltros(salvos);
+        setFiltrosRascunho(salvos);
+      } catch {
+        setFiltros({});
+        setFiltrosRascunho({});
+      }
+    }
+  }, [dashboardId]);
+
+  useEffect(() => {
+    const debounce = window.setTimeout(() => setBuscaDebounced(buscaRapida), 350);
+    return () => window.clearTimeout(debounce);
+  }, [buscaRapida]);
+
+  useEffect(() => {
+    if (!filtrosPainelAberto) return;
+    const fecharComEsc = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') {
+        setFiltrosPainelAberto(false);
+      }
+    };
+    window.addEventListener('keydown', fecharComEsc);
+    return () => window.removeEventListener('keydown', fecharComEsc);
+  }, [filtrosPainelAberto]);
 
   useEffect(() => {
     if (!modoTv || !dados?.paginas.length) return;
@@ -455,6 +1470,9 @@ function BiDashboardVisualizador({ dashboardId, empresaAtiva, usuario, modoTvIni
   const paginas = dados.paginas.length ? dados.paginas : [{ id: 0, nome: 'Visao Geral' }];
   const pagina = paginas[paginaAtual] ?? paginas[0];
   const widgets = dados.widgets.filter((widget) => Number(widget.pagina_id ?? pagina.id) === Number(pagina.id));
+  const filtrosExecucao = { ...filtros, busca_rapida: buscaDebounced };
+  const filtrosAtivos = Object.entries(filtros).filter(([, valor]) => valor !== undefined && valor !== null && String(valor).trim() !== '');
+  const quantidadeFiltrosAtivos = filtrosAtivos.length + (buscaDebounced.trim() ? 1 : 0);
   const nomeEmpresa = String(dashboard.empresa_nome_exibido ?? empresaAtiva?.nome_exibido ?? empresaAtiva?.nome_fantasia ?? 'Monvizo');
   const logoEmpresa = String(dashboard.empresa_logo || empresaAtiva?.caminho_logo || '/brand/logo-s-novo.jpg');
   const imagemFundoEmpresa = String(dashboard.empresa_imagem_fundo || empresaAtiva?.caminho_imagem_fundo || '').trim();
@@ -490,24 +1508,89 @@ function BiDashboardVisualizador({ dashboardId, empresaAtiva, usuario, modoTvIni
           {!modoTv && usuarioPodeBi(usuario, ['BI_EDITAR_DASHBOARDS']) && <button className="ghost" type="button" onClick={aoVoltar} title="Configuracoes"><Settings size={15} /></button>}
         </div>
       </header>
-      {!modoTv && dados.filtros.length > 0 && (
-        <section className="biFiltros">
-          <Filter size={16} />
-          {dados.filtros.map((filtro) => (
-            <label key={String(filtro.id)}>
-              {String(filtro.label)}
-              <input value={String(filtros[String(filtro.nome)] ?? filtro.valor_padrao ?? '')} onChange={(evento) => setFiltros({ ...filtros, [String(filtro.nome)]: evento.target.value })} />
-            </label>
-          ))}
+      {!modoTv && (
+        <section className="biBarraExploracao">
+          <div className="biBarraResumo">
+            <span>Analisar</span>
+            <strong>{String(pagina.nome ?? 'Visao Geral')}</strong>
+          </div>
+          <label>
+            <Filter size={16} />
+            <input
+              placeholder="Buscar codigo, modelo, numero de serie, descricao, marca ou endereco..."
+              value={buscaRapida}
+              onChange={(evento) => setBuscaRapida(evento.target.value)}
+            />
+          </label>
+          {dados.filtros.length > 0 && <button className="biBotaoFiltro" type="button" onClick={() => { setFiltrosRascunho(filtros); setFiltrosPainelAberto(true); }}><Filter size={16} />Filtros <strong>{quantidadeFiltrosAtivos}</strong></button>}
+          <button className="biBotaoAtualizar" type="button" onClick={carregarDashboard}><RefreshCw size={16} />Atualizar</button>
         </section>
       )}
-      <div className="biPaginas">
+      {!modoTv && quantidadeFiltrosAtivos > 0 && (
+        <div className="biChipsFiltros">
+          {buscaDebounced.trim() && <button type="button" onClick={() => { setBuscaRapida(''); setBuscaDebounced(''); }}>Busca: {buscaDebounced}<X size={13} /></button>}
+          {filtrosAtivos.map(([nome, valor]) => (
+            <button key={nome} type="button" onClick={() => {
+              const proximos = { ...filtros };
+              delete proximos[nome];
+              setFiltros(proximos);
+              setFiltrosRascunho(proximos);
+              window.sessionStorage.setItem(`bi_dashboard_filtros_${dashboardId}`, JSON.stringify(proximos));
+            }}>
+              {String(dados.filtros.find((filtro) => String(filtro.nome) === nome)?.label ?? nome)}: {String(valor)}<X size={13} />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className={`biPaginas ${modoTv && paginas.length <= 1 ? 'biPaginasTvOculta' : ''}`}>
         {paginas.map((item, indice) => <button key={String(item.id)} className={indice === paginaAtual ? 'active' : ''} onClick={() => setPaginaAtual(indice)}>{String(item.nome)}</button>)}
       </div>
       <section className="biWidgetsGrid">
-        {widgets.map((widget) => <BiWidgetContainer key={String(widget.id)} widget={widget} filtros={filtros} />)}
+        {widgets.map((widget) => <BiWidgetContainer key={String(widget.id)} widget={widget} filtros={filtrosExecucao} modoTv={modoTv} />)}
         {widgets.length === 0 && <EstadoBi titulo="Sem widgets" descricao="Adicione widgets no builder para montar esta pagina." />}
       </section>
+      {!modoTv && filtrosPainelAberto && (
+        <div className="biFiltroOverlay" onMouseDown={() => setFiltrosPainelAberto(false)}>
+          <aside className="biFiltroPainel" onMouseDown={(evento) => evento.stopPropagation()}>
+            <header>
+              <div>
+                <span>Filtros do dashboard</span>
+                <h3>Refinar Estoque do CD</h3>
+                <p>{quantidadeFiltrosAtivos} filtro(s) ativo(s) · {dados.filtros.length} opcoes disponiveis</p>
+              </div>
+              <button type="button" onClick={() => setFiltrosPainelAberto(false)} title="Fechar filtros"><X size={18} /></button>
+            </header>
+            <div className="biFiltroCampos">
+              {dados.filtros.map((filtro) => {
+                const nome = String(filtro.nome);
+                const tipo = String(filtro.tipo ?? 'TEXTO').toUpperCase();
+                return (
+                  <label key={String(filtro.id ?? nome)}>
+                    <span>{String(filtro.label ?? nome)}</span>
+                    {tipo.includes('BOOLEAN') ? (
+                      <select value={String(filtrosRascunho[nome] ?? '')} onChange={(evento) => setFiltrosRascunho({ ...filtrosRascunho, [nome]: evento.target.value })}>
+                        <option value="">Todos</option>
+                        <option value="true">Sim</option>
+                        <option value="false">Nao</option>
+                      </select>
+                    ) : tipo.includes('DATA') ? (
+                      <input type="date" value={String(filtrosRascunho[nome] ?? '')} onChange={(evento) => setFiltrosRascunho({ ...filtrosRascunho, [nome]: evento.target.value })} />
+                    ) : tipo.includes('NUMERO') ? (
+                      <input type="number" value={String(filtrosRascunho[nome] ?? '')} onChange={(evento) => setFiltrosRascunho({ ...filtrosRascunho, [nome]: evento.target.value })} />
+                    ) : (
+                      <input value={String(filtrosRascunho[nome] ?? '')} onChange={(evento) => setFiltrosRascunho({ ...filtrosRascunho, [nome]: evento.target.value })} />
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            <footer>
+              <button type="button" className="ghost" onClick={() => { setFiltros({}); setFiltrosRascunho({}); window.sessionStorage.removeItem(`bi_dashboard_filtros_${dashboardId}`); }}>Limpar filtros</button>
+              <button type="button" className="primary" onClick={() => { setFiltros(filtrosRascunho); window.sessionStorage.setItem(`bi_dashboard_filtros_${dashboardId}`, JSON.stringify(filtrosRascunho)); setFiltrosPainelAberto(false); }}>Aplicar filtros</button>
+            </footer>
+          </aside>
+        </div>
+      )}
     </section>
   );
 }
@@ -622,6 +1705,12 @@ export function BusinessIntelligenceDashboards({ usuario, empresaAtiva }: { usua
     carregar().catch((error) => setErro(error instanceof Error ? error.message : 'Falha ao carregar dashboards.'));
   }, []);
 
+  useEffect(() => {
+    const visualizacaoAtiva = Boolean(visualizandoId || modoTvId);
+    document.body.classList.toggle('biVisualizacaoAtiva', visualizacaoAtiva);
+    return () => document.body.classList.remove('biVisualizacaoAtiva');
+  }, [visualizandoId, modoTvId]);
+
   if (visualizandoId || modoTvId) {
     const tvAbertoPeloModulo = window.sessionStorage.getItem('bi_tv_aberto_pelo_modulo') === '1';
     return <BiDashboardVisualizador dashboardId={Number(visualizandoId ?? modoTvId)} empresaAtiva={empresaAtiva} usuario={usuario} modoTvInicial={Boolean(modoTvId)} permitirRetornoTv={Boolean(modoTvId) && tvAbertoPeloModulo} aoVoltar={() => { setVisualizandoId(null); setModoTvId(null); window.sessionStorage.removeItem('bi_tv_aberto_pelo_modulo'); window.history.pushState(null, '', '/Business_Intelligence/Dashboards'); }} />;
@@ -654,14 +1743,15 @@ export function BusinessIntelligenceDashboards({ usuario, empresaAtiva }: { usua
   }
 
   function novoWidget() {
-    setFormWidget({ dashboard_id: selecionadoId, pagina_id: detalhe?.paginas[0]?.id, titulo: 'Novo widget', tipo_widget: 'KPI', largura: 3, altura: 2, top_x_registros: '10', intervalo_atualizacao_segundos: 60, atualizar_automaticamente: true, exibir_cabecalho: true, exibir_borda: true, exibir_sombra: true, exibir_exportacao: true, exibir_tela_cheia: true, ativo: true });
+    setFormWidget({ dashboard_id: selecionadoId, pagina_id: detalhe?.paginas[0]?.id, titulo: 'Novo widget', tipo_widget: 'KPI', largura: 3, altura: 2, top_x_registros: '10', intervalo_atualizacao_segundos: 60, atualizar_automaticamente: true, exibir_cabecalho: true, exibir_borda: true, exibir_sombra: true, exibir_exportacao: true, exibir_tela_cheia: true, colunas_larguras_json: '', ativo: true });
     setModalWidgetAberto(true);
   }
 
   function editarWidget(widget: RegistroGenerico) {
     setFormWidget({
       ...widget,
-      colunas_visiveis_json: Array.isArray(widget.colunas_visiveis_json) ? widget.colunas_visiveis_json.join(', ') : widget.colunas_visiveis_json
+      colunas_visiveis_json: Array.isArray(widget.colunas_visiveis_json) ? widget.colunas_visiveis_json.join(', ') : widget.colunas_visiveis_json,
+      colunas_larguras_json: textoLargurasColunasBi(widget.colunas_larguras_json)
     });
     setAbaBuilder('widgets');
     setModalWidgetAberto(true);
@@ -994,7 +2084,7 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
                       <form className="biFormGrid" onSubmit={adicionarWidget}>
                 <BiCampo rotulo="Titulo"><input value={String(formWidget.titulo ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, titulo: evento.target.value })} /></BiCampo>
                 <BiCampo rotulo="Subtitulo"><input value={String(formWidget.subtitulo ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, subtitulo: evento.target.value })} /></BiCampo>
-                <BiCampo rotulo="Tipo"><select value={String(formWidget.tipo_widget ?? 'KPI')} onChange={(evento) => setFormWidget({ ...formWidget, tipo_widget: evento.target.value })}><option>KPI</option><option>TABELA</option><option>RANKING</option><option>BARRAS</option><option>LINHAS</option><option>ROSCA</option><option>GAUGE</option><option>TEXTO</option><option>IFRAME</option></select></BiCampo>
+                <BiCampo rotulo="Tipo"><select value={String(formWidget.tipo_widget ?? 'KPI')} onChange={(evento) => setFormWidget({ ...formWidget, tipo_widget: evento.target.value })}><option>KPI</option><option>TABELA</option><option>RANKING</option><option>BARRAS</option><option>LINHAS</option><option>ROSCA</option><option>GAUGE</option><option>MAPA_CD</option><option>TEXTO</option><option>IFRAME</option></select></BiCampo>
                 <BiCampo rotulo="Ordem"><input type="number" value={Number(formWidget.ordem ?? 1)} onChange={(evento) => setFormWidget({ ...formWidget, ordem: Number(evento.target.value) })} /></BiCampo>
                 <BiCampo rotulo="Pagina"><select value={String(formWidget.pagina_id ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, pagina_id: Number(evento.target.value) })}>{detalhe?.paginas.map((pagina) => <option key={String(pagina.id)} value={String(pagina.id)}>{String(pagina.nome)}</option>)}</select></BiCampo>
                 <BiCampo rotulo="Consulta"><select value={String(formWidget.consulta_id ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, consulta_id: Number(evento.target.value) })}><option value="">Selecione</option>{consultas.map((consulta) => <option key={String(consulta.id)} value={String(consulta.id)}>{String(consulta.nome)}</option>)}</select></BiCampo>
@@ -1005,6 +2095,7 @@ Crie o dashboard solicitado pelo usuario com visual premium, consultas SQL simul
                 <BiCampo rotulo="Ordenar por"><input value={String(formWidget.ordenar_por ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, ordenar_por: evento.target.value })} /></BiCampo>
                 <BiCampo rotulo="Direcao"><select value={String(formWidget.direcao_ordenacao ?? 'DESC')} onChange={(evento) => setFormWidget({ ...formWidget, direcao_ordenacao: evento.target.value })}><option value="DESC">Decrescente</option><option value="ASC">Crescente</option></select></BiCampo>
                 <BiCampo rotulo="Colunas visiveis"><input placeholder="pedido, cliente, vendedor, valor" value={String(formWidget.colunas_visiveis_json ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, colunas_visiveis_json: evento.target.value })} /></BiCampo>
+                <BiCampo rotulo="Largura das colunas na TV"><input placeholder="pedido=6.6ch, valor=12.5ch, data_faturamento=10.5ch, cliente=minmax(6ch,.8fr)" value={String(formWidget.colunas_larguras_json ?? '')} onChange={(evento) => setFormWidget({ ...formWidget, colunas_larguras_json: evento.target.value })} /></BiCampo>
                 <BiCampo rotulo="Atualizacao do widget"><input type="number" min={15} value={Number(formWidget.intervalo_atualizacao_segundos ?? 60)} onChange={(evento) => setFormWidget({ ...formWidget, intervalo_atualizacao_segundos: Number(evento.target.value) })} /></BiCampo>
                 <div className="biChecks biCampoGrande">
                   <label><input type="checkbox" checked={formWidget.atualizar_automaticamente !== false} onChange={(evento) => setFormWidget({ ...formWidget, atualizar_automaticamente: evento.target.checked })} /> Atualizar automaticamente</label>

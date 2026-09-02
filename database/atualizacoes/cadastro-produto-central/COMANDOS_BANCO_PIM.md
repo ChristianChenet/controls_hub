@@ -39,6 +39,11 @@ database/migrations/012_cadastro_produto_central.sql
 database/migrations/013_evolucao_pim_identidade_visual.sql
 database/migrations/014_consolidacao_pim_permissoes.sql
 database/migrations/015_padronizar_pim_banco_portugues.sql
+database/migrations/040_pim_comparacao_concorrentes.sql
+database/atualizacoes/cadastro-produto-central/RESET_ATRIBUTOS_PLANILHA_ERP.sql
+database/atualizacoes/cadastro-produto-central/SEED_ATRIBUTOS_ERP.sql
+database/atualizacoes/cadastro-produto-central/SEED_PRODUTOS_CONJUNTOS_ERP.sql
+database/atualizacoes/cadastro-produto-central/SEED_VALORES_ATRIBUTOS_ERP.sql
 ```
 
 ## 5. Comandos manuais equivalentes
@@ -51,6 +56,11 @@ $PSQL = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
 & $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\migrations\013_evolucao_pim_identidade_visual.sql"
 & $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\migrations\014_consolidacao_pim_permissoes.sql"
 & $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\migrations\015_padronizar_pim_banco_portugues.sql"
+& $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\migrations\040_pim_comparacao_concorrentes.sql"
+& $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\atualizacoes\cadastro-produto-central\RESET_ATRIBUTOS_PLANILHA_ERP.sql"
+& $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\atualizacoes\cadastro-produto-central\SEED_ATRIBUTOS_ERP.sql"
+& $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\atualizacoes\cadastro-produto-central\SEED_PRODUTOS_CONJUNTOS_ERP.sql"
+& $PSQL -h 127.0.0.1 -p 5432 -U postgres -d controlshub -v ON_ERROR_STOP=1 -f "database\atualizacoes\cadastro-produto-central\SEED_VALORES_ATRIBUTOS_ERP.sql"
 
 Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 ```

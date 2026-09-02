@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
+import './styles-bi-estoque-cd-final.css';
+import './styles-bi-tv-restore.css';
 
 declare const __APP_BUILD_ID__: string;
 
@@ -24,3 +26,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 );
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw-km.js').catch(() => undefined);
+  });
+}

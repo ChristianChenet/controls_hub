@@ -8,6 +8,7 @@ export type UsuarioBanco = {
   administrador: boolean;
   superadmin: boolean;
   ativo: boolean;
+  alterar_senha_proximo_login?: boolean;
   preferencias_interface?: Record<string, unknown> | null;
 };
 
@@ -66,12 +67,36 @@ export async function buscarUsuarioPorEmail(email: string) {
       administrador,
       superadmin,
       ativo,
+      COALESCE(alterar_senha_proximo_login, FALSE) AS alterar_senha_proximo_login,
       '{}'::JSONB AS preferencias_interface
     FROM usuarios
     WHERE LOWER(email) = LOWER($1)
       AND ativo = TRUE
       AND excluido = FALSE`,
     [email]
+  );
+}
+
+export async function buscarUsuariosPorLogin(login: string) {
+  const identificador = login.trim().toLowerCase();
+  const usaEmailCompleto = identificador.includes('@');
+  return consultar<UsuarioBanco>(
+    `SELECT
+      id,
+      nome,
+      email,
+      senha_hash,
+      administrador,
+      superadmin,
+      ativo,
+      COALESCE(alterar_senha_proximo_login, FALSE) AS alterar_senha_proximo_login,
+      '{}'::JSONB AS preferencias_interface
+    FROM usuarios
+    WHERE ${usaEmailCompleto ? 'LOWER(email) = LOWER($1)' : "LOWER(SPLIT_PART(email, '@', 1)) = LOWER($1)"}
+      AND ativo = TRUE
+      AND excluido = FALSE
+    ORDER BY email ASC`,
+    [identificador]
   );
 }
 
@@ -87,6 +112,21 @@ export async function verificarSenhaUsuario(usuarioId: number, senha: string) {
   );
 
   return Boolean(resultado?.valida);
+}
+
+export async function alterarSenhaUsuario(usuarioId: number, novaSenha: string) {
+  return consultarUm<{ id: number }>(
+    `UPDATE usuarios
+    SET senha_hash = CRYPT($2, GEN_SALT('bf')),
+      alterar_senha_proximo_login = FALSE,
+      alterado_em = NOW(),
+      alterado_por_usuario_id = $1
+    WHERE id = $1
+      AND ativo = TRUE
+      AND excluido = FALSE
+    RETURNING id`,
+    [usuarioId, novaSenha]
+  );
 }
 
 export async function listarEmpresasDoUsuario(usuarioId: number) {
@@ -355,12 +395,21 @@ export async function salvarUsuario(dados: UsuarioCadastro, usuarioId: number) {
       administrador,
       superadmin,
       configuracao_email_padrao_id,
+      alterar_senha_proximo_login,
       criado_por_usuario_id
     )
-    VALUES ($1, $2, LOWER($3), CRYPT(COALESCE($4, 'controls'), GEN_SALT('bf')), COALESCE($5, TRUE), COALESCE($6, FALSE), COALESCE($7, FALSE), $8, $9)
+    VALUES ($1, $2, LOWER($3), CRYPT(COALESCE(NULLIF($4, ''), 'controls'), GEN_SALT('bf')), COALESCE($5, TRUE), COALESCE($6, FALSE), COALESCE($7, FALSE), $8, CASE WHEN NULLIF($4, '') IS NOT NULL THEN TRUE ELSE FALSE END, $9)
     ON CONFLICT (email) DO UPDATE SET
       perfil_id = EXCLUDED.perfil_id,
       nome = EXCLUDED.nome,
+      senha_hash = CASE
+        WHEN NULLIF($4, '') IS NOT NULL THEN CRYPT($4, GEN_SALT('bf'))
+        ELSE usuarios.senha_hash
+      END,
+      alterar_senha_proximo_login = CASE
+        WHEN NULLIF($4, '') IS NOT NULL THEN TRUE
+        ELSE COALESCE(usuarios.alterar_senha_proximo_login, FALSE)
+      END,
       ativo = EXCLUDED.ativo,
       administrador = EXCLUDED.administrador,
       superadmin = EXCLUDED.superadmin,

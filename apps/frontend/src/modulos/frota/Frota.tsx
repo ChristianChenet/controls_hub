@@ -1,28 +1,42 @@
-import { BadgeCheck, Ban, Car, CheckSquare, FileSpreadsheet, FileUp, Filter, History, KeyRound, LayoutGrid, PanelRightOpen, Printer, Settings, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
+import { BadgeCheck, Ban, CalendarDays, Car, CheckSquare, ClipboardList, Clock, FileSpreadsheet, FileUp, Filter, Gauge, History, KeyRound, LayoutGrid, PanelRightOpen, Printer, RefreshCw, Settings, ShieldCheck, Trash2, UserCog, Users } from 'lucide-react';
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buscarDashboardFrota,
+  cancelarApontamentosKmFrota,
   cancelarDespesasFrota,
   excluirDepartamentoFrota,
   excluirDespesaTipoFrota,
   excluirFornecedorFrota,
   excluirMotivoCancelamentoFrota,
+  excluirMotivoSemPedidoFrota,
   excluirMotoristaFrota,
+  excluirApontamentoKmFrota,
+  excluirPedidoVendaFrota,
   excluirTipoDespesaFrota,
   excluirVeiculoFrota,
+  gerarUsuarioMotoristaFrota,
   importarDespesasFrota,
+  listarApontamentosKmFrota,
   listarConfiguracoesFrota,
   listarDepartamentosFrota,
   listarDespesasFrota,
   listarDespesasTiposFrota,
   listarFornecedoresFrota,
+  listarHistoricoApontamentoKmFrota,
   listarHistoricoDespesaFrota,
   listarMotivosCancelamentoFrota,
+  listarMotivosSemPedidoFrota,
   listarMotoristasFrota,
+  listarPedidosVendaFrota,
   listarTiposDespesasFrota,
+  listarPerfis,
+  listarUsuarios,
   listarVeiculosFrota,
+  obterCalendarioKmFrota,
+  obterContextoKmFrota,
   obterMapeamentoImportacaoFrota,
   RegistroGenerico,
+  salvarApontamentoKmFrota,
   salvarConfiguracoesFrota,
   salvarDepartamentoFrota,
   salvarDespesaFrota,
@@ -30,9 +44,12 @@ import {
   salvarFornecedorFrota,
   salvarMapeamentoImportacaoFrota,
   salvarMotivoCancelamentoFrota,
+  salvarMotivoSemPedidoFrota,
   salvarMotoristaFrota,
+  salvarPedidoVendaFrota,
   salvarTipoDespesaFrota,
   salvarVeiculoFrota,
+  validarApontamentosKmFrota,
   validarDespesasFrota
 } from '../../servicos/api';
 
@@ -45,6 +62,11 @@ export type TelaFrota =
   | 'frotaFornecedores'
   | 'frotaDespesaTipo'
   | 'frotaMotivosCancelamento'
+  | 'frotaMotivosSemPedido'
+  | 'frotaPedidosVenda'
+  | 'frotaKmApontamento'
+  | 'frotaKmMobile'
+  | 'frotaKmValidacao'
   | 'frotaImportacao'
   | 'frotaValidacao'
   | 'frotaConfiguracoes'
@@ -63,6 +85,10 @@ export const menusFrota = [
   { id: 'frotaTiposDespesas' as TelaFrota, nome: 'Tipos de Despesas', icone: Settings },
   { id: 'frotaDespesaTipo' as TelaFrota, nome: 'Despesa por Tipo', icone: Settings },
   { id: 'frotaMotivosCancelamento' as TelaFrota, nome: 'Motivos Canc.', icone: Ban },
+  { id: 'frotaMotivosSemPedido' as TelaFrota, nome: 'Motivos Sem Pedido', icone: Ban },
+  { id: 'frotaPedidosVenda' as TelaFrota, nome: 'Pedidos Venda', icone: ClipboardList },
+  { id: 'frotaKmApontamento' as TelaFrota, nome: 'Apontamento KM', icone: CalendarDays },
+  { id: 'frotaKmValidacao' as TelaFrota, nome: 'Validacao KM', icone: Gauge },
   { id: 'usuarios' as TelaFrota, nome: 'Cadastro de Usuarios', icone: UserCog },
   { id: 'perfis' as TelaFrota, nome: 'Perfis de Acesso', icone: BadgeCheck },
   { id: 'direitos' as TelaFrota, nome: 'Direitos de Acesso', icone: KeyRound },
@@ -70,16 +96,21 @@ export const menusFrota = [
 ];
 
 export const permissoesMenuFrota: Partial<Record<TelaFrota, string[]>> = {
-  frotaDashboard: ['FROTA_ACESSAR', 'FROTA_CONSULTAR'],
-  frotaDepartamentos: ['FROTA_CONSULTAR'],
-  frotaMotoristas: ['FROTA_CONSULTAR'],
-  frotaVeiculos: ['FROTA_CONSULTAR'],
-  frotaTiposDespesas: ['FROTA_CONSULTAR'],
-  frotaFornecedores: ['FROTA_CONSULTAR'],
+  frotaDashboard: ['FROTA_VISUALIZAR_DASHBOARD'],
+  frotaDepartamentos: ['FROTA_CONSULTAR_CADASTROS'],
+  frotaMotoristas: ['FROTA_CONSULTAR_CADASTROS'],
+  frotaVeiculos: ['FROTA_CONSULTAR_CADASTROS'],
+  frotaTiposDespesas: ['FROTA_CONSULTAR_CADASTROS'],
+  frotaFornecedores: ['FROTA_CONSULTAR_CADASTROS'],
   frotaDespesaTipo: ['FROTA_CONFIGURAR', 'FROTA_IMPORTAR_DESPESAS'],
   frotaMotivosCancelamento: ['FROTA_CANCELAR_DESPESAS', 'FROTA_CONFIGURAR'],
+  frotaMotivosSemPedido: ['FROTA_CONFIGURAR'],
+  frotaPedidosVenda: ['FROTA_CONSULTAR_PEDIDOS_KM', 'FROTA_CONFIGURAR'],
+  frotaKmApontamento: ['FROTA_LANCAR_KM', 'FROTA_MOBILE_KM'],
+  frotaKmMobile: ['FROTA_MOBILE_KM', 'FROTA_LANCAR_KM'],
+  frotaKmValidacao: ['FROTA_VALIDAR_KM', 'FROTA_CONSULTAR_KM_TERCEIROS', 'FROTA_CONSULTAR_KM_COORDENADOR'],
   frotaImportacao: ['FROTA_IMPORTAR_DESPESAS'],
-  frotaValidacao: ['FROTA_CONSULTAR', 'FROTA_VALIDAR_DESPESAS'],
+  frotaValidacao: ['FROTA_VALIDAR_DESPESAS'],
   frotaConfiguracoes: ['FROTA_CONFIGURAR'],
   usuarios: ['ADMINISTRAR_USUARIOS'],
   perfis: ['ADMINISTRAR_PERFIS'],
@@ -87,6 +118,7 @@ export const permissoesMenuFrota: Partial<Record<TelaFrota, string[]>> = {
 };
 
 const LOGO_FROTA = '/brand/logo-frota.png';
+const LOGO_KM = '/brand/logo-km.png';
 
 export function LogoFrota({ pequeno = false }: { pequeno?: boolean }) {
   return (
@@ -100,12 +132,181 @@ function moeda(valor: unknown) {
   return Number(valor ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function numeroPtBr(valor: unknown, casas = 2) {
+  return Number(valor ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+}
+
+function dataIsoLocal(data: Date) {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, '0');
+  const dia = String(data.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+
+function dataBr(valor: unknown) {
+  if (!valor) return '-';
+  const texto = String(valor).slice(0, 10);
+  const [ano, mes, dia] = texto.split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : String(valor);
+}
+
+function dataHoraBrMinuto(valor: unknown) {
+  if (!valor) return '-';
+  const data = new Date(String(valor));
+  if (Number.isNaN(data.getTime())) return String(valor);
+  return data.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Sao_Paulo'
+  });
+}
+
+function dataHoraBrSegundo(valor: unknown) {
+  if (!valor) return '-';
+  const data = new Date(String(valor));
+  if (Number.isNaN(data.getTime())) return String(valor);
+  return data.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'America/Sao_Paulo'
+  });
+}
+
+function horaBr(valor: unknown) {
+  if (!valor) return '-';
+  const texto = String(valor);
+  const hora = texto.match(/(\d{2}):(\d{2})/);
+  if (hora) return `${hora[1]}:${hora[2]}`;
+  const data = new Date(texto);
+  if (Number.isNaN(data.getTime())) return texto;
+  return data.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'America/Sao_Paulo'
+  });
+}
+
+function valorSimNao(valor: unknown, sim: string, nao: string) {
+  return valor ? sim : nao;
+}
+
+function resumirHistoricoFrota(valor: unknown) {
+  if (!valor || typeof valor !== 'object') return '';
+  const dados = valor as RegistroGenerico;
+  const campos = ['validado', 'integrado', 'cancelado', 'motivoId', 'observacao', 'pedido', 'placa', 'km_inicial', 'km_final', 'km_total'];
+  return campos
+    .filter((campo) => dados[campo] !== undefined && dados[campo] !== null && dados[campo] !== '')
+    .map((campo) => `${campo}: ${String(dados[campo])}`)
+    .join(' | ');
+}
+
+function diasEntre(inicio: string, fim: string) {
+  const dias: Date[] = [];
+  const atual = new Date(`${inicio}T00:00:00`);
+  const limite = new Date(`${fim}T00:00:00`);
+  while (atual <= limite) {
+    dias.push(new Date(atual));
+    atual.setDate(atual.getDate() + 1);
+  }
+  return dias;
+}
+
+function periodoKmPorReferencia(referencia: string, diaInicio = 26, diaFim = 25) {
+  const base = new Date(`${referencia}T00:00:00`);
+  const inicio = base.getDate() >= diaInicio
+    ? new Date(base.getFullYear(), base.getMonth(), diaInicio)
+    : new Date(base.getFullYear(), base.getMonth() - 1, diaInicio);
+  const fim = new Date(inicio.getFullYear(), inicio.getMonth() + 1, diaFim);
+  return { data_inicial: dataIsoLocal(inicio), data_final: dataIsoLocal(fim) };
+}
+
 function BotaoAtualizar({ carregando, aoAtualizar }: { carregando: boolean; aoAtualizar: () => void | Promise<unknown> }) {
   return (
-    <button className={`botaoAtualizar${carregando ? ' carregando' : ''}`} type="button" onClick={() => aoAtualizar()} disabled={carregando}>
-      <span className="gaugeAtualizacao" />
-      {carregando ? 'Atualizando...' : 'Atualizar'}
+    <button className={`botaoAtualizar botaoAtualizarIcone${carregando ? ' carregando' : ''}`} type="button" onClick={() => aoAtualizar()} disabled={carregando} title="Atualizar" aria-label="Atualizar">
+      {carregando ? <span className="gaugeAtualizacao" /> : <RefreshCw size={17} />}
     </button>
+  );
+}
+
+function textoOpcaoBusca(item: RegistroGenerico, campos: string[]) {
+  return campos.map((campo) => String(item[campo] ?? '')).filter(Boolean).join(' - ');
+}
+
+function CampoBusca({
+  rotulo,
+  valorId,
+  itens,
+  camposBusca,
+  placeholder = 'Digite para buscar',
+  desabilitado = false,
+  minimo = 0,
+  aoSelecionar
+}: {
+  rotulo: string;
+  valorId?: unknown;
+  itens: RegistroGenerico[];
+  camposBusca: string[];
+  placeholder?: string;
+  desabilitado?: boolean;
+  minimo?: number;
+  aoSelecionar: (item: RegistroGenerico | null) => void;
+}) {
+  const selecionado = itens.find((item) => Number(item.id) === Number(valorId));
+  const [texto, setTexto] = useState(selecionado ? textoOpcaoBusca(selecionado, camposBusca) : '');
+  const [aberto, setAberto] = useState(false);
+  const chaveCampos = camposBusca.join('|');
+  useEffect(() => {
+    const atual = itens.find((item) => Number(item.id) === Number(valorId));
+    setTexto(atual ? textoOpcaoBusca(atual, camposBusca) : '');
+  }, [valorId, itens, chaveCampos]);
+  const termo = texto.trim().toLowerCase();
+  const opcoes = termo.length >= minimo
+    ? itens.filter((item) => textoOpcaoBusca(item, camposBusca).toLowerCase().includes(termo)).slice(0, 80)
+    : [];
+  function selecionar(item: RegistroGenerico | null) {
+    aoSelecionar(item);
+    setTexto(item ? textoOpcaoBusca(item, camposBusca) : '');
+    setAberto(false);
+  }
+  return (
+    <label className="campoBuscaMobile">{rotulo}
+      <div className="campoBuscaCaixa">
+        <input
+          disabled={desabilitado}
+          placeholder={placeholder}
+          value={texto}
+          onFocus={() => setAberto(true)}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            setAberto(true);
+            if (!e.target.value) aoSelecionar(null);
+          }}
+        />
+        {texto && !desabilitado && <button type="button" className="campoBuscaLimpar" onClick={() => selecionar(null)}>x</button>}
+      </div>
+      {minimo > 0 && termo.length > 0 && termo.length < minimo && <small className="campoAjuda">Digite ao menos {minimo} letras.</small>}
+      {aberto && !desabilitado && termo.length >= minimo && (
+        <div className="campoBuscaLista">
+          {opcoes.map((item) => (
+            <button key={String(item.id)} type="button" onMouseDown={(evento) => evento.preventDefault()} onClick={() => selecionar(item)}>
+              <strong>{String(item[camposBusca[0]] ?? '')}</strong>
+              <span>{camposBusca.slice(1).map((campo) => String(item[campo] ?? '')).filter(Boolean).join(' - ')}</span>
+            </button>
+          ))}
+          {!opcoes.length && <p>Nenhum registro encontrado.</p>}
+        </div>
+      )}
+    </label>
   );
 }
 
@@ -220,15 +421,17 @@ function TabelaFrota({
   colunas,
   campos,
   salvar,
-  excluir
+  excluir,
+  acoesExtras
 }: {
   titulo: string;
   subtitulo: string;
   carregar: () => Promise<RegistroGenerico[]>;
   colunas: string[];
-  campos: { nome: string; rotulo: string; tipo?: 'text' | 'number' | 'checkbox' | 'select'; opcoes?: RegistroGenerico[]; valorOpcao?: string; textoOpcao?: string; valorPadrao?: unknown }[];
+  campos: { nome: string; rotulo: string; tipo?: 'text' | 'number' | 'date' | 'time' | 'checkbox' | 'select'; opcoes?: RegistroGenerico[]; valorOpcao?: string; textoOpcao?: string; valorPadrao?: unknown }[];
   salvar: (dados: RegistroGenerico) => Promise<RegistroGenerico>;
   excluir?: (id: number) => Promise<RegistroGenerico>;
+  acoesExtras?: (linha: RegistroGenerico, recarregar: () => Promise<void>, definirMensagem: (mensagem: string) => void, definirErro: (erro: string) => void) => ReactNode;
 }) {
   const [linhas, setLinhas] = useState<RegistroGenerico[]>([]);
   const [formulario, setFormulario] = useState<RegistroGenerico>({});
@@ -335,21 +538,29 @@ function TabelaFrota({
       {erro && <div className="alerta">{erro}</div>}
       {aberto && (
         <form className="formCadastro" onSubmit={enviar}>
-          {campos.map((campo) => (
-            <label key={campo.nome}>
-              {campo.rotulo}
-              {campo.tipo === 'select' ? (
-                <select value={String(formulario[campo.nome] ?? '')} onChange={(e) => setFormulario({ ...formulario, [campo.nome]: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">Selecione</option>
-                  {(campo.opcoes ?? []).map((opcao) => <option key={String(opcao[campo.valorOpcao ?? 'id'])} value={String(opcao[campo.valorOpcao ?? 'id'])}>{String(opcao[campo.textoOpcao ?? 'descricao'] ?? opcao.nome ?? opcao.id)}</option>)}
-                </select>
-              ) : campo.tipo === 'checkbox' ? (
-                <input type="checkbox" checked={Boolean(formulario[campo.nome] ?? true)} onChange={(e) => setFormulario({ ...formulario, [campo.nome]: e.target.checked })} />
-              ) : (
-                <input type={campo.tipo ?? 'text'} value={String(formulario[campo.nome] ?? '')} onChange={(e) => setFormulario({ ...formulario, [campo.nome]: campo.tipo === 'number' ? Number(e.target.value) : e.target.value })} />
-              )}
-            </label>
-          ))}
+          {campos.map((campo) => {
+            if (campo.nome === 'codigo_coordenador_decis' && !formulario.coordenador) {
+              return null;
+            }
+            const opcoes = campo.nome === 'ajudante_padrao_motorista_id'
+              ? (campo.opcoes ?? []).filter((opcao) => Boolean(opcao.ajudante) && Number(opcao.id) !== Number(formulario.id))
+              : (campo.opcoes ?? []);
+            return (
+              <label key={campo.nome}>
+                {campo.rotulo}
+                {campo.tipo === 'select' ? (
+                  <select value={String(formulario[campo.nome] ?? '')} onChange={(e) => setFormulario({ ...formulario, [campo.nome]: e.target.value ? Number(e.target.value) : null })}>
+                    <option value="">Selecione</option>
+                    {opcoes.map((opcao) => <option key={String(opcao[campo.valorOpcao ?? 'id'])} value={String(opcao[campo.valorOpcao ?? 'id'])}>{String(opcao[campo.textoOpcao ?? 'descricao'] ?? opcao.nome ?? opcao.id)}</option>)}
+                  </select>
+                ) : campo.tipo === 'checkbox' ? (
+                  <input type="checkbox" checked={Boolean(formulario[campo.nome] ?? campo.valorPadrao ?? true)} onChange={(e) => setFormulario({ ...formulario, [campo.nome]: e.target.checked })} />
+                ) : (
+                  <input type={campo.tipo ?? 'text'} value={String(formulario[campo.nome] ?? '')} onChange={(e) => setFormulario({ ...formulario, [campo.nome]: campo.tipo === 'number' ? Number(e.target.value) : e.target.value })} />
+                )}
+              </label>
+            );
+          })}
           <button className="primary">Salvar</button>
         </form>
       )}
@@ -360,7 +571,7 @@ function TabelaFrota({
             {linhasFiltradas.map((linha) => (
               <tr key={String(linha.id ?? JSON.stringify(linha))} onDoubleClick={() => { setFormulario(linha); setAberto(true); }}>
                 {colunas.map((coluna) => <td key={coluna}>{String(linha[coluna] ?? '-')}</td>)}
-                <td className="acoesTabela"><button className="ghost" onClick={() => { setFormulario(linha); setAberto(true); }}>Alterar</button>{excluir && <button className="ghost" onClick={() => excluirLinha(Number(linha.id))}><Trash2 size={14} /></button>}</td>
+                <td className="acoesTabela"><button className="ghost" onClick={() => { setFormulario(linha); setAberto(true); }}>Alterar</button>{acoesExtras?.(linha, recarregar, setMensagem, setErro)}{excluir && <button className="ghost" onClick={() => excluirLinha(Number(linha.id))}><Trash2 size={14} /></button>}</td>
               </tr>
             ))}
             {linhasFiltradas.length === 0 && <tr><td colSpan={colunas.length + 1}>{carregando ? 'Carregando registros...' : consulta ? 'Nenhum registro encontrado para a consulta.' : 'Nenhum registro encontrado.'}</td></tr>}
@@ -1820,14 +2031,905 @@ export function ValidacaoFrota() {
   );
 }
 
+export function LogoKm() {
+  return <span className="kmLogoAsset" aria-hidden="true"><img src={LOGO_KM} alt="" /></span>;
+}
+
+function turnoAtual() {
+  const hora = new Date().getHours();
+  if (hora < 12) return 'manha';
+  if (hora < 18) return 'tarde';
+  return 'noite';
+}
+
+function ApontamentoKmFormulario({
+  data,
+  registro,
+  contexto,
+  pedidos,
+  motoristas,
+  veiculos,
+  departamentos,
+  motivosSemPedido = [],
+  modoMobile = false,
+  aoSalvar,
+  aoFechar
+}: {
+  data: string;
+  registro?: RegistroGenerico | null;
+  contexto: RegistroGenerico;
+  pedidos: RegistroGenerico[];
+  motoristas: RegistroGenerico[];
+  veiculos: RegistroGenerico[];
+  departamentos: RegistroGenerico[];
+  motivosSemPedido?: RegistroGenerico[];
+  modoMobile?: boolean;
+  aoSalvar: () => Promise<void>;
+  aoFechar: () => void;
+}) {
+  const motoristaPadrao = contexto.motorista ?? {};
+  const [formulario, setFormulario] = useState<RegistroGenerico>(() => ({
+    data_apontamento: data,
+    motorista_id: motoristaPadrao.id ?? '',
+    veiculo_id: motoristaPadrao.veiculo_id ?? '',
+    departamento_id: motoristaPadrao.departamento_id ?? '',
+    ajudante_motorista_id: motoristaPadrao.ajudante_padrao_motorista_id ?? '',
+    ajudante_motorista2_id: '',
+    ajudante: motoristaPadrao.ajudante_padrao_nome ?? motoristaPadrao.ajudante_padrao ?? '',
+    sem_pedido: false,
+    motivo_sem_pedido_id: '',
+    km_inicial: motoristaPadrao.odometro_atual ?? 0,
+    km_final: motoristaPadrao.odometro_atual ?? 0,
+    ...registro
+  }));
+  const [erro, setErro] = useState('');
+  const [campoKmAberto, setCampoKmAberto] = useState<'km_inicial' | 'km_final' | null>(null);
+  const [valorKmTemporario, setValorKmTemporario] = useState('0');
+  const [modalErro, setModalErro] = useState('');
+  const pedidoSelecionado = pedidos.find((pedido) => Number(pedido.id) === Number(formulario.pedido_venda_id));
+  const veiculoSelecionado = veiculos.find((veiculo) => Number(veiculo.id) === Number(formulario.veiculo_id));
+  const motoristaSelecionado = motoristas.find((motorista) => Number(motorista.id) === Number(formulario.motorista_id));
+  const ajudantes = motoristas.filter((motorista) => Boolean(motorista.ajudante) && Number(motorista.id) !== Number(formulario.motorista_id));
+  const kmTotal = Math.max(Math.trunc(Number(formulario.km_final ?? 0)) - Math.trunc(Number(formulario.km_inicial ?? 0)), 0);
+  const bloqueado = Boolean(registro?.validado || registro?.integrado);
+  const dataFutura = data > dataIsoLocal(new Date());
+
+  function preencherAgora(campo: string) {
+    const agora = new Date();
+    const valor = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`;
+    setFormulario((atual) => ({ ...atual, [campo]: valor }));
+  }
+
+  function preencherTurnoPadrao(prefixo: string) {
+    const padroes: Record<string, { inicio: string; fim: string }> = {
+      manha: { inicio: '07:52', fim: '12:00' },
+      tarde: { inicio: '13:20', fim: '18:00' },
+      noite: { inicio: '', fim: '' }
+    };
+    const padrao = padroes[prefixo];
+    if (!padrao) return;
+    setFormulario((atual) => ({ ...atual, [`${prefixo}_inicio`]: padrao.inicio, [`${prefixo}_fim`]: padrao.fim }));
+  }
+
+  function abrirPickerKm(campo: 'km_inicial' | 'km_final') {
+    setCampoKmAberto(campo);
+    setValorKmTemporario(String(Math.trunc(Number(formulario[campo] ?? 0))));
+  }
+
+  function confirmarKm() {
+    if (!campoKmAberto) return;
+    setFormulario((atual) => ({ ...atual, [campoKmAberto]: Math.max(0, Math.trunc(Number(valorKmTemporario || 0))) }));
+    setCampoKmAberto(null);
+  }
+
+  function turnoIncompleto(prefixo: string) {
+    return Boolean(formulario[`${prefixo}_inicio`]) !== Boolean(formulario[`${prefixo}_fim`]);
+  }
+
+  async function salvar(evento: FormEvent) {
+    evento.preventDefault();
+    setErro('');
+    if (bloqueado) {
+      setErro('Apontamento validado ou integrado nao pode ser alterado.');
+      return;
+    }
+    if (dataFutura) {
+      setErro('Nao e permitido selecionar data futura.');
+      return;
+    }
+    if ((!formulario.sem_pedido && !formulario.pedido_venda_id) || !formulario.motorista_id || !formulario.veiculo_id) {
+      setErro('Informe pedido, motorista e veiculo.');
+      return;
+    }
+    if (formulario.sem_pedido && !formulario.motivo_sem_pedido_id) {
+      setErro('Informe o motivo para lancamento sem pedido.');
+      return;
+    }
+    if (veiculoSelecionado && Number(formulario.km_final ?? 0) < Number(veiculoSelecionado.odometro_atual ?? 0)) {
+      const continuar = window.confirm(`KM final menor que o ultimo KM do veiculo (${numeroPtBr(veiculoSelecionado.odometro_atual)}). Deseja continuar mesmo assim?`);
+      if (!continuar) return;
+    }
+    const kmInicial = Math.trunc(Number(formulario.km_inicial ?? 0));
+    const kmFinal = Math.trunc(Number(formulario.km_final ?? 0));
+    if (veiculoSelecionado && kmInicial - Number(veiculoSelecionado.odometro_atual ?? 0) > 999) {
+      setErro(`KM inicial nao pode ficar mais de 999 km acima do ultimo KM do veiculo (${numeroPtBr(veiculoSelecionado.odometro_atual, 0)}).`);
+      return;
+    }
+    if (kmFinal - kmInicial > 9999) {
+      setErro('KM final nao pode ultrapassar o KM inicial em mais de 9999 km.');
+      return;
+    }
+    if (kmFinal < kmInicial) {
+      setErro('KM final nao pode ser menor que o KM inicial.');
+      return;
+    }
+    let atualizarAjudantePadrao = false;
+    if (formulario.ajudante_motorista_id && motoristaSelecionado?.ajudante_padrao_motorista_id && Number(formulario.ajudante_motorista_id) !== Number(motoristaSelecionado.ajudante_padrao_motorista_id)) {
+      atualizarAjudantePadrao = window.confirm('Este ajudante e diferente do padrao do motorista. Deseja salvar este ajudante como novo padrao?');
+    }
+    try {
+      await salvarApontamentoKmFrota({ ...formulario, km_inicial: kmInicial, km_final: kmFinal, atualizar_ajudante_padrao: atualizarAjudantePadrao });
+      await aoSalvar();
+      aoFechar();
+    } catch (error) {
+      setModalErro(error instanceof Error ? error.message : 'Falha ao salvar apontamento.');
+    }
+  }
+
+  const turnos = [
+    ['manha', 'MANHA'],
+    ['tarde', 'TARDE'],
+    ['noite', 'NOITE']
+  ];
+
+  return (
+    <div className="frotaModalOverlay" role="dialog" aria-modal="true" aria-label="Apontamento de KM">
+      <button className="frotaModalFundo" type="button" aria-label="Fechar apontamento" onClick={aoFechar} />
+      <form className="frotaModalDetalhe kmFormularioMobile" onSubmit={salvar}>
+        <header>
+          <div>
+            <span>Apontamento KM</span>
+            <h3>{dataBr(data)}</h3>
+          </div>
+          <button className="ghost" type="button" onClick={aoFechar}>Fechar</button>
+        </header>
+        {erro && <div className="alerta">{erro}</div>}
+        {dataFutura && <div className="alerta">Data futura bloqueada para lancamento.</div>}
+        {bloqueado && <div className="alerta">Este apontamento esta validado ou integrado. Solicite remocao da validacao para alterar.</div>}
+        <div className="kmGridFormulario">
+          <CampoBusca
+            rotulo="Motorista"
+            valorId={formulario.motorista_id}
+            itens={motoristas}
+            camposBusca={['nome', 'codigo_decis']}
+            desabilitado={bloqueado || (modoMobile && Boolean(contexto.motorista?.id))}
+            aoSelecionar={(motorista) => {
+              if (!motorista) {
+                setFormulario({ ...formulario, motorista_id: '', departamento_id: '', ajudante_motorista_id: '', ajudante: '' });
+                return;
+              }
+              setFormulario({
+                ...formulario,
+                motorista_id: motorista.id,
+                departamento_id: motorista.departamento_id ?? formulario.departamento_id,
+                ajudante_motorista_id: motorista.ajudante_padrao_motorista_id ?? '',
+                ajudante: motorista.ajudante_padrao_nome ?? motorista.ajudante_padrao ?? ''
+              });
+            }}
+          />
+          <CampoBusca
+            rotulo="Veiculo"
+            valorId={formulario.veiculo_id}
+            itens={veiculos}
+            camposBusca={['placa', 'modelo']}
+            desabilitado={bloqueado}
+            aoSelecionar={(veiculo) => setFormulario({
+              ...formulario,
+              veiculo_id: veiculo?.id ?? '',
+              km_inicial: registro?.id ? formulario.km_inicial : Math.trunc(Number(veiculo?.odometro_atual ?? formulario.km_inicial ?? 0)),
+              km_final: registro?.id ? formulario.km_final : Math.trunc(Number(veiculo?.odometro_atual ?? formulario.km_final ?? 0))
+            })}
+          />
+          {false && (
+            <label>Motorista
+            <select disabled={bloqueado || (modoMobile && Boolean(contexto.motorista?.id))} value={String(formulario.motorista_id ?? '')} onChange={(e) => {
+              const motorista = motoristas.find((item) => Number(item.id) === Number(e.target.value));
+              setFormulario({
+                ...formulario,
+                motorista_id: e.target.value ? Number(e.target.value) : '',
+                departamento_id: motorista?.departamento_id ?? formulario.departamento_id,
+                ajudante_motorista_id: motorista?.ajudante_padrao_motorista_id ?? '',
+                ajudante: motorista?.ajudante_padrao_nome ?? motorista?.ajudante_padrao ?? ''
+              });
+            }}>
+              <option value="">Selecione</option>
+              {motoristas.map((motorista) => <option key={String(motorista.id)} value={String(motorista.id)}>{String(motorista.nome)}</option>)}
+            </select>
+          </label>
+          )}
+          {false && <label>Veiculo
+            <select disabled={bloqueado} value={String(formulario.veiculo_id ?? '')} onChange={(e) => setFormulario({ ...formulario, veiculo_id: e.target.value ? Number(e.target.value) : '' })}>
+              <option value="">Selecione</option>
+              {veiculos.map((veiculo) => <option key={String(veiculo.id)} value={String(veiculo.id)}>{String(veiculo.placa)} - {String(veiculo.modelo)}</option>)}
+            </select>
+          </label>}
+          {!modoMobile && (
+            <label>Departamento
+              <select disabled={bloqueado} value={String(formulario.departamento_id ?? '')} onChange={(e) => setFormulario({ ...formulario, departamento_id: e.target.value ? Number(e.target.value) : '' })}>
+                <option value="">Selecione</option>
+                {departamentos.map((departamento) => <option key={String(departamento.id)} value={String(departamento.id)}>{String(departamento.descricao)}</option>)}
+              </select>
+            </label>
+          )}
+          <CampoBusca
+            rotulo="Ajudante"
+            valorId={formulario.ajudante_motorista_id}
+            itens={ajudantes}
+            camposBusca={['nome', 'codigo_decis']}
+            placeholder="Sem ajudante"
+            desabilitado={bloqueado}
+            aoSelecionar={(ajudante) => setFormulario({ ...formulario, ajudante_motorista_id: ajudante?.id ?? '', ajudante: ajudante?.nome ?? '' })}
+          />
+          <CampoBusca
+            rotulo="Ajudante 2"
+            valorId={formulario.ajudante_motorista2_id}
+            itens={ajudantes.filter((item) => Number(item.id) !== Number(formulario.ajudante_motorista_id))}
+            camposBusca={['nome', 'codigo_decis']}
+            placeholder="Sem ajudante 2"
+            desabilitado={bloqueado}
+            aoSelecionar={(ajudante) => setFormulario({ ...formulario, ajudante_motorista2_id: ajudante?.id ?? '' })}
+          />
+          <label>KM inicial<input disabled={bloqueado} inputMode="numeric" readOnly value={String(Math.trunc(Number(formulario.km_inicial ?? 0)))} onClick={() => abrirPickerKm('km_inicial')} /></label>
+          <label>KM final<input disabled={bloqueado} inputMode="numeric" readOnly value={String(Math.trunc(Number(formulario.km_final ?? 0)))} onClick={() => abrirPickerKm('km_final')} /></label>
+        </div>
+        <div className="kmTotalDia"><span>Total do apontamento</span><strong>{numeroPtBr(kmTotal, 0)} km</strong></div>
+        <label className="kmCheckboxLinha"><input disabled={bloqueado} type="checkbox" checked={Boolean(formulario.sem_pedido)} onChange={(e) => setFormulario({ ...formulario, sem_pedido: e.target.checked, pedido_venda_id: e.target.checked ? '' : formulario.pedido_venda_id })} />Sem Pedido</label>
+        {formulario.sem_pedido ? (
+          <label>Motivo sem pedido
+            <select disabled={bloqueado} value={String(formulario.motivo_sem_pedido_id ?? '')} onChange={(e) => setFormulario({ ...formulario, motivo_sem_pedido_id: e.target.value ? Number(e.target.value) : '' })}>
+              <option value="">Selecione</option>
+              {motivosSemPedido.filter((motivo) => motivo.ativo !== false).map((motivo) => <option key={String(motivo.id)} value={String(motivo.id)}>{String(motivo.descricao)}</option>)}
+            </select>
+          </label>
+        ) : (
+          <CampoBusca
+            rotulo="Pedido"
+            valorId={formulario.pedido_venda_id}
+            itens={pedidos.filter((pedido) => pedido.ativo !== false)}
+            camposBusca={['pedido', 'cliente_nome', 'cliente']}
+            placeholder="Digite 3 letras do pedido ou cliente"
+            minimo={3}
+            desabilitado={bloqueado}
+            aoSelecionar={(pedido) => setFormulario({ ...formulario, pedido_venda_id: pedido?.id ?? '' })}
+          />
+        )}
+        {pedidoSelecionado && !formulario.sem_pedido && (
+          <div className="kmResumoPedido">
+            <p><span>Pedido</span><strong>{String(pedidoSelecionado.pedido)}</strong></p>
+            <p><span>Cliente</span><strong>{String(pedidoSelecionado.cliente_nome ?? pedidoSelecionado.cliente)} {pedidoSelecionado.cliente_codigo_decis ? `(${pedidoSelecionado.cliente_codigo_decis})` : ''}</strong></p>
+            <p><span>Coordenador</span><strong>{String(pedidoSelecionado.coordenador_nome ?? pedidoSelecionado.coordenador ?? '-')} {pedidoSelecionado.codigo_coordenador_decis ? `(${pedidoSelecionado.codigo_coordenador_decis})` : ''}</strong></p>
+            <p><span>Valor</span><strong>{moeda(pedidoSelecionado.valor)}</strong></p>
+            <p><span>Data</span><strong>{dataBr(pedidoSelecionado.data_pedido)}</strong></p>
+          </div>
+        )}
+        <div className="kmTurnos">
+          {turnos.map(([prefixo, titulo]) => (
+            <section key={prefixo} className={`${turnoAtual() === prefixo ? 'turnoAtual' : ''} ${turnoIncompleto(prefixo) ? 'turnoIncompleto' : ''}`}>
+              <strong>{titulo}</strong>
+              {prefixo !== 'noite' && <button className="ghost kmBotaoPadraoTurno" disabled={bloqueado} type="button" onClick={() => preencherTurnoPadrao(prefixo)}>{prefixo === 'manha' ? '07:52 - 12:00' : '13:20 - 18:00'}</button>}
+              <div>
+                <label>Inicio<input disabled={bloqueado} type="time" value={String(formulario[`${prefixo}_inicio`] ?? '')} onChange={(e) => setFormulario({ ...formulario, [`${prefixo}_inicio`]: e.target.value })} /></label>
+                <button className="ghost" disabled={bloqueado} type="button" onClick={() => preencherAgora(`${prefixo}_inicio`)}><Clock size={14} />Agora</button>
+              </div>
+              <div>
+                <label>Fim<input disabled={bloqueado} type="time" value={String(formulario[`${prefixo}_fim`] ?? '')} onChange={(e) => setFormulario({ ...formulario, [`${prefixo}_fim`]: e.target.value })} /></label>
+                <button className="ghost" disabled={bloqueado} type="button" onClick={() => preencherAgora(`${prefixo}_fim`)}><Clock size={14} />Agora</button>
+              </div>
+            </section>
+          ))}
+        </div>
+        <label>Observacao<textarea disabled={bloqueado} value={String(formulario.observacao ?? '')} onChange={(e) => setFormulario({ ...formulario, observacao: e.target.value })} /></label>
+        <button className="primary" disabled={bloqueado}>Salvar apontamento</button>
+      </form>
+      {campoKmAberto && (
+        <div className="frotaModalOverlay kmPickerOverlay" role="dialog" aria-modal="true" aria-label="Selecionar KM">
+          <button className="frotaModalFundo" type="button" aria-label="Fechar KM" onClick={() => setCampoKmAberto(null)} />
+          <section className="frotaModalDetalhe kmPickerModal">
+            <header><div><span>Selecionar KM</span><h3>{campoKmAberto === 'km_inicial' ? 'KM inicial' : 'KM final'}</h3></div><button className="ghost" type="button" onClick={() => setCampoKmAberto(null)}>Fechar</button></header>
+            <input autoFocus inputMode="numeric" pattern="[0-9]*" value={valorKmTemporario} onChange={(e) => setValorKmTemporario(e.target.value.replace(/\D/g, ''))} />
+            <div className="kmPickerAcoes">
+              {[-1000, -100, -10, -1, 1, 10, 100, 1000].map((passo) => <button key={passo} type="button" className="ghost" onClick={() => setValorKmTemporario(String(Math.max(0, Math.trunc(Number(valorKmTemporario || 0)) + passo)))}>{passo > 0 ? `+${passo}` : passo}</button>)}
+            </div>
+            <div className="kmPickerAtalhos">
+              <button className="ghost" type="button" onClick={() => setValorKmTemporario(String(Math.trunc(Number(formulario.km_inicial ?? 0))))}>Igual inicial</button>
+              <button className="ghost" type="button" onClick={() => setValorKmTemporario(String(Math.trunc(Number(formulario.km_final ?? 0))))}>Igual final</button>
+            </div>
+            <button className="primary" type="button" onClick={confirmarKm}>Confirmar KM</button>
+          </section>
+        </div>
+      )}
+      {modalErro && (
+        <div className="frotaModalOverlay kmErroOverlay" role="dialog" aria-modal="true" aria-label="Erro no apontamento">
+          <button className="frotaModalFundo" type="button" aria-label="Fechar erro" onClick={() => setModalErro('')} />
+          <section className="frotaModalDetalhe frotaModalCompacto">
+            <header><div><span>Apontamento KM</span><h3>Atencao</h3></div><button className="ghost" type="button" onClick={() => setModalErro('')}>Fechar</button></header>
+            <div className="alerta">{modalErro}</div>
+            <button className="primary" type="button" onClick={() => setModalErro('')}>Entendi</button>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ApontamentoKmFrota({ modoMobile = false }: { modoMobile?: boolean } = {}) {
+  const [contexto, setContexto] = useState<RegistroGenerico>({});
+  const [calendario, setCalendario] = useState<RegistroGenerico>({});
+  const [pedidos, setPedidos] = useState<RegistroGenerico[]>([]);
+  const [motoristas, setMotoristas] = useState<RegistroGenerico[]>([]);
+  const [veiculos, setVeiculos] = useState<RegistroGenerico[]>([]);
+  const [departamentos, setDepartamentos] = useState<RegistroGenerico[]>([]);
+  const [motivosSemPedido, setMotivosSemPedido] = useState<RegistroGenerico[]>([]);
+  const [dataSelecionada, setDataSelecionada] = useState('');
+  const [registroEditar, setRegistroEditar] = useState<RegistroGenerico | null>(null);
+  const [formularioAberto, setFormularioAberto] = useState(false);
+  const [filtros, setFiltros] = useState<RegistroGenerico>({});
+  const [carregando, setCarregando] = useState(false);
+  const [dataReferencia, setDataReferencia] = useState(dataIsoLocal(new Date()));
+  const [erroAcaoDia, setErroAcaoDia] = useState('');
+  const [mensagemAcaoDia, setMensagemAcaoDia] = useState('');
+
+  async function carregar(filtrosForcados: RegistroGenerico = {}) {
+    setCarregando(true);
+    try {
+      const ctx = await obterContextoKmFrota();
+      setContexto(ctx);
+      const periodo = ctx.periodo ?? {};
+      const filtrosAtuais = { ...filtros, ...filtrosForcados };
+      const filtrosComPeriodo = {
+        data_inicial: filtrosAtuais.data_inicial || periodo.data_inicial,
+        data_final: filtrosAtuais.data_final || periodo.data_final,
+        motorista_id: filtrosAtuais.motorista_id,
+        veiculo_id: filtrosAtuais.veiculo_id,
+        departamento_id: filtrosAtuais.departamento_id,
+        somente_coordenacao: filtrosAtuais.somente_coordenacao
+      };
+      const [cal, ped, mot, vei, dep, msp] = await Promise.all([
+        obterCalendarioKmFrota(filtrosComPeriodo),
+        listarPedidosVendaFrota(),
+        listarMotoristasFrota(),
+        listarVeiculosFrota(),
+        listarDepartamentosFrota(),
+        listarMotivosSemPedidoFrota()
+      ]);
+      setCalendario(cal);
+      setPedidos(ped);
+      setMotoristas(mot);
+      setVeiculos(vei);
+      setDepartamentos(dep);
+      setMotivosSemPedido(msp);
+      setFiltros((atual) => ({ ...atual, ...filtrosComPeriodo }));
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregar().catch(() => undefined);
+  }, []);
+
+  async function selecionarDataReferencia(valor: string) {
+    setDataReferencia(valor);
+    const cfg = contexto.configuracoes ?? {};
+    const periodoReferencia = periodoKmPorReferencia(valor, Number(cfg.dia_inicio_periodo_km ?? 26), Number(cfg.dia_fim_periodo_km ?? 25));
+    setFiltros((atual) => ({ ...atual, ...periodoReferencia }));
+    setDataSelecionada('');
+    await carregar(periodoReferencia);
+  }
+
+  const apontamentosPorDia = new Map<string, RegistroGenerico[]>();
+  (calendario.calendario ?? []).forEach((item: RegistroGenerico) => apontamentosPorDia.set(String(item.data), item.apontamentos ?? []));
+  const periodo = contexto.periodo ?? {};
+  const dias = periodo.data_inicial && periodo.data_final ? diasEntre(String(filtros.data_inicial || periodo.data_inicial), String(filtros.data_final || periodo.data_final)) : [];
+  const hoje = dataIsoLocal(new Date());
+  const apontamentosDia = dataSelecionada ? (apontamentosPorDia.get(dataSelecionada) ?? []) : [];
+
+  async function excluirApontamentoDia(item: RegistroGenerico) {
+    setErroAcaoDia('');
+    setMensagemAcaoDia('');
+    if (item.validado || item.integrado) {
+      setErroAcaoDia('Este apontamento ja foi validado ou integrado e nao pode ser excluido.');
+      return;
+    }
+    if (!window.confirm('Confirma excluir este apontamento de KM?')) {
+      return;
+    }
+    try {
+      await excluirApontamentoKmFrota(Number(item.id));
+      setMensagemAcaoDia('Apontamento excluido.');
+      await carregar({ data_inicial: filtros.data_inicial || periodo.data_inicial, data_final: filtros.data_final || periodo.data_final });
+      setRegistroEditar(null);
+    } catch (error) {
+      setErroAcaoDia(error instanceof Error ? error.message : 'Falha ao excluir apontamento.');
+    }
+  }
+
+  return (
+    <section className={`painelTabela frotaPainel kmTela ${modoMobile ? 'kmTelaMobileApp' : ''}`}>
+      {!modoMobile && (
+        <header className="kmTopoMobile">
+          <LogoKm />
+          <div>
+            <span>Modulo Frota</span>
+            <h2>Apontamento de KM</h2>
+            <p>Periodo {dataBr(filtros.data_inicial || periodo.data_inicial)} a {dataBr(filtros.data_final || periodo.data_final)}</p>
+          </div>
+          <div className="kmTopoWebAcoes">
+            <label>Data referencia<input type="date" value={dataReferencia} onChange={(e) => selecionarDataReferencia(e.target.value)} /></label>
+            <BotaoAtualizar carregando={carregando} aoAtualizar={carregar} />
+          </div>
+        </header>
+      )}
+      {modoMobile && (
+        <div className="kmMobilePeriodo">
+          <div>
+            <span>Periodo Atual</span>
+            <strong>{dataBr(filtros.data_inicial || periodo.data_inicial)} a {dataBr(filtros.data_final || periodo.data_final)}</strong>
+          </div>
+          <label>Data referencia<input type="date" value={dataReferencia} onChange={(e) => selecionarDataReferencia(e.target.value)} /></label>
+          <BotaoAtualizar carregando={carregando} aoAtualizar={carregar} />
+        </div>
+      )}
+      {(contexto.pode_ver_terceiros || (contexto.pode_ver_km_coordenador && contexto.motorista?.coordenador)) && !modoMobile && (
+        <div className="filtrosLinha kmFiltros">
+          {(contexto.pode_ver_terceiros || (contexto.pode_ver_km_coordenador && contexto.motorista?.coordenador)) && <label>Motorista<select value={String(filtros.motorista_id ?? '')} onChange={(e) => setFiltros({ ...filtros, motorista_id: e.target.value })}><option value="">Todos</option>{motoristas.map((m) => <option key={String(m.id)} value={String(m.id)}>{String(m.nome)}</option>)}</select></label>}
+          {contexto.pode_ver_terceiros && <label>Veiculo<select value={String(filtros.veiculo_id ?? '')} onChange={(e) => setFiltros({ ...filtros, veiculo_id: e.target.value })}><option value="">Todos</option>{veiculos.map((v) => <option key={String(v.id)} value={String(v.id)}>{String(v.placa)}</option>)}</select></label>}
+          {contexto.pode_ver_terceiros && <label>Departamento<select value={String(filtros.departamento_id ?? '')} onChange={(e) => setFiltros({ ...filtros, departamento_id: e.target.value })}><option value="">Todos</option>{departamentos.map((d) => <option key={String(d.id)} value={String(d.id)}>{String(d.descricao)}</option>)}</select></label>}
+          {contexto.pode_ver_km_coordenador && contexto.motorista?.coordenador && (
+            <label>Coordenador efetivo<select value={String(filtros.somente_coordenacao ?? 'NAO')} onChange={(e) => setFiltros({ ...filtros, somente_coordenacao: e.target.value })}>
+              <option value="NAO">Meus + coordenacao efetiva</option>
+              <option value="SIM">Somente minha coordenacao efetiva</option>
+            </select></label>
+          )}
+          <button className="primary" onClick={carregar}>Aplicar</button>
+        </div>
+      )}
+      <div className="kmLegenda"><span className="diaSemKm" />Sem apontamento útil <span className="diaComKm" />Com KM <span className="diaFuturo" />Futuro/período</div>
+      {carregando && <div className="kmLoading"><span className="gaugeAtualizacao" />Carregando dados do KM...</div>}
+      <div className="kmCalendario">
+        {dias.map((dia) => {
+          const data = dataIsoLocal(dia);
+          const registros = apontamentosPorDia.get(data) ?? [];
+          const totalKmDia = registros.reduce((soma, registro) => soma + Number(registro.km_total ?? 0), 0);
+          const fimSemana = [0, 6].includes(dia.getDay());
+          const classe = registros.length ? 'comKm' : data > hoje ? 'futuro' : fimSemana ? 'fimSemana' : 'semKm';
+          return (
+            <button key={data} disabled={data > hoje} className={`${classe} ${dataSelecionada === data ? 'selecionado' : ''}`} onClick={() => setDataSelecionada(data)}>
+              <strong>{dia.getDate()}</strong>
+              <small>{registros.length ? `${numeroPtBr(totalKmDia, 0)} km` : fimSemana ? 'folga' : data > hoje ? 'futuro' : 'pendente'}</small>
+            </button>
+          );
+        })}
+      </div>
+      {dataSelecionada && (
+        <div className={`frotaModalOverlay ${modoMobile ? 'kmDiaModalMobile' : 'kmDiaModalWeb'}`} role="dialog" aria-modal="true" aria-label="Apontamentos do dia">
+          <button className="frotaModalFundo" type="button" onClick={() => setDataSelecionada('')} aria-label="Fechar dia" />
+          <section className="frotaModalDetalhe kmDiaPainel">
+            <header>
+              <div><span>{dataBr(dataSelecionada)}</span><h3>Apontamentos do dia</h3></div>
+              <div className="kmDiaAcoes">
+                <button className="primary" onClick={() => { setRegistroEditar(null); setFormularioAberto(true); }}>Incluir</button>
+                <button className="ghost" onClick={() => setDataSelecionada('')}>Fechar</button>
+              </div>
+            </header>
+            {mensagemAcaoDia && <div className="sucesso">{mensagemAcaoDia}</div>}
+            {erroAcaoDia && <div className="alerta">{erroAcaoDia}</div>}
+            <div className="kmCardsDia">
+              {apontamentosDia.map((item) => (
+                <div key={String(item.id)} className="kmCardApontamentoLinha">
+                  <button className="kmCardApontamento" onClick={() => { setRegistroEditar(item); setFormularioAberto(false); }}>
+                    <strong>{item.sem_pedido ? 'Sem pedido' : `${String(item.pedido)} - ${String(item.cliente)}`}</strong>
+                    <span>{String(item.placa ?? '-')} | {String(item.motorista_nome ?? '-')}</span>
+                    <b>{numeroPtBr(item.km_total)} km</b>
+                    <small>{item.integrado ? 'Integrado' : item.validado ? 'Validado' : 'Pendente'}</small>
+                  </button>
+                  {!item.validado && !item.integrado && (
+                    <button className="ghost kmExcluirApontamento" onClick={() => excluirApontamentoDia(item)} title="Excluir apontamento">
+                      <Trash2 size={15} />
+                      Excluir
+                    </button>
+                  )}
+                </div>
+              ))}
+              {!apontamentosDia.length && <p>Nenhum apontamento neste dia. Clique em incluir para fazer o primeiro lancamento.</p>}
+            </div>
+          </section>
+        </div>
+      )}
+      {dataSelecionada && formularioAberto && (
+        <ApontamentoKmFormulario data={dataSelecionada} contexto={contexto} pedidos={pedidos} motoristas={motoristas} veiculos={veiculos} departamentos={departamentos} motivosSemPedido={motivosSemPedido} modoMobile={modoMobile} aoSalvar={() => carregar({ data_inicial: filtros.data_inicial || periodo.data_inicial, data_final: filtros.data_final || periodo.data_final })} aoFechar={() => setFormularioAberto(false)} />
+      )}
+      {registroEditar && (
+        <ApontamentoKmFormulario data={String(registroEditar.data_apontamento).slice(0, 10)} registro={registroEditar} contexto={contexto} pedidos={pedidos} motoristas={motoristas} veiculos={veiculos} departamentos={departamentos} motivosSemPedido={motivosSemPedido} modoMobile={modoMobile} aoSalvar={() => carregar({ data_inicial: filtros.data_inicial || periodo.data_inicial, data_final: filtros.data_final || periodo.data_final })} aoFechar={() => setRegistroEditar(null)} />
+      )}
+    </section>
+  );
+}
+
+export function ApontamentoKmMobileFrota({ usuario, empresaAtiva, aoSair }: { usuario?: { nome?: string }; empresaAtiva?: RegistroGenerico | null; aoSair?: () => void }) {
+  useEffect(() => {
+    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    const appleIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+    const manifestAnterior = manifest?.getAttribute('href') ?? '/manifest.webmanifest';
+    const appleAnterior = appleIcon?.getAttribute('href') ?? '/brand/logo-s-novo.jpg';
+    manifest?.setAttribute('href', '/manifest-km.webmanifest');
+    appleIcon?.setAttribute('href', '/brand/logo-km-512.png');
+    return () => {
+      manifest?.setAttribute('href', manifestAnterior);
+      appleIcon?.setAttribute('href', appleAnterior);
+    };
+  }, []);
+
+  return (
+    <main className="kmAppMobileShell">
+      <section className="kmAppHeader">
+        <div className="kmAppMarca">
+          <LogoKm />
+          <div>
+            <span>Control S Frota</span>
+            <h1>KM Mobile</h1>
+            <p>{usuario?.nome ?? 'Motorista'}</p>
+          </div>
+        </div>
+        {empresaAtiva?.caminho_logo && <img className="kmLogoEmpresaCard" src={String(empresaAtiva.caminho_logo)} alt={String(empresaAtiva.nome_fantasia ?? 'Empresa')} />}
+        <div className="kmAppAcoes">
+          <img className="kmLogoControlTopo" src="/brand/logo-s-novo.jpg" alt="Control S" />
+          {aoSair && <button className="ghost" type="button" onClick={aoSair}>Sair</button>}
+        </div>
+      </section>
+      <ApontamentoKmFrota modoMobile />
+      <footer className="kmAppRodape">CONTROL S CONSULTORIA - Direitos Reservados</footer>
+    </main>
+  );
+}
+
+export function ValidacaoKmFrota() {
+  const [linhas, setLinhas] = useState<RegistroGenerico[]>([]);
+  const [totalizadores, setTotalizadores] = useState<RegistroGenerico>({});
+  const [selecionados, setSelecionados] = useState<number[]>([]);
+  const [detalhe, setDetalhe] = useState<RegistroGenerico | null>(null);
+  const [historicoKm, setHistoricoKm] = useState<RegistroGenerico[]>([]);
+  const [filtros, setFiltros] = useState<RegistroGenerico>({ validado: 'TODOS', integrado: 'TODOS', cancelado: 'NAO' });
+  const [motoristas, setMotoristas] = useState<RegistroGenerico[]>([]);
+  const [veiculos, setVeiculos] = useState<RegistroGenerico[]>([]);
+  const [departamentos, setDepartamentos] = useState<RegistroGenerico[]>([]);
+  const [motivosCancelamento, setMotivosCancelamento] = useState<RegistroGenerico[]>([]);
+  const [modalErro, setModalErro] = useState('');
+  const [cancelamentoAberto, setCancelamentoAberto] = useState(false);
+  const [motivoCancelamentoId, setMotivoCancelamentoId] = useState('');
+  const [observacaoCancelamento, setObservacaoCancelamento] = useState('');
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(false);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(true);
+  const coordenadores = motoristas.filter((item) => Boolean(item.coordenador));
+  const colunasKm = [
+    { id: 'data_apontamento', rotulo: 'Data' },
+    { id: 'pedido', rotulo: 'Pedido' },
+    { id: 'cliente', rotulo: 'Obra' },
+    { id: 'coordenador_pedido', rotulo: 'Coord. pedido' },
+    { id: 'coordenador_padrao', rotulo: 'Coord. padrao' },
+    { id: 'coordenador_efetivo', rotulo: 'Coord. efetivo' },
+    { id: 'motorista_nome', rotulo: 'Motorista' },
+    { id: 'placa', rotulo: 'Veiculo' },
+    { id: 'origem', rotulo: 'Origem' },
+    { id: 'destino', rotulo: 'Destino' },
+    { id: 'filial', rotulo: 'Filial' },
+    { id: 'km_inicial', rotulo: 'KM inicial' },
+    { id: 'km_final', rotulo: 'KM final' },
+    { id: 'km_total', rotulo: 'Total' },
+    { id: 'manha', rotulo: 'Manha' },
+    { id: 'tarde', rotulo: 'Tarde' },
+    { id: 'noite', rotulo: 'Noite' },
+    { id: 'ajudante', rotulo: 'Ajudante' },
+    { id: 'ajudante2', rotulo: 'Ajudante 2' },
+    { id: 'cancelado', rotulo: 'Cancelado' },
+    { id: 'validado', rotulo: 'Validado' },
+    { id: 'integrado', rotulo: 'Integrado' }
+  ];
+  const [colunasKmVisiveis, setColunasKmVisiveis] = useState<string[]>(() => {
+    const salvo = localStorage.getItem('controlSHubFrotaColunasValidacaoKm');
+    return salvo ? JSON.parse(salvo) : colunasKm.map((coluna) => coluna.id);
+  });
+
+  async function carregar() {
+    setCarregando(true);
+    setErro('');
+    try {
+      const retorno = await listarApontamentosKmFrota(filtros);
+      setLinhas(retorno.linhas ?? []);
+      setTotalizadores(retorno.totalizadores ?? {});
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Falha ao carregar KM.');
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    carregar().catch(() => undefined);
+    listarMotoristasFrota().then(setMotoristas).catch(() => setMotoristas([]));
+    listarVeiculosFrota().then(setVeiculos).catch(() => setVeiculos([]));
+    listarDepartamentosFrota().then(setDepartamentos).catch(() => setDepartamentos([]));
+    listarMotivosCancelamentoFrota().then(setMotivosCancelamento).catch(() => setMotivosCancelamento([]));
+  }, []);
+
+  async function validar(validado: boolean) {
+    setErro('');
+    try {
+      const acionaveis = linhas.filter((linha) => selecionados.includes(Number(linha.id)) && !linha.integrado).map((linha) => Number(linha.id));
+      if (!acionaveis.length) {
+        setModalErro('Selecione apontamentos nao integrados para validar ou remover validacao.');
+        return;
+      }
+      await validarApontamentosKmFrota(acionaveis, validado);
+      setSelecionados([]);
+      await carregar();
+    } catch (error) {
+      setModalErro(error instanceof Error ? error.message : 'Falha ao validar KM.');
+    }
+  }
+
+  async function abrirDetalheKm(linha: RegistroGenerico) {
+    setDetalhe(linha);
+    setHistoricoKm([]);
+    try {
+      setHistoricoKm(await listarHistoricoApontamentoKmFrota(Number(linha.id)));
+    } catch {
+      setHistoricoKm([]);
+    }
+  }
+
+  function fecharDetalheKm() {
+    setDetalhe(null);
+    setHistoricoKm([]);
+  }
+
+  async function cancelarSelecionadosKm() {
+    setErro('');
+    setModalErro('');
+    try {
+      if (!motivoCancelamentoId) {
+        setModalErro('Informe o motivo do cancelamento.');
+        return;
+      }
+      const acionaveis = linhas.filter((linha) => selecionados.includes(Number(linha.id)) && !linha.integrado).map((linha) => Number(linha.id));
+      if (!acionaveis.length) {
+        setModalErro('Selecione apontamentos nao integrados para cancelar.');
+        return;
+      }
+      await cancelarApontamentosKmFrota(acionaveis, Number(motivoCancelamentoId), observacaoCancelamento);
+      setSelecionados([]);
+      setCancelamentoAberto(false);
+      setMotivoCancelamentoId('');
+      setObservacaoCancelamento('');
+      await carregar();
+    } catch (error) {
+      setModalErro(error instanceof Error ? error.message : 'Falha ao cancelar KM.');
+    }
+  }
+
+  const totalSelecionado = linhas.filter((linha) => selecionados.includes(Number(linha.id))).reduce((soma, linha) => soma + Number(linha.km_total ?? 0), 0);
+
+  function alternarColunaKm(coluna: string) {
+    const novas = colunasKmVisiveis.includes(coluna)
+      ? colunasKmVisiveis.filter((item) => item !== coluna)
+      : [...colunasKmVisiveis, coluna];
+    setColunasKmVisiveis(novas);
+    localStorage.setItem('controlSHubFrotaColunasValidacaoKm', JSON.stringify(novas));
+  }
+
+  function valorColunaKm(linha: RegistroGenerico, coluna: string) {
+    if (coluna === 'data_apontamento') return dataBr(linha.data_apontamento);
+    if (coluna === 'coordenador_pedido') return String(linha.coordenador_pedido_motorista_nome ?? linha.coordenador ?? '-');
+    if (coluna === 'coordenador_padrao') return String(linha.coordenador_padrao_motorista_nome ?? '-');
+    if (coluna === 'coordenador_efetivo') return String(linha.coordenador_motorista_nome ?? linha.coordenador_encontrado ?? '-');
+    if (coluna === 'origem') return String(linha.origem ?? linha.codigo_origem_decis ?? '-');
+    if (coluna === 'manha') return `${String(linha.manha_inicio ?? '-')} / ${String(linha.manha_fim ?? '-')}`;
+    if (coluna === 'tarde') return `${String(linha.tarde_inicio ?? '-')} / ${String(linha.tarde_fim ?? '-')}`;
+    if (coluna === 'noite') return `${String(linha.noite_inicio ?? '-')} / ${String(linha.noite_fim ?? '-')}`;
+    if (coluna === 'ajudante') return String(linha.ajudante_motorista_nome ?? linha.ajudante ?? '-');
+    if (coluna === 'ajudante2') return String(linha.ajudante_motorista2_nome ?? '-');
+    if (coluna === 'cancelado') return <span className={linha.cancelado ? 'frotaChip perigo' : 'frotaChip neutro'}>{linha.cancelado ? 'Cancelado' : 'Ativo'}</span>;
+    if (coluna === 'validado') return <span className={linha.validado ? 'frotaChip sucesso' : 'frotaChip alerta'}>{linha.validado ? 'Validado' : 'Pendente'}</span>;
+    if (coluna === 'integrado') return <span className={linha.integrado ? 'frotaChip info' : 'frotaChip neutro'}>{linha.integrado ? 'Integrado' : 'Aberto'}</span>;
+    if (['km_inicial', 'km_final', 'km_total'].includes(coluna)) return numeroPtBr(linha[coluna]);
+    return String(linha[coluna] ?? '-');
+  }
+
+  return (
+    <section className="painelTabela frotaPainel frotaValidacaoTela">
+      <header className="frotaHero frotaHeroValidacao">
+        <div>
+          <span>Modulo Frota</span>
+          <h2>Validacao de KM</h2>
+          <p>Conferencia do periodo, motoristas, veiculos, pedidos, coordenadores e integracao.</p>
+        </div>
+        <div className="frotaHeroAcoes">
+          <button className="ghost" type="button" onClick={() => setFiltrosAbertos((atual) => !atual)}><Filter size={15} />{filtrosAbertos ? 'Ocultar filtros' : 'Mostrar filtros'}</button>
+          <BotaoAtualizar carregando={carregando} aoAtualizar={carregar} />
+        </div>
+      </header>
+      {erro && <div className="alerta">{erro}</div>}
+      <div className="metrics pimMetrics frotaTotalizadoresCompactos">
+        <article><span>Registros</span><strong>{totalizadores.registros ?? 0}</strong></article>
+        <article><span>Validados</span><strong>{totalizadores.validados ?? 0}</strong></article>
+        <article><span>Pendentes</span><strong>{totalizadores.pendentes ?? 0}</strong></article>
+        <article><span>Integrados</span><strong>{totalizadores.integrados ?? 0}</strong></article>
+        <article><span>KM total</span><strong>{numeroPtBr(totalizadores.km_total)} km</strong></article>
+      </div>
+      <div className={filtrosAbertos ? 'frotaMesa' : 'frotaMesa filtrosFechados'}>
+        {filtrosAbertos && (
+          <aside className="frotaFiltrosPainel">
+            <strong><Filter size={16} />Filtros</strong>
+            <label>Periodo inicial<input type="date" value={String(filtros.data_inicial ?? '')} onChange={(e) => setFiltros({ ...filtros, data_inicial: e.target.value })} /></label>
+            <label>Periodo final<input type="date" value={String(filtros.data_final ?? '')} onChange={(e) => setFiltros({ ...filtros, data_final: e.target.value })} /></label>
+            <label>Motorista<select value={String(filtros.motorista_id ?? '')} onChange={(e) => setFiltros({ ...filtros, motorista_id: e.target.value })}><option value="">Todos</option>{motoristas.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.nome)}</option>)}</select></label>
+            <label>Veiculo<select value={String(filtros.veiculo_id ?? '')} onChange={(e) => setFiltros({ ...filtros, veiculo_id: e.target.value })}><option value="">Todos</option>{veiculos.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.placa)}</option>)}</select></label>
+            <label>Departamento<select value={String(filtros.departamento_id ?? '')} onChange={(e) => setFiltros({ ...filtros, departamento_id: e.target.value })}><option value="">Todos</option>{departamentos.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.descricao)}</option>)}</select></label>
+            <label>Coordenador efetivo<select value={String(filtros.coordenador_id ?? '')} onChange={(e) => setFiltros({ ...filtros, coordenador_id: e.target.value })}><option value="">Todos</option>{coordenadores.map((item) => <option key={String(item.id)} value={String(item.id)}>{String(item.nome)}</option>)}</select></label>
+            <label>Validado<select value={String(filtros.validado ?? 'TODOS')} onChange={(e) => setFiltros({ ...filtros, validado: e.target.value })}><option value="TODOS">Todos</option><option value="SIM">Sim</option><option value="NAO">Nao</option></select></label>
+            <label>Integrado<select value={String(filtros.integrado ?? 'TODOS')} onChange={(e) => setFiltros({ ...filtros, integrado: e.target.value })}><option value="TODOS">Todos</option><option value="SIM">Sim</option><option value="NAO">Nao</option></select></label>
+            <label>Cancelado<select value={String(filtros.cancelado ?? 'NAO')} onChange={(e) => setFiltros({ ...filtros, cancelado: e.target.value })}><option value="NAO">Exceto cancelados</option><option value="SIM">Cancelados</option><option value="TODOS">Todos</option></select></label>
+            <button className="primary" onClick={carregar}>Aplicar filtros</button>
+          </aside>
+        )}
+        <section className="frotaGridArea">
+          <div className="frotaBarraLote">
+            <div><strong>{selecionados.length} selecionado(s)</strong><small>{numeroPtBr(totalSelecionado)} km selecionados</small></div>
+            <button className="primary" disabled={!selecionados.length} onClick={() => validar(true)}><CheckSquare size={15} />Validar</button>
+            <button className="ghost" disabled={!selecionados.length} onClick={() => validar(false)}>Remover validacao</button>
+            <button className="ghost perigo" disabled={!selecionados.length} onClick={() => setCancelamentoAberto(true)}><Ban size={15} />Cancelar</button>
+          </div>
+          <details className="frotaColunas">
+            <summary>Colunas visiveis</summary>
+            <div>{colunasKm.map((coluna) => <label key={coluna.id}><input type="checkbox" checked={colunasKmVisiveis.includes(coluna.id)} onChange={() => alternarColunaKm(coluna.id)} />{coluna.rotulo}</label>)}</div>
+          </details>
+          <div className="tabelaWrap frotaGridWrap frotaGridPremium">
+            <table>
+              <thead><tr><th><input type="checkbox" checked={linhas.length > 0 && selecionados.length === linhas.length} onChange={(e) => setSelecionados(e.target.checked ? linhas.map((l) => Number(l.id)) : [])} /></th>{colunasKm.filter((coluna) => colunasKmVisiveis.includes(coluna.id)).map((coluna) => <th key={coluna.id}>{coluna.rotulo}</th>)}<th>Acoes</th></tr></thead>
+              <tbody>
+                {linhas.map((linha) => {
+                  const id = Number(linha.id);
+                  return (
+                    <tr key={id} className={linha.cancelado ? 'linhaCancelada' : (['manha', 'tarde', 'noite'].some((prefixo) => Boolean(linha[`${prefixo}_inicio`]) !== Boolean(linha[`${prefixo}_fim`])) ? 'linhaTurnoIncompleto' : '')}>
+                      <td><input type="checkbox" checked={selecionados.includes(id)} onChange={(e) => setSelecionados(e.target.checked ? [...selecionados, id] : selecionados.filter((item) => item !== id))} /></td>
+                      {colunasKm.filter((coluna) => colunasKmVisiveis.includes(coluna.id)).map((coluna) => <td key={coluna.id}>{valorColunaKm(linha, coluna.id)}</td>)}
+                      <td><button className="ghost" onClick={() => abrirDetalheKm(linha)}>Detalhe</button></td>
+                    </tr>
+                  );
+                })}
+                {!linhas.length && <tr><td colSpan={colunasKmVisiveis.length + 2}>Nenhum apontamento encontrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      {detalhe && (
+        <div className="frotaModalOverlay" role="dialog" aria-modal="true" aria-label="Detalhe KM">
+          <button className="frotaModalFundo" type="button" aria-label="Fechar detalhe" onClick={fecharDetalheKm} />
+          <section className="frotaModalDetalhe">
+            <header><div><span>Detalhe KM</span><h3>{String(detalhe.pedido)} - {dataBr(detalhe.data_apontamento)}</h3></div><button className="ghost" onClick={fecharDetalheKm}>Fechar</button></header>
+            <div className="frotaDetalheGrid">
+              {[
+                ['Pedido', detalhe.pedido],
+                ['Data do apontamento', dataBr(detalhe.data_apontamento)],
+                ['Cliente / obra', detalhe.cliente],
+                ['Coordenador', detalhe.coordenador ?? detalhe.solicitante],
+                ['Coordenador do pedido encontrado', detalhe.coordenador_pedido_motorista_nome],
+                ['Coordenador padrao', detalhe.coordenador_padrao_motorista_nome],
+                ['Coordenador efetivo', detalhe.coordenador_motorista_nome ?? detalhe.coordenador_encontrado],
+                ['Veiculo', detalhe.placa],
+                ['Veiculo Decis', detalhe.veiculo_decis],
+                ['Modelo', detalhe.modelo],
+                ['Motorista', detalhe.motorista_nome],
+                ['Motorista Decis', detalhe.motorista_decis],
+                ['Ajudante', detalhe.ajudante_motorista_nome],
+                ['Ajudante Decis', detalhe.ajudante_decis],
+                ['Ajudante 2', detalhe.ajudante_motorista2_nome],
+                ['Ajudante 2 Decis', detalhe.ajudante2_decis],
+                ['Departamento', detalhe.departamento_descricao],
+                ['Origem', detalhe.origem],
+                ['Destino', detalhe.destino],
+                ['Empresa', detalhe.empresa_id],
+                ['Filial', detalhe.filial],
+                ['KM inicial', numeroPtBr(detalhe.km_inicial ?? detalhe.medicaosaida)],
+                ['KM final', numeroPtBr(detalhe.km_final ?? detalhe.medicaoretorno)],
+                ['KM total', `${numeroPtBr(detalhe.km_total)} km`],
+                ['Manha', `${horaBr(detalhe.manha_inicio)} / ${horaBr(detalhe.manha_fim)}`],
+                ['Tarde', `${horaBr(detalhe.tarde_inicio)} / ${horaBr(detalhe.tarde_fim)}`],
+                ['Noite', `${horaBr(detalhe.noite_inicio)} / ${horaBr(detalhe.noite_fim)}`],
+                ['Observacao', detalhe.observacao],
+                ['Usuario inclusao', detalhe.usuario_inclusao_nome],
+                ['Data hora inclusao', dataHoraBrMinuto(detalhe.data_hora_inclusao)],
+                ['Usuario alteracao', detalhe.usuario_alteracao_nome],
+                ['Data hora ultima alteracao', dataHoraBrMinuto(detalhe.data_hora_ultima_alteracao)],
+                ['Cancelado', valorSimNao(detalhe.cancelado, 'Sim', 'Nao')],
+                ['Motivo cancelamento', detalhe.motivo_cancelamento_descricao],
+                ['Validado', valorSimNao(detalhe.validado, 'Sim', 'Nao')],
+                ['Integrado', valorSimNao(detalhe.integrado, 'Sim', 'Nao')]
+              ].map(([rotulo, valor]) => <p key={String(rotulo)}><span>{rotulo}</span><b>{String(valor ?? '-')}</b></p>)}
+            </div>
+            <section className="frotaHistoricoDetalhe">
+              <header>
+                <div>
+                  <span>Historico</span>
+                  <h4>Movimentacoes do apontamento</h4>
+                </div>
+              </header>
+              {historicoKm.length ? (
+                <div className="frotaHistoricoLista">
+                  {historicoKm.map((item) => {
+                    const resumoPosterior = resumirHistoricoFrota(item.valor_posterior);
+                    const resumoAnterior = resumirHistoricoFrota(item.valor_anterior);
+                    return (
+                      <article key={String(item.id)}>
+                        <div>
+                          <strong>{String(item.operacao ?? '-').replace(/_/g, ' ')}</strong>
+                          <span>{dataHoraBrSegundo(item.criado_em)} - {String(item.usuario_nome ?? item.usuario_id ?? 'Sistema')}</span>
+                        </div>
+                        <small>{String(item.origem_operacao ?? 'CONTROL_S_HUB')}</small>
+                        {(resumoPosterior || resumoAnterior) && (
+                          <p>
+                            {resumoAnterior && <><b>Antes:</b> {resumoAnterior}<br /></>}
+                            {resumoPosterior && <><b>Depois:</b> {resumoPosterior}</>}
+                          </p>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="frotaHistoricoVazio">Nenhum historico registrado para este apontamento.</p>
+              )}
+            </section>
+          </section>
+        </div>
+      )}
+      {cancelamentoAberto && (
+        <div className="frotaModalOverlay" role="dialog" aria-modal="true" aria-label="Cancelar KM">
+          <button className="frotaModalFundo" type="button" aria-label="Fechar cancelamento" onClick={() => setCancelamentoAberto(false)} />
+          <section className="frotaModalDetalhe frotaModalCompacto">
+            <header><div><span>Cancelamento manual</span><h3>Cancelar {selecionados.length} apontamento(s)</h3></div><button className="ghost" type="button" onClick={() => setCancelamentoAberto(false)}>Fechar</button></header>
+            <label>Motivo<select value={motivoCancelamentoId} onChange={(e) => setMotivoCancelamentoId(e.target.value)}><option value="">Selecione</option>{motivosCancelamento.filter((motivo) => motivo.ativo !== false).map((motivo) => <option key={String(motivo.id)} value={String(motivo.id)}>{String(motivo.descricao)}</option>)}</select></label>
+            <label>Observacao<textarea value={observacaoCancelamento} onChange={(e) => setObservacaoCancelamento(e.target.value)} /></label>
+            <button className="primary perigo" type="button" onClick={cancelarSelecionadosKm}><Ban size={15} />Confirmar cancelamento</button>
+          </section>
+        </div>
+      )}
+      {modalErro && (
+        <div className="frotaModalOverlay" role="dialog" aria-modal="true" aria-label="Erro de validacao KM">
+          <button className="frotaModalFundo" type="button" aria-label="Fechar erro" onClick={() => setModalErro('')} />
+          <section className="frotaModalDetalhe frotaModalCompacto">
+            <header><div><span>Validacao KM</span><h3>Nao foi possivel concluir</h3></div><button className="ghost" type="button" onClick={() => setModalErro('')}>Fechar</button></header>
+            <div className="alerta">{modalErro}</div>
+            <button className="primary" type="button" onClick={() => setModalErro('')}>Entendi</button>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ConfiguracoesFrota() {
   const [dados, setDados] = useState<RegistroGenerico>({});
   const [tipos, setTipos] = useState<RegistroGenerico[]>([]);
+  const [perfis, setPerfis] = useState<RegistroGenerico[]>([]);
   const [mensagem, setMensagem] = useState('');
 
   useEffect(() => {
     listarConfiguracoesFrota().then(setDados).catch(() => setDados({}));
     listarTiposDespesasFrota().then(setTipos).catch(() => setTipos([]));
+    listarPerfis().then(setPerfis).catch(() => setPerfis([]));
   }, []);
 
   async function salvar(evento: FormEvent) {
@@ -1853,8 +2955,18 @@ export function ConfiguracoesFrota() {
             {tipos.map((tipo) => <option key={String(tipo.id)} value={String(tipo.id)}>{String(tipo.descricao)}</option>)}
           </select>
         </label>
+        <label>Dia inicial do periodo de KM<input type="number" min="1" max="31" value={String(dados.dia_inicio_periodo_km ?? 26)} onChange={(e) => setDados({ ...dados, dia_inicio_periodo_km: Number(e.target.value) })} /></label>
+        <label>Dia final do periodo de KM<input type="number" min="1" max="31" value={String(dados.dia_fim_periodo_km ?? 25)} onChange={(e) => setDados({ ...dados, dia_fim_periodo_km: Number(e.target.value) })} /></label>
+        <label>Complemento do e-mail dos motoristas<input placeholder="@monvizo.com.br" value={String(dados.email_padrao_motorista ?? '')} onChange={(e) => setDados({ ...dados, email_padrao_motorista: e.target.value })} /></label>
+        <label>Grupo padrao para motoristas
+          <select value={String(dados.perfil_padrao_motorista_id ?? '')} onChange={(e) => setDados({ ...dados, perfil_padrao_motorista_id: e.target.value ? Number(e.target.value) : '' })}>
+            <option value="">Selecione</option>
+            {perfis.map((perfil) => <option key={String(perfil.id)} value={String(perfil.id)}>{String(perfil.nome)}</option>)}
+          </select>
+        </label>
         {['nome_modulo', 'status_modulo', 'moeda_padrao'].map((campo) => <label key={campo}>{campo.replace(/_/g, ' ')}<input value={String(dados[campo] ?? '')} onChange={(e) => setDados({ ...dados, [campo]: e.target.value })} /></label>)}
         {['permitir_reimportacao_nao_validada', 'bloquear_registro_integrado', 'atualizar_odometro_automaticamente'].map((campo) => <label key={campo}>{campo.replace(/_/g, ' ')}<input type="checkbox" checked={dados[campo] !== false} onChange={(e) => setDados({ ...dados, [campo]: e.target.checked })} /></label>)}
+        <label>Permitir ver KM de terceiros<input type="checkbox" checked={Boolean(dados.permitir_ver_km_terceiros)} onChange={(e) => setDados({ ...dados, permitir_ver_km_terceiros: e.target.checked })} /></label>
         <button className="primary">Salvar configuracoes</button>
       </form>
     </section>
@@ -1866,23 +2978,29 @@ export function ModuloFrota({ tela }: { tela: TelaFrota }) {
   const [motoristas, setMotoristas] = useState<RegistroGenerico[]>([]);
   const [tipos, setTipos] = useState<RegistroGenerico[]>([]);
   const [fornecedores, setFornecedores] = useState<RegistroGenerico[]>([]);
+  const [usuarios, setUsuarios] = useState<RegistroGenerico[]>([]);
 
   useEffect(() => {
     listarDepartamentosFrota().then(setDepartamentos).catch(() => setDepartamentos([]));
     listarMotoristasFrota().then(setMotoristas).catch(() => setMotoristas([]));
     listarTiposDespesasFrota().then(setTipos).catch(() => setTipos([]));
     listarFornecedoresFrota().then(setFornecedores).catch(() => setFornecedores([]));
+    listarUsuarios().then(setUsuarios).catch(() => setUsuarios([]));
   }, [tela]);
 
   if (tela === 'frotaDashboard') return <DashboardFrota />;
   if (tela === 'frotaImportacao') return <ImportacaoFrota />;
   if (tela === 'frotaValidacao') return <ValidacaoFrota />;
+  if (tela === 'frotaKmApontamento') return <ApontamentoKmFrota />;
+  if (tela === 'frotaKmValidacao') return <ValidacaoKmFrota />;
   if (tela === 'frotaConfiguracoes') return <ConfiguracoesFrota />;
-  if (tela === 'frotaDepartamentos') return <TabelaFrota titulo="Departamentos" subtitulo="Departamentos vinculados a empresa ativa pelo codigo da empresa." carregar={listarDepartamentosFrota} colunas={['codigo_decis', 'descricao', 'filial_decis', 'codigo_empresa', 'ativo']} salvar={salvarDepartamentoFrota} excluir={excluirDepartamentoFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'descricao', rotulo: 'Descricao' }, { nome: 'filial_decis', rotulo: 'Filial Decis' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
-  if (tela === 'frotaMotoristas') return <TabelaFrota titulo="Motoristas" subtitulo="Cadastro base de motoristas recebidos ou mantidos no HUB." carregar={listarMotoristasFrota} colunas={['codigo_decis', 'nome', 'ativo']} salvar={salvarMotoristaFrota} excluir={excluirMotoristaFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'nome', rotulo: 'Nome' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
+  if (tela === 'frotaDepartamentos') return <TabelaFrota titulo="Departamentos" subtitulo="Departamentos vinculados a empresa ativa pelo codigo da empresa." carregar={listarDepartamentosFrota} colunas={['codigo_decis', 'descricao', 'filial_decis', 'codigo_origem_decis', 'codigo_empresa', 'ativo']} salvar={salvarDepartamentoFrota} excluir={excluirDepartamentoFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'descricao', rotulo: 'Descricao' }, { nome: 'filial_decis', rotulo: 'Filial Decis' }, { nome: 'codigo_origem_decis', rotulo: 'Codigo Origem Decis' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
+  if (tela === 'frotaMotoristas') return <TabelaFrota titulo="Motoristas" subtitulo="Motoristas, mecanicos, ajudantes e coordenadores usados nos apontamentos de KM." carregar={listarMotoristasFrota} colunas={['codigo_decis', 'nome', 'usuario_nome', 'departamento_descricao', 'ajudante', 'ajudante_padrao_nome', 'coordenador_padrao_nome', 'coordenador', 'codigo_coordenador_decis', 'ativo']} salvar={salvarMotoristaFrota} excluir={excluirMotoristaFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'nome', rotulo: 'Nome' }, { nome: 'usuario_id', rotulo: 'Usuario vinculado', tipo: 'select', opcoes: usuarios, textoOpcao: 'nome' }, { nome: 'departamento_id', rotulo: 'Departamento', tipo: 'select', opcoes: departamentos, textoOpcao: 'descricao' }, { nome: 'ajudante', rotulo: 'Ajudante', tipo: 'checkbox', valorPadrao: false }, { nome: 'ajudante_padrao_motorista_id', rotulo: 'Ajudante padrao', tipo: 'select', opcoes: motoristas, textoOpcao: 'nome' }, { nome: 'coordenador_padrao_motorista_id', rotulo: 'Coordenador padrao', tipo: 'select', opcoes: motoristas.filter((motorista) => Boolean(motorista.coordenador) && Boolean(motorista.usuario_id)), textoOpcao: 'nome' }, { nome: 'coordenador', rotulo: 'Coordenador', tipo: 'checkbox', valorPadrao: false }, { nome: 'codigo_coordenador_decis', rotulo: 'Codigo Coordenador Decis' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} acoesExtras={(linha, recarregar, definirMensagem, definirErro) => !linha.usuario_id ? <button className="ghost" onClick={async () => { try { definirErro(''); const usuario = await gerarUsuarioMotoristaFrota(Number(linha.id)); definirMensagem(`Usuario ${usuario.email} criado. Senha inicial: controls. No primeiro acesso sera solicitada a troca da senha.`); await recarregar(); } catch (error) { definirErro(error instanceof Error ? error.message : 'Falha ao gerar usuario.'); } }}>Gerar usuario</button> : null} />;
+  if (tela === 'frotaPedidosVenda') return <TabelaFrota titulo="Pedidos de Venda" subtitulo="Pedidos integrados do Decis usados como obra/base do apontamento de KM." carregar={listarPedidosVendaFrota} colunas={['filial_decis', 'pedido', 'departamento_codigo_decis', 'departamento_nome', 'data_pedido', 'cliente_codigo_decis', 'cliente_nome', 'valor', 'codigo_coordenador_decis', 'coordenador_nome', 'pedido_sequencial', 'ativo']} salvar={salvarPedidoVendaFrota} excluir={excluirPedidoVendaFrota} campos={[{ nome: 'filial_decis', rotulo: 'Filial' }, { nome: 'pedido', rotulo: 'Pedido' }, { nome: 'departamento_codigo_decis', rotulo: 'Codigo Departamento Decis' }, { nome: 'departamento_nome', rotulo: 'Nome Departamento' }, { nome: 'data_pedido', rotulo: 'Data', tipo: 'date' }, { nome: 'cliente_codigo_decis', rotulo: 'Codigo Cliente Decis' }, { nome: 'cliente_nome', rotulo: 'Nome Cliente / Obra' }, { nome: 'valor', rotulo: 'Valor', tipo: 'number' }, { nome: 'codigo_coordenador_decis', rotulo: 'Codigo Coordenador Decis' }, { nome: 'coordenador_nome', rotulo: 'Nome Coordenador' }, { nome: 'pedido_sequencial', rotulo: 'Pedido Sequencial' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
   if (tela === 'frotaVeiculos') return <TabelaFrota titulo="Veiculos" subtitulo="Placa unica, departamento, motorista e odometro protegido por regra de banco." carregar={listarVeiculosFrota} colunas={['codigo_decis', 'placa', 'modelo', 'departamento_descricao', 'motorista_nome', 'odometro_atual', 'ativo']} salvar={salvarVeiculoFrota} excluir={excluirVeiculoFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'placa', rotulo: 'Placa' }, { nome: 'modelo', rotulo: 'Modelo' }, { nome: 'departamento_id', rotulo: 'Departamento', tipo: 'select', opcoes: departamentos, textoOpcao: 'descricao' }, { nome: 'motorista_id', rotulo: 'Motorista', tipo: 'select', opcoes: motoristas, textoOpcao: 'nome' }, { nome: 'odometro_atual', rotulo: 'Odometro atual', tipo: 'number' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
   if (tela === 'frotaTiposDespesas') return <TabelaFrota titulo="Tipos de Despesas" subtitulo="Tipos internos usados na classificacao das despesas importadas." carregar={listarTiposDespesasFrota} colunas={['codigo_decis', 'descricao', 'natureza_credito_decis', 'conf_custo_decis', 'ativo']} salvar={salvarTipoDespesaFrota} excluir={excluirTipoDespesaFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'descricao', rotulo: 'Descricao' }, { nome: 'natureza_credito_decis', rotulo: 'Natureza de credito Decis', valorPadrao: '2' }, { nome: 'conf_custo_decis', rotulo: 'Conf Custo Decis' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
   if (tela === 'frotaFornecedores') return <TabelaFrota titulo="Fornecedores" subtitulo="Fornecedores de despesas e suas descricoes de origem." carregar={listarFornecedoresFrota} colunas={['codigo_decis', 'nome', 'nome_fantasia', 'codigo_forma_pagamento_decis', 'descricao_forma_pagamento', 'dia_vencimento', 'natureza_credito_decis', 'grupo_custo_decis', 'conf_custo_decis', 'ativo']} salvar={salvarFornecedorFrota} excluir={excluirFornecedorFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'nome', rotulo: 'Nome' }, { nome: 'nome_fantasia', rotulo: 'Nome fantasia' }, { nome: 'codigo_forma_pagamento_decis', rotulo: 'Codigo Forma de Pagamento Decis' }, { nome: 'descricao_forma_pagamento', rotulo: 'Descricao forma de pagamento' }, { nome: 'dia_vencimento', rotulo: 'Dia de vencimento', tipo: 'number' }, { nome: 'natureza_credito_decis', rotulo: 'Nat de Credito Decis' }, { nome: 'grupo_custo_decis', rotulo: 'Grupo de Custo Decis' }, { nome: 'conf_custo_decis', rotulo: 'Conf Custo Decis' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
   if (tela === 'frotaMotivosCancelamento') return <TabelaFrota titulo="Motivos de Cancelamento" subtitulo="Motivos usados para cancelar documentos de despesas na validacao." carregar={listarMotivosCancelamentoFrota} colunas={['codigo_decis', 'descricao', 'ativo']} salvar={salvarMotivoCancelamentoFrota} excluir={excluirMotivoCancelamentoFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'descricao', rotulo: 'Descricao' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
+  if (tela === 'frotaMotivosSemPedido') return <TabelaFrota titulo="Motivos Sem Pedido" subtitulo="Motivos usados no apontamento de KM quando nao existe pedido vinculado." carregar={listarMotivosSemPedidoFrota} colunas={['codigo_decis', 'descricao', 'ativo']} salvar={salvarMotivoSemPedidoFrota} excluir={excluirMotivoSemPedidoFrota} campos={[{ nome: 'codigo_decis', rotulo: 'Codigo Decis' }, { nome: 'descricao', rotulo: 'Descricao' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
   return <TabelaFrota titulo="Despesa por Tipo" subtitulo="De/Para persistente entre descricao do fornecedor e tipo interno de despesa." carregar={listarDespesasTiposFrota} colunas={['descricao_despesa', 'tipo_despesa_descricao', 'fornecedor_nome', 'ativo']} salvar={salvarDespesaTipoFrota} excluir={excluirDespesaTipoFrota} campos={[{ nome: 'descricao_despesa', rotulo: 'Descricao da despesa' }, { nome: 'tipo_despesa_id', rotulo: 'Tipo da despesa', tipo: 'select', opcoes: tipos, textoOpcao: 'descricao' }, { nome: 'fornecedor_id', rotulo: 'Fornecedor', tipo: 'select', opcoes: fornecedores, textoOpcao: 'nome_fantasia' }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' }]} />;
 }

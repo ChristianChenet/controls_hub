@@ -23,7 +23,10 @@ export default defineConfig(({ mode }) => {
         'localhost',
         '127.0.0.1',
         '192.168.1.70',
-        'frete.monvizo.com.br'
+        'frete.monvizo.com.br',
+        '.trycloudflare.com',
+        '.ngrok-free.dev',
+        'augmented-pouch-monogram.ngrok-free.dev'
       ],
       proxy: {
         // Em desenvolvimento local o frontend roda no Vite, mas a API fica no backend.

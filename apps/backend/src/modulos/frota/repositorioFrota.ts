@@ -25,6 +25,24 @@ export type FiltrosDashboardFrota = {
   situacoes?: string | null;
 };
 
+export type FiltrosKmFrota = {
+  empresaId: number;
+  dataInicial?: string | null;
+  dataFinal?: string | null;
+  motoristaId?: number | null;
+  veiculoId?: number | null;
+  departamentoId?: number | null;
+  coordenadorId?: number | null;
+  validado?: string | null;
+  integrado?: string | null;
+  cancelado?: string | null;
+  usuarioId?: number | null;
+  podeVerTerceiros?: boolean;
+  podeVerKmCoordenador?: boolean;
+  incluirProprioComCoordenacao?: boolean;
+  somenteCoordenacao?: boolean;
+};
+
 let promessaEstruturaFrota: Promise<void> | null = null;
 
 async function lerMigrationFrota() {
@@ -158,6 +176,16 @@ function calcularDataDespesa(dataReferencia: unknown) {
     return null;
   }
   return data.toISOString().slice(0, 10);
+}
+
+function dataIso(valor: unknown) {
+  const data = converterData(valor);
+  return data ? data.toISOString().slice(0, 10) : texto(valor);
+}
+
+function horaTexto(valor: unknown) {
+  const valorTexto = texto(valor);
+  return valorTexto ? valorTexto.slice(0, 5) : null;
 }
 
 async function registrarHistoricoFrota(dados: {
@@ -382,20 +410,22 @@ export async function listarDepartamentosFrota(empresaId: number) {
 
 export async function salvarDepartamentoFrota(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
   const registro = await consultarUm(
-    `INSERT INTO frota_departamentos (empresa_id, codigo_decis, descricao, filial_decis, ativo, criado_por_usuario_id)
-    VALUES ($1, $2, $3, $4, COALESCE($5, TRUE), $6)
+    `INSERT INTO frota_departamentos (empresa_id, codigo_decis, descricao, filial_decis, codigo_origem_decis, ativo, criado_por_usuario_id)
+    VALUES ($1, $2, $3, $4, $5, COALESCE($6, TRUE), $7)
     ON CONFLICT (empresa_id, codigo_decis) DO UPDATE SET
       descricao = EXCLUDED.descricao,
       filial_decis = EXCLUDED.filial_decis,
+      codigo_origem_decis = EXCLUDED.codigo_origem_decis,
       ativo = EXCLUDED.ativo,
       alterado_em = NOW(),
-      alterado_por_usuario_id = $6
+      alterado_por_usuario_id = $7
     RETURNING *`,
     [
       empresaId,
       dados.codigo_decis,
       dados.descricao,
       dados.filial_decis ?? null,
+      dados.codigo_origem_decis ?? null,
       dados.ativo ?? true,
       usuarioId
     ]
@@ -406,27 +436,238 @@ export async function salvarDepartamentoFrota(empresaId: number, dados: Record<s
 
 export async function listarMotoristasFrota() {
   return consultar(
-    `SELECT id, codigo_decis, nome, ativo
-    FROM frota_motoristas
-    WHERE excluido = FALSE
-    ORDER BY nome ASC`
+    `SELECT
+      m.id,
+      m.codigo_decis,
+      m.nome,
+      m.usuario_id,
+      u.nome AS usuario_nome,
+      m.departamento_id,
+      d.descricao AS departamento_descricao,
+      m.ajudante,
+      m.ajudante_padrao,
+      m.ajudante_padrao_motorista_id,
+      aj.nome AS ajudante_padrao_nome,
+      m.coordenador_padrao_motorista_id,
+      cp.nome AS coordenador_padrao_nome,
+      m.coordenador,
+      m.codigo_coordenador_decis,
+      m.ativo
+    FROM frota_motoristas m
+    LEFT JOIN usuarios u ON u.id = m.usuario_id
+    LEFT JOIN frota_departamentos d ON d.id = m.departamento_id
+    LEFT JOIN frota_motoristas aj ON aj.id = m.ajudante_padrao_motorista_id
+    LEFT JOIN frota_motoristas cp ON cp.id = m.coordenador_padrao_motorista_id
+    WHERE m.excluido = FALSE
+    ORDER BY m.nome ASC`
   );
 }
 
 export async function salvarMotoristaFrota(dados: Record<string, unknown>, usuarioId: number) {
+  if (dados.id && dados.ajudante_padrao_motorista_id && Number(dados.id) === Number(dados.ajudante_padrao_motorista_id)) {
+    throw new Error('O ajudante padrao nao pode ser o proprio motorista.');
+  }
+  if (dados.id && dados.coordenador_padrao_motorista_id && Number(dados.id) === Number(dados.coordenador_padrao_motorista_id)) {
+    throw new Error('O coordenador padrao nao pode ser o proprio motorista.');
+  }
+  if (dados.coordenador_padrao_motorista_id) {
+    const coordenadorPadrao = await consultarUm<{ id: number }>(
+      `SELECT id
+      FROM frota_motoristas
+      WHERE id = $1
+        AND coordenador = TRUE
+        AND usuario_id IS NOT NULL
+        AND excluido = FALSE
+      LIMIT 1`,
+      [Number(dados.coordenador_padrao_motorista_id)]
+    );
+    if (!coordenadorPadrao) {
+      throw new Error('Selecione um coordenador padrao marcado como coordenador e com usuario vinculado.');
+    }
+  }
+  if (dados.usuario_id) {
+    const usuarioVinculado = await consultarUm<{ id: number; nome: string }>(
+      `SELECT id, nome
+      FROM frota_motoristas
+      WHERE usuario_id = $1
+        AND excluido = FALSE
+        AND ($2::BIGINT IS NULL OR id <> $2::BIGINT)
+      LIMIT 1`,
+      [Number(dados.usuario_id), dados.id ? Number(dados.id) : null]
+    );
+    if (usuarioVinculado) {
+      throw new Error(`Usuario ja vinculado ao motorista ${usuarioVinculado.nome}.`);
+    }
+  }
   const registro = await consultarUm(
-    `INSERT INTO frota_motoristas (codigo_decis, nome, ativo, criado_por_usuario_id)
-    VALUES ($1, $2, COALESCE($3, TRUE), $4)
+    `INSERT INTO frota_motoristas (
+      codigo_decis,
+      nome,
+      usuario_id,
+      departamento_id,
+      ajudante,
+      ajudante_padrao,
+      ajudante_padrao_motorista_id,
+      coordenador_padrao_motorista_id,
+      coordenador,
+      codigo_coordenador_decis,
+      ativo,
+      criado_por_usuario_id
+    )
+    VALUES ($1, $2, $3, $4, COALESCE($5, FALSE), NULLIF($6, ''), $7, $8, COALESCE($9, FALSE), CASE WHEN COALESCE($9, FALSE) THEN NULLIF($10, '') ELSE NULL END, COALESCE($11, TRUE), $12)
     ON CONFLICT (codigo_decis) DO UPDATE SET
       nome = EXCLUDED.nome,
+      usuario_id = EXCLUDED.usuario_id,
+      departamento_id = EXCLUDED.departamento_id,
+      ajudante = EXCLUDED.ajudante,
+      ajudante_padrao = EXCLUDED.ajudante_padrao,
+      ajudante_padrao_motorista_id = EXCLUDED.ajudante_padrao_motorista_id,
+      coordenador_padrao_motorista_id = EXCLUDED.coordenador_padrao_motorista_id,
+      coordenador = EXCLUDED.coordenador,
+      codigo_coordenador_decis = EXCLUDED.codigo_coordenador_decis,
       ativo = EXCLUDED.ativo,
       alterado_em = NOW(),
-      alterado_por_usuario_id = $4
+      alterado_por_usuario_id = $12
     RETURNING *`,
-    [dados.codigo_decis, dados.nome, dados.ativo ?? true, usuarioId]
+    [
+      dados.codigo_decis,
+      dados.nome,
+      dados.usuario_id ? Number(dados.usuario_id) : null,
+      dados.departamento_id ? Number(dados.departamento_id) : null,
+      dados.ajudante ?? false,
+      dados.ajudante_padrao ?? null,
+      dados.ajudante_padrao_motorista_id ? Number(dados.ajudante_padrao_motorista_id) : null,
+      dados.coordenador_padrao_motorista_id ? Number(dados.coordenador_padrao_motorista_id) : null,
+      dados.coordenador ?? false,
+      dados.codigo_coordenador_decis ?? null,
+      dados.ativo ?? true,
+      usuarioId
+    ]
   );
   await registrarHistoricoFrota({ usuarioId, operacao: 'SALVAR_MOTORISTA', tabelaAfetada: 'frota_motoristas', registroId: registro?.id, valorPosterior: registro });
   return registro;
+}
+
+function normalizarParteEmail(texto: string) {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+function montarEmailMotorista(nome: string, dominio: string) {
+  const partes = nome.split(/\s+/).map(normalizarParteEmail).filter(Boolean);
+  if (partes.length === 0) {
+    throw new Error('Nome do motorista invalido para gerar usuario.');
+  }
+  const primeiro = partes[0];
+  const ultimo = partes.length > 1 ? partes[partes.length - 1] : partes[0];
+  const dominioTratado = dominio.trim().toLowerCase().startsWith('@') ? dominio.trim().toLowerCase() : `@${dominio.trim().toLowerCase()}`;
+  return `${primeiro}.${ultimo}${dominioTratado}`;
+}
+
+export async function gerarUsuarioMotoristaFrota(empresaId: number, motoristaId: number, usuarioId: number) {
+  const config = await listarConfiguracoesFrota(empresaId);
+  const dominioEmail = String(config.email_padrao_motorista ?? '').trim();
+  const perfilPadraoId = Number(config.perfil_padrao_motorista_id ?? 0);
+
+  if (!dominioEmail) {
+    throw new Error('Configure o complemento do e-mail dos motoristas nas configuracoes do Frota.');
+  }
+  if (!perfilPadraoId) {
+    throw new Error('Configure o grupo padrao para cadastro de motoristas nas configuracoes do Frota.');
+  }
+
+  const motorista = await consultarUm<{ id: number; nome: string; usuario_id: number | null }>(
+    `SELECT id, nome, usuario_id
+    FROM frota_motoristas
+    WHERE id = $1
+      AND excluido = FALSE
+      AND ativo = TRUE`,
+    [motoristaId]
+  );
+  if (!motorista) {
+    throw new Error('Motorista nao encontrado.');
+  }
+  if (motorista.usuario_id) {
+    throw new Error('Motorista ja possui usuario vinculado.');
+  }
+
+  const perfil = await consultarUm<{ id: number; nome: string }>(
+    `SELECT id, nome
+    FROM perfis
+    WHERE id = $1
+      AND ativo = TRUE
+      AND excluido = FALSE`,
+    [perfilPadraoId]
+  );
+  if (!perfil) {
+    throw new Error('Grupo padrao configurado para motoristas nao foi encontrado.');
+  }
+
+  const email = montarEmailMotorista(motorista.nome, dominioEmail);
+  const emailExistente = await consultarUm<{ id: number }>(
+    `SELECT id
+    FROM usuarios
+    WHERE LOWER(email) = LOWER($1)
+      AND excluido = FALSE`,
+    [email]
+  );
+  if (emailExistente) {
+    throw new Error(`Ja existe usuario cadastrado com o e-mail ${email}.`);
+  }
+
+  const cliente = await banco.connect();
+  try {
+    await cliente.query('BEGIN');
+    const usuarioCriado = await cliente.query<{ id: number; nome: string; email: string }>(
+      `INSERT INTO usuarios (
+        perfil_id,
+        nome,
+        email,
+        senha_hash,
+        ativo,
+        administrador,
+        superadmin,
+        alterar_senha_proximo_login,
+        criado_por_usuario_id
+      )
+      VALUES ($1, $2, LOWER($3), CRYPT('controls', GEN_SALT('bf')), TRUE, FALSE, FALSE, TRUE, $4)
+      RETURNING id, nome, email`,
+      [perfilPadraoId, motorista.nome, email, usuarioId]
+    );
+    const novoUsuario = usuarioCriado.rows[0];
+
+    await cliente.query(
+      `INSERT INTO usuarios_empresas (usuario_id, empresa_id, padrao, ativo)
+      VALUES ($1, $2, TRUE, TRUE)
+      ON CONFLICT (usuario_id, empresa_id) DO UPDATE SET
+        padrao = TRUE,
+        ativo = TRUE`,
+      [novoUsuario.id, empresaId]
+    );
+
+    await cliente.query(
+      `UPDATE frota_motoristas
+      SET usuario_id = $1,
+        alterado_em = NOW(),
+        alterado_por_usuario_id = $2
+      WHERE id = $3
+        AND usuario_id IS NULL`,
+      [novoUsuario.id, usuarioId, motoristaId]
+    );
+
+    await cliente.query('COMMIT');
+    await registrarHistoricoFrota({ empresaId, usuarioId, operacao: 'GERAR_USUARIO_MOTORISTA', tabelaAfetada: 'frota_motoristas', registroId: motoristaId, valorPosterior: { usuario_id: novoUsuario.id, email: novoUsuario.email, perfil_id: perfilPadraoId } });
+    return { ...novoUsuario, perfil_nome: perfil.nome, senha_inicial: 'controls', alterar_senha_proximo_login: true };
+  } catch (error) {
+    await cliente.query('ROLLBACK');
+    throw error;
+  } finally {
+    cliente.release();
+  }
 }
 
 export async function listarTiposDespesasFrota() {
@@ -453,6 +694,31 @@ export async function salvarTipoDespesaFrota(dados: Record<string, unknown>, usu
     [dados.codigo_decis, dados.descricao, dados.natureza_credito_decis ?? '2', dados.conf_custo_decis ?? null, dados.ativo ?? true, usuarioId]
   );
   await registrarHistoricoFrota({ usuarioId, operacao: 'SALVAR_TIPO_DESPESA', tabelaAfetada: 'frota_tipos_despesas', registroId: registro?.id, valorPosterior: registro });
+  return registro;
+}
+
+export async function listarMotivosSemPedidoFrota() {
+  return consultar(
+    `SELECT id, codigo_decis, descricao, ativo
+    FROM frota_motivos_sem_pedido
+    WHERE excluido = FALSE
+    ORDER BY descricao ASC`
+  );
+}
+
+export async function salvarMotivoSemPedidoFrota(dados: Record<string, unknown>, usuarioId: number) {
+  const registro = await consultarUm(
+    `INSERT INTO frota_motivos_sem_pedido (codigo_decis, descricao, ativo, criado_por_usuario_id)
+    VALUES ($1, $2, COALESCE($3, TRUE), $4)
+    ON CONFLICT (descricao) DO UPDATE SET
+      codigo_decis = EXCLUDED.codigo_decis,
+      ativo = EXCLUDED.ativo,
+      alterado_em = NOW(),
+      alterado_por_usuario_id = $4
+    RETURNING *`,
+    [dados.codigo_decis ?? null, dados.descricao, dados.ativo ?? true, usuarioId]
+  );
+  await registrarHistoricoFrota({ usuarioId, operacao: 'SALVAR_MOTIVO_SEM_PEDIDO', tabelaAfetada: 'frota_motivos_sem_pedido', registroId: registro?.id, valorPosterior: registro });
   return registro;
 }
 
@@ -1074,6 +1340,19 @@ export async function listarHistoricoDespesaFrota(empresaId: number, despesaId: 
   );
 }
 
+export async function listarHistoricoApontamentoKmFrota(empresaId: number, apontamentoId: number) {
+  return consultar(
+    `SELECT h.*, u.nome AS usuario_nome
+    FROM frota_historicos h
+    LEFT JOIN usuarios u ON u.id = h.usuario_id
+    WHERE h.empresa_id = $1
+      AND h.tabela_afetada = 'frota_apontamentos_km'
+      AND h.registro_id = $2
+    ORDER BY h.criado_em DESC`,
+    [empresaId, apontamentoId]
+  );
+}
+
 export async function obterMapeamentoImportacaoFrota(fornecedorId: number) {
   return consultarUm(
     `SELECT fornecedor_id, mapeamento
@@ -1396,7 +1675,632 @@ export async function obterResumoIntegracaoFrota(empresaId: number) {
   };
 }
 
-export async function listarConfiguracoesFrota(empresaId: number) {
+function condicaoKmBase(filtros: FiltrosKmFrota) {
+  const params: unknown[] = [filtros.empresaId];
+  const condicoes = ['a.empresa_id = $1', 'a.excluido = FALSE'];
+  if (filtros.dataInicial) {
+    params.push(filtros.dataInicial);
+    condicoes.push(`a.data_apontamento >= $${params.length}::DATE`);
+  }
+  if (filtros.dataFinal) {
+    params.push(filtros.dataFinal);
+    condicoes.push(`a.data_apontamento <= $${params.length}::DATE`);
+  }
+  if (filtros.motoristaId) {
+    params.push(filtros.motoristaId);
+    condicoes.push(`a.motorista_id = $${params.length}::BIGINT`);
+  }
+  if (filtros.veiculoId) {
+    params.push(filtros.veiculoId);
+    condicoes.push(`a.veiculo_id = $${params.length}::BIGINT`);
+  }
+  if (filtros.departamentoId) {
+    params.push(filtros.departamentoId);
+    condicoes.push(`a.departamento_id = $${params.length}::BIGINT`);
+  }
+  const coordenadorComProprio = filtros.coordenadorId && filtros.incluirProprioComCoordenacao && !filtros.somenteCoordenacao && !filtros.podeVerTerceiros;
+  if (filtros.coordenadorId && !coordenadorComProprio) {
+    params.push(filtros.coordenadorId);
+    condicoes.push(`coord_efetivo.id = $${params.length}::BIGINT`);
+  }
+  if (filtros.validado === 'SIM') condicoes.push('a.validado = TRUE');
+  if (filtros.validado === 'NAO') condicoes.push('a.validado = FALSE');
+  if (filtros.integrado === 'SIM') condicoes.push('a.integrado = TRUE');
+  if (filtros.integrado === 'NAO') condicoes.push('a.integrado = FALSE');
+  if (filtros.cancelado === 'SIM') condicoes.push('a.cancelado = TRUE');
+  if (filtros.cancelado === 'NAO') condicoes.push('COALESCE(a.cancelado, FALSE) = FALSE');
+  if (coordenadorComProprio && filtros.usuarioId) {
+    params.push(filtros.usuarioId);
+    const indiceUsuario = params.length;
+    params.push(filtros.coordenadorId);
+    const indiceCoordenador = params.length;
+    condicoes.push(`(m.usuario_id = $${indiceUsuario}::BIGINT OR coord_efetivo.id = $${indiceCoordenador}::BIGINT)`);
+  } else if (!filtros.podeVerTerceiros && filtros.usuarioId && !filtros.coordenadorId) {
+    params.push(filtros.usuarioId);
+    condicoes.push(`m.usuario_id = $${params.length}::BIGINT`);
+  }
+  return { where: condicoes.join(' AND '), params };
+}
+
+export function calcularPeriodoKm(referencia = new Date(), diaInicio = 26, diaFim = 25) {
+  const ano = referencia.getFullYear();
+  const mes = referencia.getMonth();
+  const inicioBase = referencia.getDate() >= diaInicio
+    ? new Date(ano, mes, diaInicio)
+    : new Date(ano, mes - 1, diaInicio);
+  const fimBase = new Date(inicioBase.getFullYear(), inicioBase.getMonth() + 1, diaFim);
+  return {
+    data_inicial: inicioBase.toISOString().slice(0, 10),
+    data_final: fimBase.toISOString().slice(0, 10)
+  };
+}
+
+export async function obterContextoKmFrota(empresaId: number, usuarioId: number, permissoes: string[] = []) {
+  const config = await listarConfiguracoesFrota(empresaId);
+  const motorista = await consultarUm(
+    `SELECT
+      m.*,
+      d.descricao AS departamento_descricao,
+      v.id AS veiculo_id,
+      v.placa,
+      v.modelo,
+      v.odometro_atual,
+      aj.nome AS ajudante_padrao_nome,
+      m.coordenador_padrao_motorista_id,
+      cp.nome AS coordenador_padrao_nome
+    FROM frota_motoristas m
+    LEFT JOIN frota_departamentos d ON d.id = m.departamento_id
+    LEFT JOIN frota_veiculos v ON v.motorista_id = m.id AND v.excluido = FALSE AND v.ativo = TRUE
+    LEFT JOIN frota_motoristas aj ON aj.id = m.ajudante_padrao_motorista_id
+    LEFT JOIN frota_motoristas cp ON cp.id = m.coordenador_padrao_motorista_id
+    WHERE m.usuario_id = $1
+      AND m.excluido = FALSE
+    ORDER BY v.id NULLS LAST
+    LIMIT 1`,
+    [usuarioId]
+  );
+  const podeVerKmCoordenador = permissoes.includes('FROTA_CONSULTAR_KM_COORDENADOR');
+  const podeVerTerceiros = permissoes.includes('FROTA_CONSULTAR_KM_TERCEIROS')
+    || (!motorista && !podeVerKmCoordenador);
+  const periodo = calcularPeriodoKm(new Date(), Number(config.dia_inicio_periodo_km ?? 26), Number(config.dia_fim_periodo_km ?? 25));
+  return {
+    motorista,
+    pode_ver_terceiros: podeVerTerceiros,
+    pode_ver_km_coordenador: podeVerKmCoordenador,
+    periodo,
+    configuracoes: config
+  };
+}
+
+export async function listarPedidosVendaFrota(empresaId: number) {
+  return consultar(
+    `SELECT *
+    FROM frota_pedidos_venda
+    WHERE empresa_id = $1
+      AND excluido = FALSE
+    ORDER BY data_pedido DESC NULLS LAST, pedido DESC`,
+    [empresaId]
+  );
+}
+
+export async function salvarPedidoVendaFrota(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const registro = await consultarUm(
+    `INSERT INTO frota_pedidos_venda (
+      empresa_id,
+      filial_decis,
+      pedido,
+      departamento_codigo_decis,
+      departamento_nome,
+      departamento_vendedor,
+      data_pedido,
+      cliente_codigo_decis,
+      cliente_nome,
+      cliente,
+      valor,
+      codigo_coordenador_decis,
+      coordenador_nome,
+      coordenador,
+      pedido_sequencial,
+      ativo,
+      criado_por_usuario_id
+    )
+    VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, '')::DATE, NULLIF($8, ''), NULLIF($9, ''), $10, COALESCE($11::NUMERIC, 0), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), COALESCE($16, TRUE), $17)
+    ON CONFLICT (empresa_id, pedido) DO UPDATE SET
+      filial_decis = EXCLUDED.filial_decis,
+      departamento_codigo_decis = EXCLUDED.departamento_codigo_decis,
+      departamento_nome = EXCLUDED.departamento_nome,
+      departamento_vendedor = EXCLUDED.departamento_vendedor,
+      data_pedido = EXCLUDED.data_pedido,
+      cliente_codigo_decis = EXCLUDED.cliente_codigo_decis,
+      cliente_nome = EXCLUDED.cliente_nome,
+      cliente = EXCLUDED.cliente,
+      valor = EXCLUDED.valor,
+      codigo_coordenador_decis = EXCLUDED.codigo_coordenador_decis,
+      coordenador_nome = EXCLUDED.coordenador_nome,
+      coordenador = EXCLUDED.coordenador,
+      pedido_sequencial = EXCLUDED.pedido_sequencial,
+      ativo = EXCLUDED.ativo,
+      alterado_em = NOW(),
+      alterado_por_usuario_id = $17
+    RETURNING *`,
+    [
+      empresaId,
+      dados.filial_decis ?? null,
+      dados.pedido,
+      dados.departamento_codigo_decis ?? dados.departamento_codigo ?? null,
+      dados.departamento_nome ?? dados.departamento_vendedor ?? null,
+      dados.departamento_vendedor ?? null,
+      dados.data_pedido || dados.data ? dataIso(dados.data_pedido || dados.data) : '',
+      dados.cliente_codigo_decis ?? dados.cliente_codigo ?? null,
+      dados.cliente_nome ?? dados.cliente,
+      dados.cliente_nome ?? dados.cliente,
+      dados.valor ?? 0,
+      dados.codigo_coordenador_decis ?? null,
+      dados.coordenador_nome ?? dados.coordenador ?? null,
+      dados.coordenador_nome ?? dados.coordenador ?? null,
+      dados.pedido_sequencial ?? null,
+      dados.ativo ?? true,
+      usuarioId
+    ]
+  );
+  await registrarHistoricoFrota({ empresaId, usuarioId, operacao: 'SALVAR_PEDIDO_VENDA_KM', tabelaAfetada: 'frota_pedidos_venda', registroId: registro?.id, valorPosterior: registro });
+  return registro;
+}
+
+export async function listarApontamentosKmFrota(filtros: FiltrosKmFrota) {
+  const consultaBase = condicaoKmBase(filtros);
+  const linhas = await consultar(
+    `SELECT
+      a.*,
+      0 AS percurso,
+      v.codigo_decis AS veiculo_decis,
+      a.data_apontamento AS datasaida,
+      a.data_apontamento AS dataretorno,
+      p.coordenador_nome AS solicitante,
+      msp.descricao AS motivo,
+      d.codigo_origem_decis AS origem,
+      CASE
+        WHEN p.pedido_sequencial IS NOT NULL THEN p.pedido_sequencial
+        ELSE d.codigo_origem_decis
+      END AS destino,
+      m.codigo_decis AS motorista_decis,
+      a.km_inicial AS medicaosaida,
+      a.km_final AS medicaoretorno,
+      aj.codigo_decis AS ajudante_decis,
+      aj2.codigo_decis AS ajudante2_decis,
+      d.filial_decis AS filial,
+      uinc.nome AS usuario_inclusao_nome,
+      ualt.nome AS usuario_alteracao_nome,
+      mc.descricao AS motivo_cancelamento_descricao,
+      p.pedido,
+      p.cliente_codigo_decis,
+      COALESCE(p.cliente_nome, p.cliente) AS cliente,
+      p.departamento_codigo_decis,
+      COALESCE(p.departamento_nome, p.departamento_vendedor) AS departamento_pedido_nome,
+      p.codigo_coordenador_decis,
+      COALESCE(p.coordenador_nome, p.coordenador) AS coordenador,
+      coord_pedido.id AS coordenador_pedido_motorista_id,
+      coord_pedido.nome AS coordenador_pedido_motorista_nome,
+      coord_padrao.id AS coordenador_padrao_motorista_id,
+      coord_padrao.nome AS coordenador_padrao_motorista_nome,
+      COALESCE(coord_pedido.nome, coord_padrao.nome, 'SEM COORDENADOR') AS coordenador_encontrado,
+      p.filial_decis,
+      msp.descricao AS motivo_sem_pedido_descricao,
+      m.nome AS motorista_nome,
+      m.codigo_decis AS motorista_codigo_decis,
+      aj.nome AS ajudante_motorista_nome,
+      aj.codigo_decis AS ajudante_codigo_decis,
+      aj2.nome AS ajudante_motorista2_nome,
+      v.placa,
+      v.modelo,
+      d.descricao AS departamento_descricao,
+      d.codigo_origem_decis,
+      coord_efetivo.id AS coordenador_motorista_id,
+      coord_efetivo.nome AS coordenador_motorista_nome
+    FROM frota_apontamentos_km a
+    LEFT JOIN frota_pedidos_venda p ON p.id = a.pedido_venda_id
+    LEFT JOIN frota_motivos_sem_pedido msp ON msp.id = a.motivo_sem_pedido_id
+    LEFT JOIN frota_motivos_cancelamento mc ON mc.id = a.motivo_cancelamento_id
+    LEFT JOIN frota_motoristas m ON m.id = a.motorista_id
+    LEFT JOIN frota_motoristas aj ON aj.id = a.ajudante_motorista_id
+    LEFT JOIN frota_motoristas aj2 ON aj2.id = a.ajudante_motorista2_id
+    LEFT JOIN frota_veiculos v ON v.id = a.veiculo_id
+    LEFT JOIN frota_departamentos d ON d.id = a.departamento_id
+    LEFT JOIN usuarios uinc ON uinc.id = a.usuario_inclusao_id
+    LEFT JOIN usuarios ualt ON ualt.id = a.usuario_ultima_alteracao_id
+    LEFT JOIN frota_motoristas coord_pedido ON coord_pedido.coordenador = TRUE AND coord_pedido.usuario_id IS NOT NULL AND coord_pedido.codigo_coordenador_decis = p.codigo_coordenador_decis AND coord_pedido.excluido = FALSE
+    LEFT JOIN frota_motoristas coord_padrao ON coord_padrao.id = m.coordenador_padrao_motorista_id AND coord_padrao.coordenador = TRUE AND coord_padrao.usuario_id IS NOT NULL AND coord_padrao.excluido = FALSE
+    LEFT JOIN frota_motoristas coord_efetivo ON coord_efetivo.id = COALESCE(coord_pedido.id, coord_padrao.id)
+    WHERE ${consultaBase.where}
+    ORDER BY a.data_apontamento DESC, a.id DESC`,
+    consultaBase.params
+  );
+
+  const totalizadores = await consultarUm(
+    `SELECT
+      COUNT(*)::INTEGER AS registros,
+      COUNT(*) FILTER (WHERE a.validado = TRUE)::INTEGER AS validados,
+      COUNT(*) FILTER (WHERE a.validado = FALSE)::INTEGER AS pendentes,
+      COUNT(*) FILTER (WHERE a.integrado = TRUE)::INTEGER AS integrados,
+      COALESCE(SUM(a.km_total), 0)::NUMERIC AS km_total
+    FROM frota_apontamentos_km a
+    LEFT JOIN frota_pedidos_venda p ON p.id = a.pedido_venda_id
+    LEFT JOIN frota_motoristas m ON m.id = a.motorista_id
+    LEFT JOIN frota_veiculos v ON v.id = a.veiculo_id
+    LEFT JOIN frota_departamentos d ON d.id = a.departamento_id
+    LEFT JOIN frota_motoristas coord_pedido ON coord_pedido.coordenador = TRUE AND coord_pedido.usuario_id IS NOT NULL AND coord_pedido.codigo_coordenador_decis = p.codigo_coordenador_decis AND coord_pedido.excluido = FALSE
+    LEFT JOIN frota_motoristas coord_padrao ON coord_padrao.id = m.coordenador_padrao_motorista_id AND coord_padrao.coordenador = TRUE AND coord_padrao.usuario_id IS NOT NULL AND coord_padrao.excluido = FALSE
+    LEFT JOIN frota_motoristas coord_efetivo ON coord_efetivo.id = COALESCE(coord_pedido.id, coord_padrao.id)
+    WHERE ${consultaBase.where}`,
+    consultaBase.params
+  );
+
+  return { linhas, totalizadores: totalizadores ?? {} };
+}
+
+export async function obterCalendarioKmFrota(filtros: FiltrosKmFrota) {
+  const resultado = await listarApontamentosKmFrota(filtros);
+  const mapa = new Map<string, any[]>();
+  for (const linha of resultado.linhas as any[]) {
+    const valorData = linha.data_apontamento;
+    const chave = valorData instanceof Date
+      ? valorData.toISOString().slice(0, 10)
+      : String(valorData).slice(0, 10);
+    mapa.set(chave, [...(mapa.get(chave) ?? []), linha]);
+  }
+  return { ...resultado, calendario: Array.from(mapa.entries()).map(([data, apontamentos]) => ({ data, apontamentos })) };
+}
+
+export async function salvarApontamentoKmFrota(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const id = dados.id ? Number(dados.id) : null;
+  const semPedido = dados.sem_pedido === true || String(dados.sem_pedido ?? '').toUpperCase() === 'TRUE';
+  if (!semPedido && !dados.pedido_venda_id) {
+    throw new Error('Informe o pedido de venda ou marque Sem Pedido.');
+  }
+  if (semPedido && !dados.motivo_sem_pedido_id) {
+    throw new Error('Informe o motivo para lancamento sem pedido.');
+  }
+  if (id) {
+    const atual = await consultarUm<{ validado: boolean; integrado: boolean }>(
+      `SELECT validado, integrado FROM frota_apontamentos_km WHERE id = $1 AND empresa_id = $2 AND excluido = FALSE`,
+      [id, empresaId]
+    );
+    if (atual?.validado || atual?.integrado) {
+      throw new Error('Apontamento validado ou integrado nao pode ser alterado. Remova a validacao antes de alterar.');
+    }
+  }
+
+  const veiculo = dados.veiculo_id ? await consultarUm<{ odometro_atual: string }>(
+    `SELECT odometro_atual FROM frota_veiculos WHERE id = $1 AND excluido = FALSE`,
+    [Number(dados.veiculo_id)]
+  ) : null;
+  const dataApontamento = dataIso(dados.data_apontamento);
+  if (dataApontamento > new Date().toISOString().slice(0, 10)) {
+    throw new Error('Nao e permitido lancar apontamento de KM em data futura.');
+  }
+  const kmInicial = Math.trunc(numero(dados.km_inicial));
+  const kmFinal = numero(dados.km_final);
+  const ultimoKm = dados.veiculo_id ? await consultarUm<{ ultimo_km: string | null }>(
+    `SELECT COALESCE(MAX(km_final), MAX(km_inicial)) AS ultimo_km
+    FROM frota_apontamentos_km
+    WHERE empresa_id = $1
+      AND veiculo_id = $2
+      AND excluido = FALSE
+      AND ($3::BIGINT IS NULL OR id <> $3::BIGINT)`,
+    [empresaId, Number(dados.veiculo_id), id]
+  ) : null;
+  const referenciaKm = Number(ultimoKm?.ultimo_km ?? veiculo?.odometro_atual ?? 0);
+  if (referenciaKm > 0 && kmInicial - referenciaKm > 999) {
+    throw new Error(`KM inicial nao pode ficar mais de 999 km acima do ultimo lancamento/odometro (${referenciaKm}).`);
+  }
+  if (Math.trunc(kmFinal) < kmInicial) {
+    throw new Error('KM final nao pode ser menor que o KM inicial.');
+  }
+  if (Math.trunc(kmFinal) - kmInicial > 9999) {
+    throw new Error('KM final nao pode ultrapassar o KM inicial em mais de 9999 km.');
+  }
+  const avisoOdometro = veiculo && kmFinal > 0 && kmFinal < Number(veiculo.odometro_atual ?? 0)
+    ? `KM final inferior ao odometro atual do veiculo (${Number(veiculo.odometro_atual).toLocaleString('pt-BR')}). Registro salvo por confirmacao do usuario.`
+    : null;
+  const motoristaId = dados.motorista_id ? Number(dados.motorista_id) : null;
+  const ajudanteMotoristaId = dados.ajudante_motorista_id ? Number(dados.ajudante_motorista_id) : null;
+  const ajudanteMotorista2Id = dados.ajudante_motorista2_id ? Number(dados.ajudante_motorista2_id) : null;
+  if (ajudanteMotorista2Id && ajudanteMotorista2Id === motoristaId) {
+    throw new Error('O ajudante 2 nao pode ser o proprio motorista.');
+  }
+  if (ajudanteMotorista2Id && ajudanteMotorista2Id === ajudanteMotoristaId) {
+    throw new Error('O ajudante 2 deve ser diferente do ajudante 1.');
+  }
+  const motoristaApontamento = motoristaId ? await consultarUm<{ ajudante_padrao_motorista_id: number | null }>(
+    `SELECT ajudante_padrao_motorista_id
+    FROM frota_motoristas
+    WHERE id = $1
+      AND excluido = FALSE`,
+    [motoristaId]
+  ) : null;
+
+  const registro = await consultarUm(
+    `INSERT INTO frota_apontamentos_km (
+      id,
+      empresa_id,
+      pedido_venda_id,
+      sem_pedido,
+      motivo_sem_pedido_id,
+      motorista_id,
+      veiculo_id,
+      departamento_id,
+      data_apontamento,
+      km_inicial,
+      km_final,
+      ajudante_motorista_id,
+      ajudante_motorista2_id,
+      ajudante,
+      manha_inicio,
+      manha_fim,
+      tarde_inicio,
+      tarde_fim,
+      noite_inicio,
+      noite_fim,
+      observacao,
+      usuario_inclusao_id
+    )
+    VALUES (
+      COALESCE($1::BIGINT, NEXTVAL('frota_apontamentos_km_id_seq')),
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      $7,
+      $8,
+      $9::DATE,
+      COALESCE($10::NUMERIC, 0),
+      COALESCE($11::NUMERIC, 0),
+      $12,
+      $13,
+      NULLIF($14, ''),
+      $15::TIME,
+      $16::TIME,
+      $17::TIME,
+      $18::TIME,
+      $19::TIME,
+      $20::TIME,
+      NULLIF($21, ''),
+      $22
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      pedido_venda_id = EXCLUDED.pedido_venda_id,
+      sem_pedido = EXCLUDED.sem_pedido,
+      motivo_sem_pedido_id = EXCLUDED.motivo_sem_pedido_id,
+      motorista_id = EXCLUDED.motorista_id,
+      veiculo_id = EXCLUDED.veiculo_id,
+      departamento_id = EXCLUDED.departamento_id,
+      data_apontamento = EXCLUDED.data_apontamento,
+      km_inicial = EXCLUDED.km_inicial,
+      km_final = EXCLUDED.km_final,
+      ajudante_motorista_id = EXCLUDED.ajudante_motorista_id,
+      ajudante_motorista2_id = EXCLUDED.ajudante_motorista2_id,
+      ajudante = EXCLUDED.ajudante,
+      manha_inicio = EXCLUDED.manha_inicio,
+      manha_fim = EXCLUDED.manha_fim,
+      tarde_inicio = EXCLUDED.tarde_inicio,
+      tarde_fim = EXCLUDED.tarde_fim,
+      noite_inicio = EXCLUDED.noite_inicio,
+      noite_fim = EXCLUDED.noite_fim,
+      observacao = EXCLUDED.observacao,
+      usuario_ultima_alteracao_id = $22,
+      data_hora_ultima_alteracao = NOW()
+    RETURNING *`,
+    [
+      id,
+      empresaId,
+      semPedido ? null : Number(dados.pedido_venda_id),
+      semPedido,
+      dados.motivo_sem_pedido_id ? Number(dados.motivo_sem_pedido_id) : null,
+      motoristaId,
+      dados.veiculo_id ? Number(dados.veiculo_id) : null,
+      dados.departamento_id ? Number(dados.departamento_id) : null,
+      dataApontamento,
+      kmInicial,
+      Math.trunc(kmFinal),
+      ajudanteMotoristaId,
+      ajudanteMotorista2Id,
+      dados.ajudante ?? null,
+      horaTexto(dados.manha_inicio),
+      horaTexto(dados.manha_fim),
+      horaTexto(dados.tarde_inicio),
+      horaTexto(dados.tarde_fim),
+      horaTexto(dados.noite_inicio),
+      horaTexto(dados.noite_fim),
+      [dados.observacao, avisoOdometro].filter(Boolean).join('\n') || null,
+      usuarioId
+    ]
+  );
+
+  if (dados.veiculo_id && kmFinal > 0) {
+    await consultar(
+      `UPDATE frota_veiculos
+      SET odometro_atual = GREATEST(odometro_atual, $1::NUMERIC),
+        alterado_em = NOW(),
+        alterado_por_usuario_id = $2
+      WHERE id = $3`,
+      [kmFinal, usuarioId, Number(dados.veiculo_id)]
+    );
+  }
+
+  if (motoristaId && ajudanteMotoristaId && (!motoristaApontamento?.ajudante_padrao_motorista_id || dados.atualizar_ajudante_padrao === true)) {
+    await consultar(
+      `UPDATE frota_motoristas
+      SET ajudante_padrao_motorista_id = $1,
+        ajudante_padrao = (
+          SELECT nome
+          FROM frota_motoristas
+          WHERE id = $1
+        ),
+        alterado_em = NOW(),
+        alterado_por_usuario_id = $2
+      WHERE id = $3
+        AND excluido = FALSE`,
+      [ajudanteMotoristaId, usuarioId, motoristaId]
+    );
+  }
+
+  await registrarHistoricoFrota({ empresaId, usuarioId, operacao: id ? 'ALTERACAO_APONTAMENTO_KM' : 'INCLUSAO_APONTAMENTO_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: registro?.id, valorPosterior: registro });
+  return registro;
+}
+
+export async function excluirApontamentoKmFrota(empresaId: number, id: number, usuarioId: number) {
+  const apontamento = await consultarUm<{ id: number; validado: boolean; integrado: boolean }>(
+    `SELECT id, validado, integrado
+    FROM frota_apontamentos_km
+    WHERE empresa_id = $1
+      AND id = $2
+      AND excluido = FALSE`,
+    [empresaId, id]
+  );
+  if (!apontamento) {
+    throw new Error('Apontamento de KM nao encontrado.');
+  }
+  if (apontamento.validado) {
+    throw new Error('Apontamento de KM validado nao pode ser excluido. Remova a validacao antes de excluir.');
+  }
+  if (apontamento.integrado) {
+    throw new Error('Apontamento de KM integrado nao pode ser excluido.');
+  }
+
+  const registro = await consultarUm(
+    `UPDATE frota_apontamentos_km
+    SET excluido = TRUE,
+      excluido_em = NOW(),
+      excluido_por_usuario_id = $3::BIGINT,
+      usuario_ultima_alteracao_id = $3::BIGINT,
+      data_hora_ultima_alteracao = NOW()
+    WHERE empresa_id = $1
+      AND id = $2
+      AND validado = FALSE
+      AND integrado = FALSE
+      AND excluido = FALSE
+    RETURNING id`,
+    [empresaId, id, usuarioId]
+  );
+  if (!registro) {
+    throw new Error('Nao foi possivel excluir o apontamento de KM.');
+  }
+  await registrarHistoricoFrota({ empresaId, usuarioId, operacao: 'EXCLUSAO_APONTAMENTO_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: id, valorPosterior: { excluido: true } });
+  return registro;
+}
+
+export async function validarApontamentosKmFrota(empresaId: number, ids: number[], validado: boolean, usuarioId: number) {
+  const registros = await consultar<any>(
+    `SELECT
+      a.id,
+      a.integrado,
+      a.cancelado,
+      a.manha_inicio,
+      a.manha_fim,
+      a.tarde_inicio,
+      a.tarde_fim,
+      a.noite_inicio,
+      a.noite_fim,
+      a.sem_pedido,
+      p.pedido,
+      p.codigo_coordenador_decis,
+      d.codigo_origem_decis,
+      COALESCE(coord_pedido.id, coord_padrao.id) AS coordenador_motorista_id
+    FROM frota_apontamentos_km a
+    LEFT JOIN frota_pedidos_venda p ON p.id = a.pedido_venda_id
+    LEFT JOIN frota_departamentos d ON d.id = a.departamento_id
+    LEFT JOIN frota_motoristas m ON m.id = a.motorista_id
+    LEFT JOIN frota_motoristas coord_pedido ON coord_pedido.coordenador = TRUE AND coord_pedido.usuario_id IS NOT NULL AND coord_pedido.codigo_coordenador_decis = p.codigo_coordenador_decis AND coord_pedido.excluido = FALSE
+    LEFT JOIN frota_motoristas coord_padrao ON coord_padrao.id = m.coordenador_padrao_motorista_id AND coord_padrao.coordenador = TRUE AND coord_padrao.usuario_id IS NOT NULL AND coord_padrao.excluido = FALSE
+    WHERE a.empresa_id = $1
+      AND a.id = ANY($2::BIGINT[])
+      AND a.excluido = FALSE`,
+    [empresaId, ids]
+  );
+  const integrados = registros.filter((item) => item.integrado);
+  if (integrados.length) {
+    throw new Error(`Apontamento integrado nao pode ser alterado: ${integrados.map((item) => item.id).join(', ')}.`);
+  }
+  if (validado) {
+    const cancelados = registros.filter((item) => item.cancelado);
+    if (cancelados.length) {
+      throw new Error(`Apontamento cancelado nao pode ser validado: ${cancelados.map((item) => item.id).join(', ')}.`);
+    }
+    const turnosIncompletos = registros.filter((item) =>
+      (Boolean(item.manha_inicio) !== Boolean(item.manha_fim))
+      || (Boolean(item.tarde_inicio) !== Boolean(item.tarde_fim))
+      || (Boolean(item.noite_inicio) !== Boolean(item.noite_fim))
+    );
+    if (turnosIncompletos.length) {
+      throw new Error(`Complete inicio e fim dos turnos antes de validar os apontamentos: ${turnosIncompletos.map((item) => item.id).join(', ')}.`);
+    }
+    const semCoordenador = registros.filter((item) => !item.sem_pedido && !item.coordenador_motorista_id);
+    if (semCoordenador.length) {
+      throw new Error(`Vincule o coordenador Decis antes de validar os pedidos: ${semCoordenador.map((item) => item.pedido).join(', ')}.`);
+    }
+    const semOrigem = registros.filter((item) => !item.codigo_origem_decis);
+    if (semOrigem.length) {
+      throw new Error(`Informe Codigo Origem Decis no departamento antes de validar: ${semOrigem.map((item) => item.pedido).join(', ')}.`);
+    }
+  }
+  await consultar(
+    `UPDATE frota_apontamentos_km
+    SET validado = $3::BOOLEAN,
+      usuario_validacao_id = CASE WHEN $3::BOOLEAN THEN $4::BIGINT ELSE NULL::BIGINT END,
+      data_hora_validacao = CASE WHEN $3::BOOLEAN THEN NOW() ELSE NULL END,
+      usuario_ultima_alteracao_id = $4::BIGINT,
+      data_hora_ultima_alteracao = NOW()
+    WHERE empresa_id = $1
+      AND id = ANY($2::BIGINT[])
+      AND integrado = FALSE
+      AND excluido = FALSE`,
+    [empresaId, ids, validado, usuarioId]
+  );
+  for (const id of ids) {
+    await registrarHistoricoFrota({ empresaId, usuarioId, operacao: validado ? 'VALIDACAO_APONTAMENTO_KM' : 'REMOCAO_VALIDACAO_APONTAMENTO_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: id, valorPosterior: { validado } });
+  }
+  return { processados: ids.length, validado };
+}
+
+export async function cancelarApontamentosKmFrota(empresaId: number, ids: number[], motivoId: number, observacao: string | null, usuarioId: number) {
+  const integrados = await consultar<any>(
+    `SELECT id
+    FROM frota_apontamentos_km
+    WHERE empresa_id = $1
+      AND id = ANY($2::BIGINT[])
+      AND integrado = TRUE
+      AND excluido = FALSE`,
+    [empresaId, ids]
+  );
+  if (integrados.length) {
+    throw new Error(`Apontamento integrado nao pode ser cancelado: ${integrados.map((item) => item.id).join(', ')}.`);
+  }
+  await consultar(
+    `UPDATE frota_apontamentos_km
+    SET cancelado = TRUE,
+      motivo_cancelamento_id = $3::BIGINT,
+      motivo_cancelamento_texto = NULLIF($4, ''),
+      usuario_cancelamento_id = $5::BIGINT,
+      data_hora_cancelamento = NOW(),
+      validado = FALSE,
+      usuario_validacao_id = NULL,
+      data_hora_validacao = NULL,
+      usuario_ultima_alteracao_id = $5::BIGINT,
+      data_hora_ultima_alteracao = NOW()
+    WHERE empresa_id = $1
+      AND id = ANY($2::BIGINT[])
+      AND integrado = FALSE
+      AND excluido = FALSE`,
+    [empresaId, ids, motivoId, observacao ?? null, usuarioId]
+  );
+  for (const id of ids) {
+    await registrarHistoricoFrota({ empresaId, usuarioId, operacao: 'CANCELAMENTO_APONTAMENTO_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: id, valorPosterior: { motivoId, observacao } });
+  }
+  return { processados: ids.length, cancelado: true };
+}
+
+export async function listarConfiguracoesFrota(empresaId: number): Promise<Record<string, unknown>> {
   const modulo = await consultarUm<{ id: number }>(`SELECT id FROM modulos WHERE codigo = 'FROTA'`);
   if (!modulo) return {};
   const config = await consultarUm<{ valor: Record<string, unknown> }>(
@@ -1407,7 +2311,13 @@ export async function listarConfiguracoesFrota(empresaId: number) {
       AND chave = 'FROTA_GERAL'`,
     [empresaId, modulo.id]
   );
-  return config?.valor ?? {};
+  return {
+    dia_inicio_periodo_km: 26,
+    dia_fim_periodo_km: 25,
+    email_padrao_motorista: '',
+    perfil_padrao_motorista_id: null,
+    ...(config?.valor ?? {})
+  };
 }
 
 export async function salvarConfiguracoesFrota(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
@@ -1433,7 +2343,8 @@ export async function excluirRegistroFrota(tabela: string, id: number, usuarioId
     'frota_tipos_despesas',
     'frota_fornecedores',
     'frota_despesas_tipos',
-    'frota_motivos_cancelamento'
+    'frota_motivos_cancelamento',
+    'frota_pedidos_venda'
   ]);
   if (!tabelasPermitidas.has(tabela)) throw new Error('Tabela nao permitida para exclusao.');
   const resultado = await consultarUm(

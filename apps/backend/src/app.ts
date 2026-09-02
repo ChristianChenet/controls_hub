@@ -9,7 +9,8 @@ import { ambiente } from './configuracao/ambiente.js';
 import { consultarUm } from './banco/conexao.js';
 import { falha, sucesso } from './http/respostas.js';
 import {
-  buscarUsuarioPorEmail,
+  buscarUsuariosPorLogin,
+  alterarSenhaUsuario,
   excluirEmpresa,
   excluirPerfil,
   excluirUsuario,
@@ -99,15 +100,25 @@ import {
   duplicarProduto,
   executarCargaSqlServerPim,
   excluirConsultaSqlServerPim,
+  excluirFonteComparacao,
   excluirAtributo,
   excluirMapeamentoAtributoCanal,
   excluirProduto,
   exportarProdutos,
   listarCargasSqlServerPim,
+  listarFontesComparacao,
+  obterDeParaConcorrente,
   listarAssets,
+  listarCandidatosMidiaProduto,
   listarAtributos,
   listarAuditoriaPim,
+  listarAtributosComparacao,
+  listarCoberturaComparacaoConcorrentes,
+  listarComparacoesProduto,
+  carregarFonteComparacao,
   listarCanais,
+  obterMatrizComparacaoProduto,
+  salvarConsolidadoComparacaoProduto,
   listarComponentes,
   listarConfiguracoesModulo,
   listarConexoesSqlServerPim,
@@ -128,10 +139,14 @@ import {
   salvarComponente,
   salvarConfiguracoesModulo,
   salvarConexaoSqlServerPim,
+  salvarComparacaoAnuncio,
+  salvarAtributosComparacao,
   salvarConsultaSqlServerPim,
+  salvarFonteComparacao,
   salvarMapeamentoAtributoCanal,
   salvarProduto,
   testarConexaoSqlServerPim,
+  extrairAnuncioComparacao,
   testarIaCadastroProdutoCentral,
   vincularAssetsProdutos
 } from './modulos/cadastro_produto_central/repositorioCadastroProdutoCentral.js';
@@ -163,24 +178,33 @@ import {
   testarFonteDadosBi
 } from './modulos/business_intelligence/repositorioBusinessIntelligence.js';
 import {
+  cancelarApontamentosKmFrota,
   cancelarDespesasFrota,
   excluirRegistroFrota,
+  excluirApontamentoKmFrota,
   importarDespesasFrota,
   garantirEstruturaFrota,
   listarConfiguracoesFrota,
   listarDepartamentosFrota,
+  listarApontamentosKmFrota,
   listarDespesasFrota,
   listarDespesasTiposFrota,
   listarFornecedoresFrota,
+  listarHistoricoApontamentoKmFrota,
   listarHistoricoDespesaFrota,
   listarMotivosCancelamentoFrota,
+  listarMotivosSemPedidoFrota,
   listarMotoristasFrota,
+  listarPedidosVendaFrota,
   listarTiposDespesasFrota,
   listarVeiculosFrota,
+  obterCalendarioKmFrota,
+  obterContextoKmFrota,
   obterIndicadoresFrota,
   obterMapeamentoImportacaoFrota,
   obterResumoIntegracaoFrota,
   registrarStatusIntegracaoFrota,
+  salvarApontamentoKmFrota,
   salvarConfiguracoesFrota,
   salvarDepartamentoFrota,
   salvarDespesaFrota,
@@ -188,9 +212,13 @@ import {
   salvarFornecedorFrota,
   salvarMapeamentoImportacaoFrota,
   salvarMotivoCancelamentoFrota,
+  salvarMotivoSemPedidoFrota,
   salvarMotoristaFrota,
+  gerarUsuarioMotoristaFrota,
+  salvarPedidoVendaFrota,
   salvarTipoDespesaFrota,
   salvarVeiculoFrota,
+  validarApontamentosKmFrota,
   validarDespesasFrota
 } from './modulos/frota/repositorioFrota.js';
 import { exigirSuperadmin, obterUsuarioSessao } from './seguranca/sessao.js';
@@ -221,6 +249,17 @@ function testarPortaTcp(urlMonitor: string, timeoutMs = 3000) {
       resolve(false);
     }
   });
+}
+
+async function resolverUsuarioLogin(login: string) {
+  const usuarios = await buscarUsuariosPorLogin(login);
+  if (usuarios.length === 1) {
+    return usuarios[0];
+  }
+  if (usuarios.length > 1) {
+    throw new Error('Mais de um usuario encontrado. Informe o e-mail completo.');
+  }
+  return null;
 }
 
 export async function criarApp() {
@@ -390,7 +429,12 @@ export async function criarApp() {
       return reply.status(400).send(falha('CREDENCIAIS_OBRIGATORIAS', 'Informe e-mail e senha.'));
     }
 
-    const usuario = await buscarUsuarioPorEmail(email);
+    let usuario = null;
+    try {
+      usuario = await resolverUsuarioLogin(email);
+    } catch (error) {
+      return reply.status(409).send(falha('LOGIN_AMBIGUO', error instanceof Error ? error.message : 'Informe o e-mail completo.'));
+    }
     if (!usuario) {
       return reply.status(401).send(falha('CREDENCIAIS_INVALIDAS', 'E-mail ou senha invalidos.'));
     }
@@ -435,11 +479,60 @@ export async function criarApp() {
         administrador: usuario.administrador,
         superadmin: usuario.superadmin,
         empresaAtivaId: empresaPadrao?.id,
+        alterar_senha_proximo_login: usuario.alterar_senha_proximo_login ?? false,
         preferencias_interface: usuario.preferencias_interface ?? {}
       },
       empresas,
       permissoes
     });
+  });
+
+  app.post<{ Body: { email?: string; senha?: string } }>('/api/auth/validar-credenciais', async (request, reply) => {
+    const email = request.body.email?.trim().toLowerCase();
+    const senha = request.body.senha ?? '';
+
+    if (!email || !senha) {
+      return reply.status(400).send(falha('CREDENCIAIS_OBRIGATORIAS', 'Informe usuario e senha atual.'));
+    }
+
+    let usuario = null;
+    try {
+      usuario = await resolverUsuarioLogin(email);
+    } catch (error) {
+      return reply.status(409).send(falha('LOGIN_AMBIGUO', error instanceof Error ? error.message : 'Informe o e-mail completo.'));
+    }
+    if (!usuario || !(await verificarSenhaUsuario(usuario.id, senha))) {
+      return reply.status(401).send(falha('CREDENCIAIS_INVALIDAS', 'Usuario ou senha atual invalidos.'));
+    }
+
+    return sucesso({ id: usuario.id, nome: usuario.nome, email: usuario.email });
+  });
+
+  app.post<{ Body: { email?: string; senha_atual?: string; nova_senha?: string } }>('/api/auth/alterar-senha-login', async (request, reply) => {
+    const email = request.body.email?.trim().toLowerCase();
+    const senhaAtual = request.body.senha_atual ?? '';
+    const novaSenha = request.body.nova_senha ?? '';
+
+    if (!email || !senhaAtual || !novaSenha) {
+      return reply.status(400).send(falha('DADOS_OBRIGATORIOS', 'Informe usuario, senha atual e nova senha.'));
+    }
+    if (novaSenha.length < 6) {
+      return reply.status(400).send(falha('SENHA_FRACA', 'A nova senha deve ter pelo menos 6 caracteres.'));
+    }
+
+    let usuario = null;
+    try {
+      usuario = await resolverUsuarioLogin(email);
+    } catch (error) {
+      return reply.status(409).send(falha('LOGIN_AMBIGUO', error instanceof Error ? error.message : 'Informe o e-mail completo.'));
+    }
+    if (!usuario || !(await verificarSenhaUsuario(usuario.id, senhaAtual))) {
+      return reply.status(401).send(falha('CREDENCIAIS_INVALIDAS', 'Usuario ou senha atual invalidos.'));
+    }
+
+    await alterarSenhaUsuario(usuario.id, novaSenha);
+    await registrarAuditoria({ usuarioId: usuario.id, tipoEvento: 'ALTERAR_SENHA_LOGIN', tabelaAfetada: 'usuarios', registroId: usuario.id, descricao: 'Senha alterada pela tela de login.' });
+    return sucesso({ alterado: true });
   });
 
 
@@ -1097,10 +1190,94 @@ export async function criarApp() {
     return sucesso(await salvarCanal(usuario.empresaAtivaId!, request.body as any));
   });
 
+  app.get('/api/cadastro-produto-central/concorrentes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar concorrentes.');
+    if (!usuario) return;
+    return sucesso(await listarFontesComparacao(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/cadastro-produto-central/concorrentes', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'CONFIGURAR_CANAIS_PIM'], 'Usuario sem permissao para cadastrar concorrentes.');
+    if (!usuario) return;
+    return sucesso(await salvarFonteComparacao(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/cadastro-produto-central/concorrentes/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'CONFIGURAR_CANAIS_PIM'], 'Usuario sem permissao para inativar concorrentes.');
+    if (!usuario) return;
+    return sucesso(await excluirFonteComparacao(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.get<{ Params: { id: string } }>('/api/cadastro-produto-central/concorrentes/:id/atributos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar atributos de concorrentes.');
+    if (!usuario) return;
+    return sucesso(await listarAtributosComparacao(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cadastro-produto-central/concorrentes/:id/atributos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'CONFIGURAR_CANAIS_PIM'], 'Usuario sem permissao para cadastrar atributos de concorrentes.');
+    if (!usuario) return;
+    return sucesso(await salvarAtributosComparacao(usuario.empresaAtivaId!, Number(request.params.id), request.body as any));
+  });
+
+  app.get<{ Params: { id: string } }>('/api/cadastro-produto-central/concorrentes/:id/depara', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_INTEGRACOES', 'CONFIGURAR_CANAIS_PIM', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar De/Para de concorrentes.');
+    if (!usuario) return;
+    return sucesso(await obterDeParaConcorrente(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post('/api/cadastro-produto-central/concorrentes/anuncios/extrair', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'PIM_EDITAR'], 'Usuario sem permissao para extrair dados de anuncios.');
+    if (!usuario) return;
+    return sucesso(await extrairAnuncioComparacao(usuario.empresaAtivaId!, request.body as any));
+  });
+
+  app.post<{ Params: { id: string } }>('/api/cadastro-produto-central/concorrentes/:id/carregar', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_PRODUTOS'], 'Usuario sem permissao para carregar dados de concorrentes.');
+    if (!usuario) return;
+    return sucesso(await carregarFonteComparacao(usuario.empresaAtivaId!, Number(request.params.id), request.body as any, usuario.id));
+  });
+
+  app.post('/api/cadastro-produto-central/concorrentes/anuncios', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_PRODUTOS'], 'Usuario sem permissao para salvar comparacoes de anuncios.');
+    if (!usuario) return;
+    return sucesso(await salvarComparacaoAnuncio(usuario.empresaAtivaId!, request.body as any, usuario.id));
+  });
+
+  app.get<{ Querystring: { produto_id?: string } }>('/api/cadastro-produto-central/concorrentes/anuncios', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar comparacoes de anuncios.');
+    if (!usuario) return;
+    return sucesso(await listarComparacoesProduto(usuario.empresaAtivaId!, request.query.produto_id ? Number(request.query.produto_id) : undefined));
+  });
+
+  app.get('/api/cadastro-produto-central/concorrentes/cobertura', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar cobertura de concorrentes.');
+    if (!usuario) return;
+    return sucesso(await listarCoberturaComparacaoConcorrentes(usuario.empresaAtivaId!));
+  });
+
+  app.get<{ Params: { produtoId: string } }>('/api/cadastro-produto-central/comparacao-matriz/:produtoId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar a matriz comparativa.');
+    if (!usuario) return;
+    return sucesso(await obterMatrizComparacaoProduto(usuario.empresaAtivaId!, Number(request.params.produtoId)));
+  });
+
+  app.post<{ Params: { produtoId: string }; Body: { codigo?: string; valor?: string } }>('/api/cadastro-produto-central/comparacao-consolidado/:produtoId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_EDITAR', 'PIM_VISUALIZAR_PRODUTOS', 'EDITAR_PRODUTO_PIM'], 'Usuario sem permissao para editar o Consolidado da matriz.');
+    if (!usuario) return;
+    return sucesso(await salvarConsolidadoComparacaoProduto(usuario.empresaAtivaId!, Number(request.params.produtoId), request.body as any, usuario.id));
+  });
+
   app.get('/api/cadastro-produto-central/score-canais', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_PRODUTOS', 'PIM_VISUALIZAR_PUBLICACAO', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar score por canal.');
     if (!usuario) return;
     return sucesso(await listarScoreCanais(usuario.empresaAtivaId!));
+  });
+
+  app.get<{ Params: { produtoId: string } }>('/api/cadastro-produto-central/assets/candidatos/:produtoId', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['PIM_VISUALIZAR_ASSETS', 'VISUALIZAR_CADASTRO_PRODUTO_CENTRAL'], 'Usuario sem permissao para visualizar candidatos de imagens e documentos.');
+    if (!usuario) return;
+    return sucesso(await listarCandidatosMidiaProduto(usuario.empresaAtivaId!, Number(request.params.produtoId)));
   });
 
   app.get<{ Querystring: { busca?: string } }>('/api/cadastro-produto-central/assets', { preHandler: (app as any).autenticar }, async (request, reply) => {
@@ -1252,6 +1429,38 @@ export async function criarApp() {
     };
   }
 
+  async function montarFiltrosKmFrota(query: any, usuario: any, usarPeriodoPadrao = false, somenteCoordenacaoValidacao = false) {
+    const permissoes = usuario.empresaAtivaId ? await listarCodigosPermissaoUsuario(usuario.id, usuario.empresaAtivaId) : [];
+    const contexto = await obterContextoKmFrota(usuario.empresaAtivaId!, usuario.id, permissoes);
+    const motoristaPadraoId = Number((contexto.motorista as any)?.id ?? 0) || null;
+    const podeVerTodosKm = Boolean(contexto.pode_ver_terceiros);
+    const podeVerKmCoordenador = Boolean(contexto.pode_ver_km_coordenador);
+    const coordenadorPadraoId = (contexto.motorista as any)?.coordenador && motoristaPadraoId ? motoristaPadraoId : null;
+    const coordenadorFiltroInformado = query.coordenador_id ? Number(query.coordenador_id) : null;
+    const coordenadorId = podeVerTodosKm
+      ? coordenadorFiltroInformado
+      : (podeVerKmCoordenador ? (coordenadorPadraoId ?? -1) : null);
+    const somenteCoordenacao = somenteCoordenacaoValidacao || query.somente_coordenacao === 'SIM';
+    return {
+      empresaId: usuario.empresaAtivaId!,
+      dataInicial: query.data_inicial ?? (usarPeriodoPadrao ? contexto.periodo.data_inicial : null),
+      dataFinal: query.data_final ?? (usarPeriodoPadrao ? contexto.periodo.data_final : null),
+      motoristaId: query.motorista_id ? Number(query.motorista_id) : null,
+      veiculoId: query.veiculo_id ? Number(query.veiculo_id) : null,
+      departamentoId: query.departamento_id ? Number(query.departamento_id) : null,
+      coordenadorId,
+      validado: query.validado ?? null,
+      integrado: query.integrado ?? null,
+      cancelado: query.cancelado ?? null,
+      usuarioId: usuario.id,
+      podeVerTerceiros: podeVerTodosKm
+        || Boolean(query.motorista_id && Number(query.motorista_id) === motoristaPadraoId && !podeVerKmCoordenador),
+      podeVerKmCoordenador,
+      incluirProprioComCoordenacao: Boolean(podeVerKmCoordenador && coordenadorPadraoId && !somenteCoordenacaoValidacao),
+      somenteCoordenacao
+    };
+  }
+
   app.addHook('preHandler', async (request) => {
     if (request.url.startsWith('/api/frota')) {
       await garantirEstruturaFrota();
@@ -1351,7 +1560,7 @@ export async function criarApp() {
   });
 
   app.get('/api/frota/departamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
-    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar departamentos.');
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM'], 'Usuario sem permissao para consultar departamentos.');
     if (!usuario) return;
     return sucesso(await listarDepartamentosFrota(usuario.empresaAtivaId!));
   });
@@ -1371,7 +1580,7 @@ export async function criarApp() {
   });
 
   app.get('/api/frota/motoristas', { preHandler: (app as any).autenticar }, async (request, reply) => {
-    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar motoristas.');
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM'], 'Usuario sem permissao para consultar motoristas.');
     if (!usuario) return;
     return sucesso(await listarMotoristasFrota());
   });
@@ -1384,6 +1593,14 @@ export async function criarApp() {
     return sucesso(registro);
   });
 
+  app.post<{ Params: { id: string } }>('/api/frota/motoristas/:id/gerar-usuario', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_ALTERAR'], 'Usuario sem permissao para gerar usuario de motorista.');
+    if (!usuario) return;
+    const registro = await gerarUsuarioMotoristaFrota(usuario.empresaAtivaId!, Number(request.params.id), usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_MOTORISTAS', tipoEvento: 'GERAR_USUARIO_MOTORISTA', tabelaAfetada: 'frota_motoristas', registroId: Number(request.params.id), descricao: 'Usuario do motorista gerado automaticamente.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
   app.delete<{ Params: { id: string } }>('/api/frota/motoristas/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
     const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR'], 'Usuario sem permissao para excluir motoristas.');
     if (!usuario) return;
@@ -1391,7 +1608,7 @@ export async function criarApp() {
   });
 
   app.get('/api/frota/veiculos', { preHandler: (app as any).autenticar }, async (request, reply) => {
-    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR'], 'Usuario sem permissao para consultar veiculos.');
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM'], 'Usuario sem permissao para consultar veiculos.');
     if (!usuario) return;
     return sucesso(await listarVeiculosFrota(usuario.empresaAtivaId!));
   });
@@ -1488,6 +1705,114 @@ export async function criarApp() {
     const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_CANCELAR_DESPESAS'], 'Usuario sem permissao para excluir motivos de cancelamento.');
     if (!usuario) return;
     return sucesso(await excluirRegistroFrota('frota_motivos_cancelamento', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/motivos-sem-pedido', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM'], 'Usuario sem permissao para consultar motivos sem pedido.');
+    if (!usuario) return;
+    return sucesso(await listarMotivosSemPedidoFrota());
+  });
+
+  app.post('/api/frota/motivos-sem-pedido', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar motivos sem pedido.');
+    if (!usuario) return;
+    const registro = await salvarMotivoSemPedidoFrota(request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_MOTIVOS_SEM_PEDIDO', tipoEvento: 'SALVAR_MOTIVO_SEM_PEDIDO', tabelaAfetada: 'frota_motivos_sem_pedido', registroId: Number((registro as any)?.id ?? 0), descricao: 'Motivo sem pedido da frota salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/motivos-sem-pedido/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_EXCLUIR'], 'Usuario sem permissao para excluir motivos sem pedido.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_motivos_sem_pedido', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/km/contexto', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_ACESSAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM', 'FROTA_CONSULTAR'], 'Usuario sem permissao para acessar apontamento de KM.');
+    if (!usuario) return;
+    const permissoes = await listarCodigosPermissaoUsuario(usuario.id, usuario.empresaAtivaId!);
+    return sucesso(await obterContextoKmFrota(usuario.empresaAtivaId!, usuario.id, permissoes));
+  });
+
+  app.get('/api/frota/pedidos-venda', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM'], 'Usuario sem permissao para consultar pedidos de venda.');
+    if (!usuario) return;
+    return sucesso(await listarPedidosVendaFrota(usuario.empresaAtivaId!));
+  });
+
+  app.post('/api/frota/pedidos-venda', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONFIGURAR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar pedidos de venda.');
+    if (!usuario) return;
+    const registro = await salvarPedidoVendaFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_PEDIDOS_VENDA', tipoEvento: 'SALVAR_PEDIDO_VENDA_KM', tabelaAfetada: 'frota_pedidos_venda', registroId: Number((registro as any)?.id ?? 0), descricao: 'Pedido de venda para KM salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/pedidos-venda/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_EXCLUIR', 'FROTA_CONFIGURAR'], 'Usuario sem permissao para excluir pedidos de venda.');
+    if (!usuario) return;
+    return sucesso(await excluirRegistroFrota('frota_pedidos_venda', Number(request.params.id), usuario.id, usuario.empresaAtivaId));
+  });
+
+  app.get('/api/frota/km/calendario', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_ACESSAR', 'FROTA_LANCAR_KM', 'FROTA_MOBILE_KM', 'FROTA_CONSULTAR'], 'Usuario sem permissao para consultar calendario de KM.');
+    if (!usuario) return;
+    return sucesso(await obterCalendarioKmFrota(await montarFiltrosKmFrota(request.query, usuario, true)));
+  });
+
+  app.get('/api/frota/km/apontamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_LANCAR_KM', 'FROTA_VALIDAR_KM', 'FROTA_CONSULTAR_KM_COORDENADOR'], 'Usuario sem permissao para consultar apontamentos de KM.');
+    if (!usuario) return;
+    return sucesso(await listarApontamentosKmFrota(await montarFiltrosKmFrota(request.query, usuario, false, true)));
+  });
+
+  app.post('/api/frota/km/apontamentos', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_LANCAR_KM', 'FROTA_MOBILE_KM', 'FROTA_INCLUIR', 'FROTA_ALTERAR'], 'Usuario sem permissao para salvar apontamento de KM.');
+    if (!usuario) return;
+    const registro = await salvarApontamentoKmFrota(usuario.empresaAtivaId!, request.body as any, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_KM_APONTAMENTO', tipoEvento: 'SALVAR_APONTAMENTO_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: Number((registro as any)?.id ?? 0), descricao: 'Apontamento de KM salvo.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/frota/km/apontamentos/:id', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_LANCAR_KM', 'FROTA_MOBILE_KM', 'FROTA_EXCLUIR'], 'Usuario sem permissao para excluir apontamento de KM.');
+    if (!usuario) return;
+    const registro = await excluirApontamentoKmFrota(usuario.empresaAtivaId!, Number(request.params.id), usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_KM_APONTAMENTO', tipoEvento: 'EXCLUIR_APONTAMENTO_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: Number(request.params.id), descricao: 'Apontamento de KM excluido.', dadosNovos: registro });
+    return sucesso(registro);
+  });
+
+  app.post<{ Body: { ids?: number[]; validado?: boolean } }>('/api/frota/km/validar-lote', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_VALIDAR_KM'], 'Usuario sem permissao para validar KM.');
+    if (!usuario) return;
+    const ids = Array.isArray(request.body.ids) ? request.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) {
+      return reply.status(400).send(falha('APONTAMENTOS_KM_OBRIGATORIOS', 'Selecione ao menos um apontamento de KM.'));
+    }
+    const resultado = await validarApontamentosKmFrota(usuario.empresaAtivaId!, ids, request.body.validado !== false, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_KM_VALIDACAO', tipoEvento: request.body.validado === false ? 'REMOVER_VALIDACAO_KM' : 'VALIDAR_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: 0, descricao: 'Validacao de KM em lote executada.', dadosNovos: { ids, resultado } });
+    return sucesso(resultado);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/frota/km/apontamentos/:id/historico', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_CONSULTAR', 'FROTA_VALIDAR_KM', 'FROTA_LANCAR_KM'], 'Usuario sem permissao para consultar historico de KM.');
+    if (!usuario) return;
+    return sucesso(await listarHistoricoApontamentoKmFrota(usuario.empresaAtivaId!, Number(request.params.id)));
+  });
+
+  app.post<{ Body: { ids?: number[]; motivo_id?: number; observacao?: string | null } }>('/api/frota/km/cancelar-lote', { preHandler: (app as any).autenticar }, async (request, reply) => {
+    const usuario = await exigirUmaPermissao(request, reply, ['FROTA_VALIDAR_KM'], 'Usuario sem permissao para cancelar KM.');
+    if (!usuario) return;
+    const ids = Array.isArray(request.body.ids) ? request.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) {
+      return reply.status(400).send(falha('APONTAMENTOS_KM_OBRIGATORIOS', 'Selecione ao menos um apontamento de KM.'));
+    }
+    if (!request.body.motivo_id) {
+      return reply.status(400).send(falha('MOTIVO_CANCELAMENTO_OBRIGATORIO', 'Informe o motivo do cancelamento.'));
+    }
+    const resultado = await cancelarApontamentosKmFrota(usuario.empresaAtivaId!, ids, Number(request.body.motivo_id), request.body.observacao ?? null, usuario.id);
+    await registrarAuditoria({ empresaId: usuario.empresaAtivaId, usuarioId: usuario.id, moduloCodigo: 'FROTA', telaCodigo: 'FROTA_KM_VALIDACAO', tipoEvento: 'CANCELAR_KM', tabelaAfetada: 'frota_apontamentos_km', registroId: 0, descricao: 'Cancelamento de KM em lote executado.', dadosNovos: { ids, resultado } });
+    return sucesso(resultado);
   });
 
   app.get('/api/frota/despesas', { preHandler: (app as any).autenticar }, async (request, reply) => {
@@ -2915,4 +3240,3 @@ export async function criarApp() {
 
   return app;
 }
-

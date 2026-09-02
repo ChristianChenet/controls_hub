@@ -41,6 +41,7 @@ export type ProdutoCadastro = {
   pontos_destaque?: string[] | string | null;
   palavras_chave?: string[] | string | null;
   fiscal_comercial?: Record<string, unknown> | null;
+  modelo_alfa_numerico?: string | null;
   skus?: Record<string, unknown>[];
   componentes?: Record<string, unknown>[];
   atributos?: Record<string, unknown>[];
@@ -87,6 +88,226 @@ const camposObrigatoriosPorCanal: Record<string, string[]> = {
 function listaTexto(valor?: string[] | string | null) {
   if (Array.isArray(valor)) return valor.filter(Boolean);
   return String(valor ?? '').split('\n').map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizarChaveModeloAlfaNumerico(valor: unknown) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '');
+}
+
+function partesChaveModeloAlfaNumerico(valor: unknown) {
+  return String(valor ?? '')
+    .split(/[|;,/\\\n]+/)
+    .map(normalizarChaveModeloAlfaNumerico)
+    .filter(Boolean);
+}
+
+function compararChavesModeloAlfaNumerico(chaveCadastro: unknown, chaveOrigem: unknown) {
+  const partesCadastro = partesChaveModeloAlfaNumerico(chaveCadastro);
+  const partesOrigem = partesChaveModeloAlfaNumerico(chaveOrigem);
+  const restantes = [...partesOrigem];
+  let correspondencias = 0;
+  for (const parte of partesCadastro) {
+    const indice = restantes.indexOf(parte);
+    if (indice >= 0) {
+      correspondencias += 1;
+      restantes.splice(indice, 1);
+    }
+  }
+  const total = Math.max(partesCadastro.length, partesOrigem.length);
+  return {
+    chave_cadastro_normalizada: partesCadastro.join('|'),
+    chave_origem_normalizada: partesOrigem.join('|'),
+    correspondencias,
+    total,
+    percentual: total ? Math.round((correspondencias / total) * 100) : 0,
+    exata: total > 0 && correspondencias === total && partesCadastro.length === partesOrigem.length
+  };
+}
+
+function equivalentesModeloClimatizacao(codigo: string) {
+  const normalizado = normalizarChaveModeloAlfaNumerico(codigo);
+  const match = normalizado.match(/^(\d{2}EZVC)([AB])(\d{2}M\d)$/);
+  if (!match) return [];
+  const alternativa = match[2] === 'A' ? 'B' : 'A';
+  return [`${match[1]}${alternativa}${match[3]}`];
+}
+
+function permiteEquivalenciaModelo(contexto?: Record<string, unknown>) {
+  return String(contexto?._fonte_codigo ?? '').toUpperCase() === 'LEVEROS';
+}
+
+function contextoConfirmaEquivalencia(textoBusca: string, textoNormalizado: string, contexto?: Record<string, unknown>) {
+  const marcaContexto = normalizarTextoModeloBusca(contexto?.marca);
+  const marcaMidea = marcaContexto.includes('MIDEA') || textoBusca.includes('MIDEA');
+  const btu = extrairBtuTexto(contexto?.nome_comercial ?? contexto?.descricao_interna ?? contexto?.descricao ?? contexto?.capacidade ?? contexto?.btu);
+  const btuConfere = !btu || textoNormalizado.includes(btu);
+  return marcaMidea && btuConfere && /\bHW\b/.test(textoBusca);
+}
+
+function contextoConfirmaMatchParcial(textoBusca: string, textoNormalizado: string, contexto?: Record<string, unknown>) {
+  const marcaContexto = normalizarTextoModeloBusca(contexto?.marca);
+  const marcaPrincipal = marcaContexto.split(/\s+/).find((parte) => parte.length >= 4) ?? '';
+  const marcaConfere = !marcaPrincipal || textoBusca.includes(marcaPrincipal);
+  const btu = extrairBtuTexto(contexto?.nome_comercial ?? contexto?.descricao_interna ?? contexto?.descricao ?? contexto?.capacidade ?? contexto?.btu);
+  const btuConfere = !btu || textoNormalizado.includes(btu);
+  const parecePecaAvulsa = /\b(PLACA|SERPENTINA|MOTOR|COMPRESSOR|SENSOR|VALVULA|VÁLVULA|FILTRO|TURBINA|VENTILADOR|CONTROLE\s+REMOTO|PECA|PEÇA|REPOSICAO|REPOSIÇÃO|ORIGINAL)\b/.test(textoBusca)
+    && !/\b(AR\s*CONDICIONADO\s*SPLIT|SPLIT\s*HI\s*WALL|SPLIT\s*HW)\b/.test(textoBusca);
+  return { marcaConfere, btuConfere, peca_avulsa: parecePecaAvulsa, valido: marcaConfere && btuConfere && !parecePecaAvulsa };
+}
+
+function encontrarCodigosModelo(textoNormalizado: string, codigos: string[], contexto?: Record<string, unknown>) {
+  const codigosEncontrados: string[] = [];
+  const codigosEquivalentes: Record<string, string> = {};
+  const permitirEquivalencia = permiteEquivalenciaModelo(contexto);
+  for (const codigo of codigos) {
+    if (textoNormalizado.includes(codigo)) {
+      codigosEncontrados.push(codigo);
+      continue;
+    }
+    if (!permitirEquivalencia) continue;
+    const equivalente = equivalentesModeloClimatizacao(codigo).find((item) => textoNormalizado.includes(item));
+    if (equivalente) {
+      codigosEncontrados.push(codigo);
+      codigosEquivalentes[codigo] = equivalente;
+    }
+  }
+  return { codigosEncontrados, codigosEquivalentes };
+}
+
+function valoresModeloParaValidacao(dados: Record<string, unknown> = {}, extras: unknown[] = []) {
+  const chaves = [
+    'MODELO',
+    'MODELO_ALFA_NUMERICO',
+    'CODIGO_FABRICANTE',
+    'CODIGO_MODELO',
+    'CODIGO_MODELO_CONDENSADORA',
+    'CODIGO_MODELO_EVAPORADORA',
+    'MODELO_CONDENSADORA',
+    'MODELO_EVAPORADORA',
+    'CODIGO_DA_CONDENSADORA',
+    'CODIGO_DA_EVAPORADORA',
+    'CODIGO_CONDENSADORA',
+    'CODIGO_EVAPORADORA',
+    'NOME_DO_MODELO_CONDENSADORA',
+    'NOME_DO_MODELO_EVAPORADORA',
+    'MPN',
+    'REFERENCIA',
+    'REF',
+    'SKU'
+  ];
+  return [...extras, ...chaves.map((chave) => dados[chave])].filter(Boolean).join(' | ');
+}
+
+function compararChavesModeloAlfaNumericoValidado(chaveCadastro: unknown, chaveOrigem: unknown, contexto?: Record<string, unknown>) {
+  const partesCadastro = partesChaveModeloAlfaNumerico(chaveCadastro).map(normalizarChaveModeloAlfaNumerico).filter(Boolean);
+  const textoOrigemNormalizado = normalizarChaveModeloAlfaNumerico(chaveOrigem);
+  const textoOrigemBusca = normalizarTextoModeloBusca(chaveOrigem);
+  const usarEquivalencia = contextoConfirmaEquivalencia(textoOrigemBusca, textoOrigemNormalizado, contexto) ? contexto : undefined;
+  const encontrados = encontrarCodigosModelo(textoOrigemNormalizado, partesCadastro, usarEquivalencia);
+  const total = partesCadastro.length;
+  const validacaoParcial = contextoConfirmaMatchParcial(textoOrigemBusca, textoOrigemNormalizado, contexto);
+  if (validacaoParcial.peca_avulsa) {
+    return {
+      chave_cadastro_normalizada: partesCadastro.join('|'),
+      chave_origem_normalizada: partesChaveModeloAlfaNumerico(chaveOrigem).join('|'),
+      correspondencias: 0,
+      total,
+      percentual: 0,
+      exata: false,
+      codigos_encontrados: [],
+      codigos_equivalentes: {},
+      marca_confere: validacaoParcial.marcaConfere,
+      btu_confere: validacaoParcial.btuConfere
+    };
+  }
+  const parcial = encontrados.codigosEncontrados.length > 0 && encontrados.codigosEncontrados.length < total;
+  const correspondencias = parcial && !validacaoParcial.valido ? 0 : encontrados.codigosEncontrados.length;
+  return {
+    chave_cadastro_normalizada: partesCadastro.join('|'),
+    chave_origem_normalizada: partesChaveModeloAlfaNumerico(chaveOrigem).join('|'),
+    correspondencias,
+    total,
+    percentual: total ? Math.round((correspondencias / total) * 100) : 0,
+    exata: total > 0 && correspondencias === total && Object.keys(encontrados.codigosEquivalentes).length === 0,
+    codigos_encontrados: correspondencias ? encontrados.codigosEncontrados : [],
+    codigos_equivalentes: correspondencias ? encontrados.codigosEquivalentes : {},
+    marca_confere: validacaoParcial.marcaConfere,
+    btu_confere: validacaoParcial.btuConfere
+  };
+}
+
+function extrairBtuTexto(valor: unknown) {
+  const texto = String(valor ?? '').toUpperCase();
+  const match = texto.match(/(\d{1,3}(?:[.,]\d{3})|\d{4,6})\s*(?:BTU|BTUS|BTU\/H)/i);
+  if (!match) return '';
+  return match[1].replace(/[^\d]/g, '').replace(/^0+/, '') || '0';
+}
+
+function normalizarTextoModeloBusca(valor: unknown) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+function gerarConsultasModeloAlfaNumerico(chave: unknown) {
+  const partes = Array.from(new Set(partesChaveModeloAlfaNumerico(chave)));
+  const consultas = new Set<string>();
+  const original = String(chave ?? '').trim();
+  if (original) consultas.add(original);
+  if (partes.length > 1) {
+    consultas.add(partes.join(' '));
+    consultas.add(partes.join(' | '));
+  }
+  for (let tamanho = Math.max(2, partes.length - 1); tamanho >= 2; tamanho -= 1) {
+    for (let inicio = 0; inicio <= partes.length - tamanho; inicio += 1) {
+      consultas.add(partes.slice(inicio, inicio + tamanho).join(' '));
+    }
+  }
+  partes.forEach((parte) => consultas.add(parte));
+  return Array.from(consultas).filter(Boolean);
+}
+
+function avaliarTextoCandidatoModelo(textoCandidato: unknown, codigos: string[], contexto?: Record<string, unknown>) {
+  const textoNormalizado = normalizarChaveModeloAlfaNumerico(textoCandidato);
+  const textoBusca = normalizarTextoModeloBusca(textoCandidato);
+  const contextoEquivalencia = contextoConfirmaEquivalencia(textoBusca, textoNormalizado, contexto) ? contexto : undefined;
+  const { codigosEncontrados, codigosEquivalentes } = encontrarCodigosModelo(textoNormalizado, codigos, contextoEquivalencia);
+  if (!codigosEncontrados.length) return null;
+  const marca = normalizarTextoModeloBusca(contexto?.marca);
+  const btu = extrairBtuTexto(contexto?.nome_comercial ?? contexto?.descricao_interna ?? contexto?.descricao ?? contexto?.capacidade ?? contexto?.btu);
+  const marcaConfere = !marca || textoBusca.includes(marca);
+  const btuConfere = !btu || textoNormalizado.includes(btu);
+  const parcial = codigosEncontrados.length < codigos.length;
+  const validacaoParcial = contextoConfirmaMatchParcial(textoBusca, textoNormalizado, contexto);
+  if (validacaoParcial.peca_avulsa) return null;
+  if (parcial && !validacaoParcial.valido) return null;
+  if (parcial && marca && btu && (!marcaConfere || !btuConfere)) return null;
+  if (parcial && marca && !btu && !marcaConfere) return null;
+  if (parcial && btu && !marca && !btuConfere) return null;
+  return {
+    codigosEncontrados,
+    codigosEquivalentes,
+    marca_confere: marcaConfere,
+    btu_confere: btuConfere,
+    score: (codigosEncontrados.length * 100) - (Object.keys(codigosEquivalentes).length * 15) + (marcaConfere ? 10 : 0) + (btuConfere ? 10 : 0)
+  };
+}
+
+function obterChaveModeloAlfaNumerico(produto: Record<string, unknown>) {
+  const fiscalComercial = produto.fiscal_comercial && typeof produto.fiscal_comercial === 'object'
+    ? produto.fiscal_comercial as Record<string, unknown>
+    : {};
+  const identificacao = fiscalComercial.Identificacao && typeof fiscalComercial.Identificacao === 'object'
+    ? fiscalComercial.Identificacao as Record<string, unknown>
+    : {};
+  return produto.modelo_alfa_numerico ?? identificacao.modelo_alfa_numerico ?? '';
 }
 
 function valorPreenchido(dados: Record<string, unknown>, campo: string) {
@@ -287,8 +508,32 @@ export async function salvarProduto(empresaId: number, dados: ProdutoCadastro, u
 
   const novaVersao = produtoAtual?.publicado ? Number(produtoAtual.versao_atual ?? 1) + 1 : Number(produtoAtual?.versao_atual ?? 1);
   const status = produtoAtual?.publicado ? 'RASCUNHO' : (dados.status ?? 'RASCUNHO');
+  const ehConjuntoErp = String(dados.tipo_produto ?? '') === 'CONJUNTO_ERP';
+  const modeloConjunto = ehConjuntoErp
+    ? (String(dados.modelo ?? dados.codigo_fabricante ?? '').trim() || null)
+    : dados.modelo;
+  const fiscalComercialOriginal = (dados.fiscal_comercial && typeof dados.fiscal_comercial === 'object'
+    ? dados.fiscal_comercial
+    : {}) as Record<string, unknown>;
+  const identificacaoOriginal = (fiscalComercialOriginal.Identificacao && typeof fiscalComercialOriginal.Identificacao === 'object'
+    ? fiscalComercialOriginal.Identificacao
+    : {}) as Record<string, unknown>;
+  const dadosPersistidos: ProdutoCadastro = ehConjuntoErp
+    ? {
+      ...dados,
+      modelo: modeloConjunto,
+      codigo_fabricante: modeloConjunto,
+      fiscal_comercial: {
+        ...fiscalComercialOriginal,
+        Identificacao: {
+          ...identificacaoOriginal,
+          modelo_alfa_numerico: modeloConjunto
+        }
+      }
+    }
+    : dados;
   const scoreBase = calcularScore({
-    ...dados,
+    ...dadosPersistidos,
     ean_gtin: dados.ean_gtin ?? dados.ean ?? dados.gtin,
     titulo_meta: tituloMeta,
     descricao_meta: descricaoMeta,
@@ -395,7 +640,7 @@ export async function salvarProduto(empresaId: number, dados: ProdutoCadastro, u
       dados.sku_interno ?? null,
       dados.sku_comercial ?? null,
       dados.sku_fornecedor ?? null,
-      dados.codigo_fabricante ?? null,
+      dadosPersistidos.codigo_fabricante ?? null,
       dados.ean_gtin ?? dados.ean ?? dados.gtin ?? null,
       dados.gtin ?? dados.ean_gtin ?? null,
       dados.mpn ?? null,
@@ -405,7 +650,7 @@ export async function salvarProduto(empresaId: number, dados: ProdutoCadastro, u
       dados.nome_comercial ?? dados.nome_interno ?? null,
       dados.marca ?? null,
       dados.linha ?? null,
-      dados.modelo ?? null,
+      dadosPersistidos.modelo ?? null,
       dados.familia ?? null,
       dados.categoria ?? null,
       dados.subcategoria ?? null,
@@ -428,7 +673,7 @@ export async function salvarProduto(empresaId: number, dados: ProdutoCadastro, u
       dados.descricao_longa ?? null,
       listaTexto(pontosDestaque),
       listaTexto(dados.palavras_chave),
-      JSON.stringify(dados.fiscal_comercial ?? {}),
+      JSON.stringify(dadosPersistidos.fiscal_comercial ?? {}),
       dados.usuario_responsavel_id ?? null,
       usuarioId,
       novaVersao
@@ -958,6 +1203,8 @@ export async function listarMapeamentosAtributosCanais(empresaId: number) {
     LEFT JOIN canais_atributos ca ON ca.id = cam.canal_atributo_id
     WHERE c.empresa_id = $1
       AND a.empresa_id = $1
+      AND COALESCE(UPPER(c.codigo), '') NOT IN ('DECIS', 'ERP_DECIS')
+      AND COALESCE(UPPER(c.nome), '') NOT LIKE '%ERP DECIS%'
     ORDER BY c.nome ASC, ca.ordem ASC NULLS LAST, a.ordem_exibicao ASC, a.nome_exibido ASC`,
     [empresaId]
   );
@@ -1042,13 +1289,20 @@ export async function listarCanais(empresaId: number) {
   return consultar(
     `SELECT *
     FROM canais
-    WHERE empresa_id = $1 OR empresa_id IS NULL
+    WHERE (empresa_id = $1 OR empresa_id IS NULL)
+      AND COALESCE(UPPER(codigo), '') NOT IN ('DECIS', 'ERP_DECIS')
+      AND COALESCE(UPPER(nome), '') NOT LIKE '%ERP DECIS%'
     ORDER BY tipo_canal ASC, nome ASC`,
     [empresaId]
   );
 }
 
 export async function salvarCanal(empresaId: number, dados: Record<string, unknown>) {
+  const codigo = String(dados.codigo ?? '').trim().toUpperCase();
+  const nome = String(dados.nome ?? 'Canal').trim();
+  if (['DECIS', 'ERP_DECIS'].includes(codigo) || nome.toUpperCase().includes('ERP DECIS')) {
+    throw new Error('O ERP Decis não é um marketplace do PIM e não pode ser cadastrado nesta lista.');
+  }
   return consultarUm(
     `INSERT INTO canais (empresa_id, codigo, nome, tipo_canal, categoria_interna, categoria_canal, score_minimo_publicacao, regras, ativo)
     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 80), COALESCE($8, '{}'::JSONB), COALESCE($9, TRUE))
@@ -1063,8 +1317,8 @@ export async function salvarCanal(empresaId: number, dados: Record<string, unkno
     RETURNING *`,
     [
       empresaId,
-      String(dados.codigo ?? '').toUpperCase(),
-      String(dados.nome ?? 'Canal'),
+      codigo,
+      nome,
       String(dados.tipo_canal ?? 'MARKETPLACE'),
       dados.categoria_interna ?? null,
       dados.categoria_canal ?? null,
@@ -1073,6 +1327,1379 @@ export async function salvarCanal(empresaId: number, dados: Record<string, unkno
       dados.ativo !== false
     ]
   );
+}
+
+export async function listarFontesComparacao(empresaId: number) {
+  return consultar(
+    `SELECT f.*, COUNT(DISTINCT a.id)::INTEGER AS total_atributos, COUNT(DISTINCT r.id)::INTEGER AS total_anuncios
+    FROM pim_comparacao_fontes f
+    LEFT JOIN pim_comparacao_atributos a ON a.fonte_id = f.id AND a.ativo = TRUE
+    LEFT JOIN pim_comparacao_registros r ON r.fonte_id = f.id
+    WHERE f.empresa_id = $1
+    GROUP BY f.id
+    ORDER BY f.tipo_fonte ASC, f.prioridade ASC, f.nome ASC`,
+    [empresaId]
+  );
+}
+
+export async function salvarFonteComparacao(empresaId: number, dados: Record<string, unknown>) {
+  const codigo = String(dados.codigo ?? '').trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+  const nome = String(dados.nome ?? '').trim();
+  if (!codigo || !nome) throw new Error('Informe o codigo e o nome da fonte de comparacao.');
+  return consultarUm(
+    `INSERT INTO pim_comparacao_fontes (empresa_id, codigo, nome, tipo_fonte, url_base, prioridade, regras, ativo, alterado_em)
+    VALUES ($1, $2, $3, COALESCE($4, 'CONCORRENTE'), NULLIF($5, ''), COALESCE($6, 50), COALESCE($7, '{}'::JSONB), COALESCE($8, TRUE), NOW())
+    ON CONFLICT (empresa_id, codigo) DO UPDATE SET
+      nome = EXCLUDED.nome,
+      tipo_fonte = EXCLUDED.tipo_fonte,
+      url_base = EXCLUDED.url_base,
+      prioridade = EXCLUDED.prioridade,
+      regras = EXCLUDED.regras,
+      ativo = EXCLUDED.ativo,
+      alterado_em = NOW()
+    RETURNING *`,
+    [
+      empresaId,
+      codigo,
+      nome,
+      String(dados.tipo_fonte ?? 'CONCORRENTE'),
+      String(dados.url_base ?? ''),
+      Number(dados.prioridade ?? 50),
+      JSON.stringify(dados.regras ?? {}),
+      dados.ativo !== false
+    ]
+  );
+}
+
+export async function excluirFonteComparacao(empresaId: number, fonteId: number) {
+  return consultarUm(
+    `UPDATE pim_comparacao_fontes
+    SET ativo = FALSE, alterado_em = NOW()
+    WHERE id = $1 AND empresa_id = $2
+    RETURNING *`,
+    [fonteId, empresaId]
+  );
+}
+
+export async function listarAtributosComparacao(empresaId: number, fonteId: number) {
+  return consultar(
+    `SELECT a.*
+    FROM pim_comparacao_atributos a
+    INNER JOIN pim_comparacao_fontes f ON f.id = a.fonte_id
+    WHERE a.fonte_id = $1 AND f.empresa_id = $2 AND a.ativo = TRUE
+    ORDER BY a.ordem ASC, a.nome ASC`,
+    [fonteId, empresaId]
+  );
+}
+
+export async function salvarAtributosComparacao(empresaId: number, fonteId: number, dados: Record<string, unknown>) {
+  const fonte = await consultarUm<{ id: number }>(
+    `SELECT id FROM pim_comparacao_fontes WHERE id = $1 AND empresa_id = $2 AND ativo = TRUE`,
+    [fonteId, empresaId]
+  );
+  if (!fonte) throw new Error('Fonte de comparacao nao encontrada.');
+  const atributos = Array.isArray(dados.atributos) ? dados.atributos : [dados];
+  const salvos = [];
+  for (const item of atributos as Record<string, unknown>[]) {
+    const codigo = String(item.codigo ?? '').trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+    const nome = String(item.nome ?? item.nome_exibido ?? codigo).trim();
+    if (!codigo || !nome) continue;
+    const salvo = await consultarUm(
+      `INSERT INTO pim_comparacao_atributos (fonte_id, codigo, nome, tipo_campo, unidade_medida, obrigatorio, ordem, ativo)
+      VALUES ($1, $2, $3, COALESCE($4, 'TEXTO'), NULLIF($5, ''), COALESCE($6, FALSE), COALESCE($7, 0), COALESCE($8, TRUE))
+      ON CONFLICT (fonte_id, codigo) DO UPDATE SET
+        nome = EXCLUDED.nome,
+        tipo_campo = EXCLUDED.tipo_campo,
+        unidade_medida = EXCLUDED.unidade_medida,
+        obrigatorio = EXCLUDED.obrigatorio,
+        ordem = EXCLUDED.ordem,
+        ativo = EXCLUDED.ativo
+      RETURNING *`,
+      [
+        fonteId,
+        codigo,
+        nome,
+        String(item.tipo_campo ?? 'TEXTO'),
+        String(item.unidade_medida ?? ''),
+        item.obrigatorio === true,
+        Number(item.ordem ?? 0),
+        item.ativo !== false
+      ]
+    );
+    if (salvo) salvos.push(salvo);
+  }
+  return salvos;
+}
+
+export async function obterDeParaConcorrente(empresaId: number, fonteId: number) {
+  const fonte = await consultarUm<Record<string, unknown>>(
+    `SELECT *
+    FROM pim_comparacao_fontes
+    WHERE id = $1 AND empresa_id = $2 AND ativo = TRUE`,
+    [fonteId, empresaId]
+  );
+  if (!fonte) throw new Error('Concorrente nao encontrado.');
+
+  const atributosPim = await consultar<{ codigo: string; nome_exibido: string; grupo: string | null; ativo: boolean }>(
+    `SELECT a.codigo, a.nome_exibido, COALESCE(ag.nome, 'Atributos ERP') AS grupo, a.ativo
+    FROM atributos a
+    LEFT JOIN atributos_grupos ag ON ag.id = a.atributo_grupo_id
+    WHERE a.empresa_id = $1 AND a.ativo = TRUE
+    ORDER BY COALESCE(ag.ordem, 999), a.ordem_exibicao ASC, a.nome_exibido ASC`,
+    [empresaId]
+  );
+  const destinosConhecidos = new Set(atributosPim.map((item) => String(item.codigo)));
+  const regras = (fonte.regras && typeof fonte.regras === 'object' ? fonte.regras : {}) as Record<string, unknown>;
+  const dePara = (regras.de_para && typeof regras.de_para === 'object' ? regras.de_para : {}) as Record<string, unknown>;
+
+  const registros = await consultar<Record<string, unknown>>(
+    `SELECT dados
+    FROM pim_comparacao_registros
+    WHERE empresa_id = $1
+      AND fonte_id = $2
+      AND dados IS NOT NULL
+    ORDER BY alterado_em DESC NULLS LAST, id DESC
+    LIMIT 50000`,
+    [empresaId, fonteId]
+  );
+
+  const campos = new Map<string, { campo_concorrente: string; codigo_normalizado: string; ocorrencias: number; exemplos: string[] }>();
+  const ignorar = new Set(['_DADOS_BRUTOS', '_DEPARA_APLICADO', '_DADOS_MAPEADOS', '_CONFIANCA_MODELO']);
+  for (const registro of registros) {
+    const persistido = registro.dados && typeof registro.dados === 'object' ? registro.dados as Record<string, unknown> : {};
+    const bruto = persistido._DADOS_BRUTOS && typeof persistido._DADOS_BRUTOS === 'object' ? persistido._DADOS_BRUTOS as Record<string, unknown> : persistido;
+    for (const [campo, valor] of Object.entries(bruto)) {
+      if (!campo || ignorar.has(campo) || campo.startsWith('__')) continue;
+      const codigoNormalizado = normalizarNomeAtributoComparacao(campo);
+      if (!codigoNormalizado) continue;
+      const texto = String(normalizarValorConcorrente(valor) ?? '').trim();
+      if (!texto) continue;
+      const atual = campos.get(codigoNormalizado) ?? { campo_concorrente: campo, codigo_normalizado: codigoNormalizado, ocorrencias: 0, exemplos: [] };
+      atual.ocorrencias += 1;
+      if (texto && !atual.exemplos.includes(texto)) atual.exemplos.push(texto.slice(0, 180));
+      campos.set(codigoNormalizado, atual);
+    }
+  }
+
+  const linhas = Array.from(campos.values()).map((campo) => {
+    const destino = String(dePara[campo.campo_concorrente] ?? dePara[campo.codigo_normalizado] ?? DEPARA_CONCORRENTE_PADRAO[campo.codigo_normalizado] ?? '').trim();
+    const existeNoPim = Boolean(destino && destinosConhecidos.has(destino));
+    return {
+      ...campo,
+      atributo_pim_codigo: destino,
+      atributo_pim_nome: atributosPim.find((item) => item.codigo === destino)?.nome_exibido ?? '',
+      status: existeNoPim ? 'VINCULADO' : destino ? 'DESTINO_NAO_ENCONTRADO' : 'SEM_DEPARA',
+      existe_no_pim: existeNoPim,
+      exemplos: campo.exemplos.slice(0, 3).join(' | ')
+    };
+  }).sort((a, b) => a.status.localeCompare(b.status, 'pt-BR') || b.ocorrencias - a.ocorrencias || a.campo_concorrente.localeCompare(b.campo_concorrente, 'pt-BR'));
+
+  const camposConcorrente = new Set(linhas.map((item) => item.atributo_pim_codigo).filter(Boolean));
+  const atributosAtendidos = atributosPim.filter((item) => camposConcorrente.has(item.codigo));
+  const atributosNaoEntregues = atributosPim.filter((item) => !camposConcorrente.has(item.codigo)).map((item) => ({
+    codigo_normalizado: item.codigo,
+    campo_concorrente: '',
+    atributo_pim_codigo: item.codigo,
+    atributo_pim_nome: item.nome_exibido,
+    grupo: item.grupo,
+    status: 'PIM_SEM_CAMPO_CONCORRENTE',
+    existe_no_pim: true,
+    ocorrencias: 0,
+    exemplos: ''
+  }));
+  const concorrenteVinculados = linhas.filter((item) => item.existe_no_pim).length;
+  const resumo = {
+    total_campos_concorrente: linhas.length,
+    campos_concorrente_vinculados: concorrenteVinculados,
+    campos_concorrente_sem_depara: linhas.filter((item) => item.status === 'SEM_DEPARA').length,
+    campos_concorrente_destino_invalido: linhas.filter((item) => item.status === 'DESTINO_NAO_ENCONTRADO').length,
+    total_atributos_pim: atributosPim.length,
+    atributos_pim_entregues: atributosAtendidos.length,
+    atributos_pim_nao_entregues: atributosNaoEntregues.length,
+    percentual_concorrente_mapeado: linhas.length ? Math.round((concorrenteVinculados / linhas.length) * 10000) / 100 : 0,
+    percentual_pim_entregue: atributosPim.length ? Math.round((atributosAtendidos.length / atributosPim.length) * 10000) / 100 : 0
+  };
+
+  return { fonte, resumo, campos: linhas, atributos_pim: atributosPim, atributos_nao_entregues: atributosNaoEntregues };
+}
+
+function normalizarNomeAtributoComparacao(valor: unknown) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function extrairMetaHtml(html: string, nome: string) {
+  const nomeEscapado = nome;
+  const regex = new RegExp(`<meta[^>]+(?:property|name)=["']${nomeEscapado}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i');
+  return regex.exec(html)?.[1]?.trim() ?? '';
+}
+
+function extrairJsonLdProdutos(html: string) {
+  const produtos: Record<string, unknown>[] = [];
+  const blocos = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  for (const bloco of blocos) {
+    try {
+      const valor = JSON.parse(String(bloco[1]).trim()) as unknown;
+      const fila = Array.isArray(valor) ? valor : [valor];
+      for (const item of fila) {
+        if (!item || typeof item !== 'object') continue;
+        const objeto = item as Record<string, unknown>;
+        if (Array.isArray(objeto['@graph'])) {
+          for (const grafico of objeto['@graph']) {
+            if (grafico && typeof grafico === 'object') produtos.push(grafico as Record<string, unknown>);
+          }
+        } else {
+          produtos.push(objeto);
+        }
+      }
+    } catch {
+      // Algumas lojas publicam JSON-LD incompleto; os metadados HTML continuam sendo usados.
+    }
+  }
+  return produtos;
+}
+
+function extrairAtributosJsonLd(produto: Record<string, unknown>) {
+  const dados: Record<string, unknown> = {};
+  const propriedades = Array.isArray(produto.additionalProperty) ? produto.additionalProperty : [];
+  for (const item of propriedades) {
+    if (!item || typeof item !== 'object') continue;
+    const propriedade = item as Record<string, unknown>;
+    const codigo = normalizarNomeAtributoComparacao(propriedade.name);
+    if (codigo) dados[codigo] = propriedade.value ?? '';
+  }
+  const aliases: Record<string, string> = {
+    brand: 'MARCA',
+    model: 'MODELO',
+    mpn: 'CODIGO_FABRICANTE',
+    sku: 'SKU',
+    gtin: 'GTIN',
+    category: 'CATEGORIA',
+    description: 'DESCRICAO'
+  };
+  for (const [origem, destino] of Object.entries(aliases)) {
+    if (produto[origem] !== undefined && produto[origem] !== null && produto[origem] !== '') {
+      dados[destino] = typeof produto[origem] === 'object'
+        ? JSON.stringify(produto[origem])
+        : produto[origem];
+    }
+  }
+  const ofertas = produto.offers && typeof produto.offers === 'object' ? produto.offers as Record<string, unknown> : {};
+  if (ofertas.price !== undefined && ofertas.price !== null) dados.PRECO = ofertas.price;
+  if (ofertas.lowPrice !== undefined && ofertas.lowPrice !== null) dados.PRECO_MENOR = ofertas.lowPrice;
+  if (ofertas.highPrice !== undefined && ofertas.highPrice !== null) dados.PRECO_MAIOR = ofertas.highPrice;
+  if (ofertas.priceCurrency !== undefined && ofertas.priceCurrency !== null) dados.MOEDA = ofertas.priceCurrency;
+  return dados;
+}
+
+const WEBCONTINENTAL_ALIASES: Record<string, string> = {
+  FABRICANTE: 'MARCA',
+  COR_PREDOMINANTE: 'COR',
+  CICLO_DO_AR_CONDICIONADO: 'CICLO',
+  GAS_REFRIGERANTE: 'GAS',
+  NOME_DO_MODELO_CONDENSADORA: 'MODELO',
+  NOME_DO_MODELO_EVAPORADORA: 'CODIGO_MODELO',
+  VAZAO_DE_AR: 'VAZAO_DE_AR',
+  TECNOLOGIA: 'TECNOLOGIA',
+  CLASSIFICACAO_ENERGETICA: 'CLASSIFICACAO_ENERGETICA',
+  CAPACIDADE_BTUS: 'CAPACIDADE',
+  CONSUMO_DE_ENERGIA: 'CONSUMO_DE_ENERGIA',
+  GARANTIA_DO_FABRICANTE: 'GARANTIA',
+  PRODUCTREFERENCE: 'EAN',
+  LINK: 'URL_CANONICA'
+};
+
+const FRIGELAR_ALIASES: Record<string, string> = {
+  X_QUANTIDADE_DE_BTUS: 'CAPACIDADE',
+  X_TENSION: 'VOLTAGEM',
+  X_FASE: 'FASE',
+  X_CICLO: 'CICLO',
+  X_TIPO_DE_GAS: 'GAS',
+  X_TECNOLOGIA: 'TECNOLOGIA',
+  X_SERPENTINA: 'MATERIAIS',
+  X_VAZAO_DE_AR: 'VAZAO_DE_AR',
+  X_FREQUENCIA: 'FREQUENCIA',
+  X_CLASSIFICACAO_ENERGETICA_INMETRO: 'CLASSIFICACAO_ENERGETICA',
+  X_IDRS: 'SEER',
+  X_CONSUMO_APROXIMADO_DE_ENERGIA: 'CONSUMO_DE_ENERGIA',
+  X_MEDIDA_CONDENSADORA_EXT_LXAXP_CM: 'DIMENSOES_CONDENSADORA',
+  X_MEDIDA_EVAPORADORA_INT_LXAXP_CM: 'DIMENSOES_EVAPORADORA',
+  X_PESO_LIQUIDO_CONDENSADORA_EXT_KG: 'PESO_LIQUIDO_CONDENSADORA',
+  X_PESO_LIQUIDO_EVAPORADORA_INT_KG: 'PESO_LIQUIDO_EVAPORADORA',
+  X_TUBULACAO_BITOLAS: 'TUBULACAO',
+  X_DESNIVEL_MAXIMO_DE_INSTALACAO: 'DESNIVEL_MAXIMO',
+  X_DISTANCIA_MAXIMA_ENTRE_EVAPORADORA_E_CONDENSADORA_METROS: 'DISTANCIA_MAXIMA_TUBULACAO',
+  X_FUNCAO_LED: 'FUNCAO_LED',
+  X_FUNCAO_SIGAME: 'FUNCAO_SIGA_ME',
+  X_FUNCAO_BRISA: 'FUNCAO_BRISA',
+  X_WIFI: 'COM_WI_FI',
+  X_WIFI_INTEGRADO: 'COM_WI_FI',
+  X_COMPATIVEL_COM_ALEXA: 'COM_ALEXA',
+  X_COMPATIVEL_COM_GOOGLE_ASSISTENTE: 'COM_GOOGLE_ASSISTENTE',
+  X_AUTO_LIMPEZA: 'AUTO_LIMPEZA',
+  X_TURBO: 'TURBO',
+  X_GARANTIA_DO_COMPRESSOR: 'GARANTIA_COMPRESSOR',
+  X_WARRANTY: 'GARANTIA',
+  X_FABRICANTE: 'MARCA',
+  X_MODEL: 'MODELO',
+  X_CODIGO_FRIGELAR: 'CODIGO_FABRICANTE',
+  X_EAN: 'EAN',
+  X_EAN_EXTERNA_COND: 'EAN_CONDENSADORA',
+  X_EAN_INTERNA_EVAP: 'EAN_EVAPORADORA'
+};
+
+function adicionarCamposApi(dados: Record<string, unknown>, objeto: Record<string, unknown>, aliases: Record<string, string> = {}) {
+  for (const [campo, valor] of Object.entries(objeto)) {
+    if (valor === null || valor === undefined || valor === '' || ['links', 'childSKUs', 'listPrices', 'salePrices', 'saleVolumePrices', 'listVolumePrices', 'productImagesMetadata', 'mediumImageURLs', 'smallImageURLs', 'largeImageURLs', 'fullImageURLs', 'sourceImageURLs', 'thumbImageURLs', 'primarySourceImageURL', 'primaryFullImageURL', 'primaryMediumImageURL', 'primaryLargeImageURL', 'primarySmallImageURL', 'primaryThumbImageURL'].includes(campo)) continue;
+    const codigo = normalizarNomeAtributoComparacao(campo);
+    if (Array.isArray(valor) && valor.some((item) => item && typeof item === 'object')) continue;
+    adicionarAtributoExtraido(dados, campo, valor);
+    const destino = aliases[codigo];
+    if (destino) adicionarAtributoExtraido(dados, destino, valor);
+  }
+}
+
+async function buscarJsonApi(url: string, headers: Record<string, string> = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const resposta = await fetch(url, { signal: controller.signal, headers });
+    if (!resposta.ok) return null;
+    return await resposta.json() as unknown;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function idProdutoFrigelar(url: string, produto: Record<string, unknown>) {
+  const ofertas = Array.isArray(produto.offers) ? produto.offers : produto.offers ? [produto.offers] : [];
+  const oferecido = ofertas.find((item) => item && typeof item === 'object') as Record<string, unknown> | undefined;
+  const itemOferecido = oferecido?.itemOffered && typeof oferecido.itemOffered === 'object' ? oferecido.itemOffered as Record<string, unknown> : {};
+  return String(itemOferecido.productID ?? produto.productID ?? new URL(url).pathname.match(/\/p\/([^/?#]+)/i)?.[1] ?? '').trim();
+}
+
+function itemIdWebcontinental(html: string) {
+  return html.match(/["'](?:itemId|skuId)["']\s*:\s*["']([^"']+)["']/i)?.[1] ?? '';
+}
+
+async function enriquecerDadosPorApiConcorrente(url: string, html: string, produto: Record<string, unknown>, dados: Record<string, unknown>) {
+  let midia: { imagens: string[]; manuais: string[] } = { imagens: [], manuais: [] };
+  try {
+    const endereco = new URL(url);
+    const host = endereco.hostname.toLowerCase();
+    if (host.includes('frigelar.com.br')) {
+      const id = idProdutoFrigelar(url, produto);
+      if (id) {
+        const api = `${endereco.origin}/ccstore/v1/products/${encodeURIComponent(id)}?expand=details,skus,childSKUs,variantProperties`;
+        const retorno = await buscarJsonApi(api, { 'User-Agent': 'ControlS-Hub-PIM/1.0 (extracao-de-anuncio)', 'X-CCProfileType': 'storefrontUI', Accept: 'application/json' });
+        if (retorno && typeof retorno === 'object' && !Array.isArray(retorno)) {
+          adicionarCamposApi(dados, retorno as Record<string, unknown>, FRIGELAR_ALIASES);
+          const objeto = retorno as Record<string, unknown>;
+          const imagens = [...(Array.isArray(objeto.fullImageURLs) ? objeto.fullImageURLs : []), ...(Array.isArray(objeto.largeImageURLs) ? objeto.largeImageURLs : []), ...(Array.isArray(objeto.sourceImageURLs) ? objeto.sourceImageURLs : [])].map(String).filter(Boolean);
+          midia.imagens = Array.from(new Set(imagens)).slice(0, 80);
+        }
+      }
+    }
+    if (host.includes('webcontinental.com.br')) {
+      const itemId = itemIdWebcontinental(html);
+      const consultas = itemId ? [`${endereco.origin}/api/catalog_system/pub/products/search?fq=skuId:${encodeURIComponent(itemId)}`] : [];
+      const canonical = extrairMetaHtml(html, 'og:url') || html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)/i)?.[1] || url;
+      const slug = new URL(canonical, url).pathname.replace(/^\/+|\/+$/g, '').replace(/\/p$/i, '');
+      consultas.push(`${endereco.origin}/api/catalog_system/pub/products/search?ft=${encodeURIComponent(slug)}`);
+      let retorno: unknown = null;
+      for (const consulta of consultas) {
+        retorno = await buscarJsonApi(consulta, { 'User-Agent': 'ControlS-Hub-PIM/1.0 (extracao-vtex)', Accept: 'application/json' });
+        if (Array.isArray(retorno) && retorno.length) break;
+      }
+      const produtoVtex = Array.isArray(retorno) ? retorno[0] : null;
+      if (produtoVtex && typeof produtoVtex === 'object') {
+        const vtex = produtoVtex as Record<string, unknown>;
+        adicionarCamposApi(dados, vtex, WEBCONTINENTAL_ALIASES);
+        if (vtex.brand) adicionarAtributoExtraido(dados, 'MARCA', vtex.brand);
+        if (vtex.productName) adicionarAtributoExtraido(dados, 'PRODUTO', vtex.productName);
+        if (vtex.link) adicionarAtributoExtraido(dados, 'URL_CANONICA', vtex.link);
+        const item = Array.isArray(vtex.items) && vtex.items[0] && typeof vtex.items[0] === 'object' ? vtex.items[0] as Record<string, unknown> : null;
+        if (item) {
+          adicionarCamposApi(dados, item, WEBCONTINENTAL_ALIASES);
+          const modelos = [vtex['Nome do Modelo Condensadora'], vtex['Nome do Modelo Evaporadora'], item.name, item.nameComplete].flatMap((valor) => Array.isArray(valor) ? valor : [valor]).map((valor) => String(valor ?? '').trim()).filter(Boolean);
+          if (modelos.length) {
+            adicionarAtributoExtraido(dados, 'MODELO', modelos.slice(0, 2).join(' | '));
+            adicionarAtributoExtraido(dados, 'CODIGO_FABRICANTE', modelos.slice(0, 2).join(' | '));
+          }
+          const imagens = Array.isArray(item.images) ? item.images.map((imagem) => imagem && typeof imagem === 'object' ? String((imagem as Record<string, unknown>).imageUrl ?? '') : '').filter(Boolean) : [];
+          midia.imagens = Array.from(new Set(imagens)).slice(0, 80);
+        }
+        const especificacoes = Array.isArray(vtex.allSpecifications) ? vtex.allSpecifications : [];
+        const grupos = Array.isArray(vtex.allSpecificationsGroups) ? vtex.allSpecificationsGroups : [];
+        if (especificacoes.length) adicionarAtributoExtraido(dados, 'ESPECIFICACOES_TECNICAS', especificacoes.join(' | '));
+        if (grupos.length) adicionarAtributoExtraido(dados, 'GRUPOS_ESPECIFICACOES', grupos.join(' | '));
+      }
+    }
+  } catch {
+    // A API complementar é opcional; o HTML e JSON-LD continuam sendo usados.
+  }
+  return midia;
+}
+
+function decodificarTextoHtml(valor: string) {
+  return valor
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>|<\/div>|<\/li>|<\/tr>|<\/dt>|<\/dd>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_match, codigo) => String.fromCharCode(Number(codigo)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, codigo) => String.fromCharCode(parseInt(codigo, 16)))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .trim();
+}
+
+function normalizarValorConcorrente(valor: unknown): unknown {
+  if (valor === null || valor === undefined) return null;
+  if (Array.isArray(valor)) {
+    const itens = valor.map((item) => normalizarValorConcorrente(item)).filter((item) => item !== null && item !== undefined && String(item).trim() !== '');
+    return itens.length ? itens.join(' | ') : null;
+  }
+  if (typeof valor === 'object') {
+    const objeto = valor as Record<string, unknown>;
+    const prioridade = ['name', 'value', 'text', 'label', 'title', 'description', 'content'];
+    const chave = prioridade.find((item) => objeto[item] !== undefined && objeto[item] !== null && String(objeto[item]).trim() !== '');
+    if (chave) return normalizarValorConcorrente(objeto[chave]);
+    const valores = Object.values(objeto).map((item) => normalizarValorConcorrente(item)).filter((item) => item !== null && item !== undefined && String(item).trim() !== '');
+    return valores.length ? valores.join(' | ') : null;
+  }
+  let texto = decodificarTextoHtml(String(valor));
+  if (!texto) return null;
+  if ((texto.startsWith('{') && texto.endsWith('}')) || (texto.startsWith('[') && texto.endsWith(']'))) {
+    try {
+      const estruturado = JSON.parse(texto) as unknown;
+      const normalizado = normalizarValorConcorrente(estruturado);
+      if (normalizado !== null && String(normalizado).trim() !== '') return normalizado;
+    } catch {
+      // Texto parecido com JSON, mas inválido, continua como texto limpo.
+    }
+  }
+  return texto.replace(/\s+/g, ' ').trim();
+}
+
+function normalizarMapaConcorrente(dados: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(dados).map(([chave, valor]) => [chave, chave.startsWith('__') ? valor : normalizarValorConcorrente(valor)]));
+}
+
+function adicionarAtributoExtraido(dados: Record<string, unknown>, origem: unknown, valor: unknown) {
+  const nome = String(origem ?? '').replace(/[:*?]+$/g, '').trim();
+  const conteudo = String(normalizarValorConcorrente(valor) ?? '').trim();
+  if (!nome || !conteudo) return;
+  const codigo = normalizarNomeAtributoComparacao(nome);
+  if (codigo && !dados[codigo]) dados[codigo] = conteudo;
+}
+
+function extrairMidiaCandidataHtml(html: string, urlBase: string, produto?: Record<string, unknown>) {
+  const resolver = (valor: string) => {
+    try {
+      return new URL(valor, urlBase).toString();
+    } catch {
+      return '';
+    }
+  };
+  const imagens = new Set<string>();
+  const manuais = new Set<string>();
+  const produtoTexto = [produto?.name, produto?.model, produto?.mpn, produto?.sku, produto?.gtin, produto?.category].filter(Boolean).join(' ');
+  const palavrasProduto = produtoTexto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter((item) => item.length >= 4);
+  const contextoProduto = (valor: string) => {
+      const normalizado = valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return palavrasProduto.some((palavra) => normalizado.includes(palavra)) || /(product[-_ ]?(gallery|image|photo)|pdp[-_ ]?(gallery|image)|gallery[-_ ]?(image|photo)|swiper[-_ ]?slide|product[-_ ]?media|manual[-_ ]?(produto|product)|ficha[-_ ]?(tecnica|technical))/i.test(normalizado);
+  };
+  const imagemRelevante = (url: string, contexto = '') => !/(\/menu\/|logo|favicon|sprite|icon|banner|pixel|placeholder|avatar|topo|rodape|footer|header|\/PHN2Zy|\/iVBOR|\/R0lGOD|data:image)/i.test(url) && url.length < 500 && contextoProduto(`${url} ${contexto}`);
+  const imagensJsonLd = produto?.image;
+  for (const valor of (Array.isArray(imagensJsonLd) ? imagensJsonLd : [imagensJsonLd])) {
+    const url = resolver(typeof valor === 'object' && valor !== null ? String((valor as Record<string, unknown>).url ?? '') : String(valor ?? ''));
+    if (url && imagemRelevante(url, 'product image')) imagens.add(url);
+  }
+  for (const match of html.matchAll(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']/gi)) {
+    const url = resolver(match[1]);
+    if (url && imagemRelevante(url, 'product image')) imagens.add(url);
+  }
+  for (const match of html.matchAll(/<(?:img|source)[^>]+(?:src|data-src|srcset)=["']([^"']+)["'][^>]*>/gi)) {
+    const valores = String(match[1]).split(',').map((item) => item.trim().split(/\s+/)[0]);
+    const contexto = html.slice(Math.max(0, match.index ?? 0 - 360), Math.min(html.length, (match.index ?? 0) + match[0].length + 360));
+    valores.forEach((valor) => { const url = resolver(valor); if (/^https?:\/\//i.test(url) && imagemRelevante(url, contexto)) imagens.add(url); });
+  }
+  for (const match of html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]{0,500})<\/a>/gi)) {
+    const url = resolver(match[1]);
+    const contexto = decodificarTextoHtml(match[2]);
+    if (/\.(?:pdf|docx?|xlsx?)(?:[?#].*)?$/i.test(url) && /(manual|manuais|ficha técnica|ficha tecnica|catálogo|catalogo|instrução|instrucao|download|produto|product|modelo|sku)/i.test(`${url} ${contexto}`) && contextoProduto(`${url} ${contexto}`)) {
+      if (url) manuais.add(url);
+    }
+  }
+  for (const match of html.matchAll(/https?:\/\/[^\s"'<>]+\.(?:pdf|docx?|xlsx?)(?:[?#][^\s"'<>]*)?/gi)) {
+    const url = resolver(match[0]);
+    const contexto = html.slice(Math.max(0, match.index ?? 0 - 300), Math.min(html.length, (match.index ?? 0) + match[0].length + 300));
+    if (contextoProduto(`${url} ${contexto}`) && /(manual|ficha|catalogo|catálogo|instrução|instrucao|download|produto|product|modelo|sku)/i.test(`${url} ${contexto}`)) manuais.add(url);
+  }
+  return { imagens: Array.from(imagens).slice(0, 80), manuais: Array.from(manuais).slice(0, 40) };
+}
+
+function extrairAtributosHtml(html: string) {
+  const dados: Record<string, unknown> = {};
+  const pares: Array<[string, string]> = [];
+  const htmlConteudo = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  for (const match of htmlConteudo.matchAll(/<(?:dt|th|strong|b)[^>]*>([\s\S]*?)<\/(?:dt|th|strong|b)>\s*(?:<[^>]+>\s*){0,4}([^<]{1,800})/gi)) {
+    pares.push([match[1], match[2]]);
+  }
+  for (const match of htmlConteudo.matchAll(/<tr[^>]*>[\s\S]*?<t[hd][^>]*>([\s\S]*?)<\/t[hd]>[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/gi)) {
+    pares.push([match[1], match[2]]);
+  }
+  const texto = decodificarTextoHtml(htmlConteudo);
+  for (const linha of texto.split('\n')) {
+    const match = linha.trim().match(/^([^:]{2,100}):\s*(.{1,600})$/);
+    if (match) pares.push([match[1], match[2]]);
+  }
+  for (const [origem, valor] of pares) adicionarAtributoExtraido(dados, origem, valor);
+  const imagens = [...html.matchAll(/<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/gi)].map((match) => match[1]);
+  if (imagens.length) dados.IMAGENS = Array.from(new Set(imagens));
+  const sku = extrairMetaHtml(html, 'product:retailer_item_id') || extrairMetaHtml(html, 'product:sku');
+  if (sku) dados.SKU = sku;
+  return dados;
+}
+
+const CAMPOS_DIRETOS_CONJUNTO: Array<{ codigo: string; nome: string; grupo: string; unidade_medida?: string }> = [
+  { codigo: 'ITEM', nome: 'ITEM / Código ERP', grupo: 'Identificação' },
+  { codigo: 'DESCRICAO', nome: 'Descrição / Nome comercial', grupo: 'Identificação' },
+  { codigo: 'REFERENCIA', nome: 'Referência / Código do fabricante', grupo: 'Identificação' },
+  { codigo: 'MARCA', nome: 'Marca', grupo: 'Identificação' },
+  { codigo: 'MARCA_COMPLETA', nome: 'Marca completa', grupo: 'Identificação' },
+  { codigo: 'MODELO', nome: 'Modelo', grupo: 'Identificação' },
+  { codigo: 'CODIGO_MODELO', nome: 'Código do modelo', grupo: 'Identificação' },
+  { codigo: 'CATEGORIA', nome: 'Categoria', grupo: 'Identificação' },
+  { codigo: 'CODIGO_NCM', nome: 'NCM / Código NCM', grupo: 'Identificação' },
+  { codigo: 'VOLUME', nome: 'Volume', grupo: 'Identificação' },
+  { codigo: 'CEST', nome: 'CEST', grupo: 'Identificação' },
+  { codigo: 'EAN_GTIN', nome: 'EAN / GTIN', grupo: 'Identificação' },
+  { codigo: 'MPN', nome: 'MPN', grupo: 'Identificação' },
+  { codigo: 'ALTURA', nome: 'Altura', grupo: 'Logística', unidade_medida: 'cm' },
+  { codigo: 'LARGURA', nome: 'Largura', grupo: 'Logística', unidade_medida: 'cm' },
+  { codigo: 'PROFUNDIDADE', nome: 'Profundidade', grupo: 'Logística', unidade_medida: 'cm' },
+  { codigo: 'ALTURA_EMBALADO', nome: 'Altura embalado', grupo: 'Logística', unidade_medida: 'cm' },
+  { codigo: 'LARGURA_EMBALADO', nome: 'Largura embalado', grupo: 'Logística', unidade_medida: 'cm' },
+  { codigo: 'PROFUNDIDADE_EMBALADO', nome: 'Profundidade embalado', grupo: 'Logística', unidade_medida: 'cm' },
+  { codigo: 'PESO', nome: 'Peso', grupo: 'Logística', unidade_medida: 'kg' },
+  { codigo: 'PESO_LIQUIDO', nome: 'Peso líquido', grupo: 'Logística', unidade_medida: 'kg' },
+  { codigo: 'VENDA_PADRAO', nome: 'Venda padrão', grupo: 'Comercial' },
+  { codigo: 'VENDA_CARTAO', nome: 'Venda cartão', grupo: 'Comercial' },
+  { codigo: 'VENDA_A_VISTA', nome: 'Venda à vista', grupo: 'Comercial' },
+  { codigo: 'CFF', nome: 'CFF', grupo: 'Comercial' },
+  { codigo: 'CFFUSO', nome: 'CFFUSO', grupo: 'Comercial' },
+  { codigo: 'DISP', nome: 'Disponibilidade', grupo: 'Estoque / Controle' },
+  { codigo: 'FIS', nome: 'Estoque físico', grupo: 'Estoque / Controle' },
+  { codigo: 'RES', nome: 'Estoque reservado', grupo: 'Estoque / Controle' },
+  { codigo: 'ULTIMA_ALTERACAO', nome: 'Última alteração', grupo: 'Estoque / Controle' }
+];
+
+function valorDiretoConjunto(produto: Record<string, unknown>, codigo: string) {
+  const fiscal = produto.fiscal_comercial && typeof produto.fiscal_comercial === 'object' ? produto.fiscal_comercial as Record<string, unknown> : {};
+  const grupos = Object.values(fiscal).filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>;
+  const identificacao = fiscal.Identificacao && typeof fiscal.Identificacao === 'object' ? fiscal.Identificacao as Record<string, unknown> : {};
+  const logistica = fiscal.Logistica && typeof fiscal.Logistica === 'object' ? fiscal.Logistica as Record<string, unknown> : {};
+  const comercial = fiscal.Comercial && typeof fiscal.Comercial === 'object' ? fiscal.Comercial as Record<string, unknown> : {};
+  const estoque = fiscal.Estoque && typeof fiscal.Estoque === 'object' ? fiscal.Estoque as Record<string, unknown> : {};
+  const controle = fiscal.Controle && typeof fiscal.Controle === 'object' ? fiscal.Controle as Record<string, unknown> : {};
+  const valores: Record<string, unknown> = {
+    ITEM: produto.codigo_erp_decis ?? produto.codigo_interno,
+    DESCRICAO: produto.nome_comercial ?? produto.descricao_interna,
+    REFERENCIA: produto.codigo_fabricante,
+    MARCA: produto.marca,
+    MARCA_COMPLETA: identificacao.marca_completa,
+    MODELO: produto.modelo ?? identificacao.modelo_alfa_numerico ?? produto.codigo_fabricante,
+    CODIGO_MODELO: identificacao.codigo_modelo,
+    CATEGORIA: produto.categoria,
+    CODIGO_NCM: produto.ncm ?? identificacao.codigo_ncm ?? identificacao.ncm,
+    VOLUME: identificacao.volume,
+    CEST: produto.cest ?? identificacao.cest,
+    EAN_GTIN: produto.ean_gtin,
+    MPN: produto.mpn,
+    ALTURA: produto.altura ?? logistica.altura,
+    LARGURA: produto.largura ?? logistica.largura,
+    PROFUNDIDADE: produto.comprimento ?? logistica.profundidade,
+    ALTURA_EMBALADO: logistica.altura_embalado,
+    LARGURA_EMBALADO: logistica.largura_embalado,
+    PROFUNDIDADE_EMBALADO: logistica.profundidade_embalado,
+    PESO: produto.peso ?? logistica.peso,
+    PESO_LIQUIDO: logistica.peso_liquido,
+    VENDA_PADRAO: comercial.venda_padrao,
+    VENDA_CARTAO: comercial.venda_cartao,
+    VENDA_A_VISTA: comercial.venda_a_vista,
+    CFF: comercial.cff,
+    CFFUSO: comercial.cffuso,
+    DISP: estoque.disp,
+    FIS: estoque.fis,
+    RES: estoque.res,
+    ULTIMA_ALTERACAO: controle.ultima_alteracao ?? produto.alterado_em
+  };
+  if (valores[codigo] !== undefined) return valores[codigo];
+  const chaveNormalizada = normalizarNomeAtributoComparacao(codigo);
+  for (const grupo of [identificacao, logistica, comercial, estoque, controle, ...grupos]) {
+    const encontrado = Object.entries(grupo).find(([chave]) => normalizarNomeAtributoComparacao(chave) === chaveNormalizada);
+    if (encontrado) return encontrado[1];
+  }
+  return undefined;
+}
+
+const DEPARA_CONCORRENTE_PADRAO: Record<string, string> = {
+  ITEM: 'ITEM',
+  SKU: 'SKU_CJ',
+  SKU_CJ: 'SKU_CJ',
+  PRODUTO: 'PRODUTO',
+  TITULO: 'PRODUTO',
+  DESCRICAO: 'DESCRICAO',
+  MARCA: 'MARCA',
+  MODELO: 'MODELO_ALFA_NUMERICO',
+  MPN: 'MODELO_ALFA_NUMERICO',
+  CODIGO_FABRICANTE: 'MODELO_ALFA_NUMERICO',
+  REFERENCIA: 'MODELO_ALFA_NUMERICO',
+  CAPACIDADE: 'POTENCIA_NOMINAL',
+  BTU: 'POTENCIA_NOMINAL',
+  BTUS: 'POTENCIA_NOMINAL',
+  POTENCIA: 'POTENCIA_NOMINAL',
+  GAS_REFRIGERANTE: 'GAS',
+  REFRIGERANTE: 'GAS',
+  VOLTAGEM: 'TIPO_DE_ALIMENTACAO',
+  TENSAO: 'TIPO_DE_ALIMENTACAO',
+  TECNOLOGIA: 'TECNOLOGIA',
+  CICLO: 'CICLO',
+  WIFI: 'COM_WI_FI',
+  WI_FI: 'COM_WI_FI',
+  CONECTIVIDADE: 'COM_WI_FI',
+  PRECO: 'VENDA_PADRAO',
+  PRECO_A_VISTA: 'VENDA_A_VISTA',
+  POSSUI_WIFI: 'COM_WI_FI',
+  POSSUI_WI_FI: 'COM_WI_FI',
+  CAPACIDADE_DE_REFRIGERACAO_BTU_H: 'POTENCIA_DE_REFRIGERACAO',
+  CAPACIDADE_DE_AQUECIMENTO_BTU_H: 'POTENCIA_DE_AQUECIMENTO',
+  VOLTAGEM_V: 'VOLTAGEM',
+  SISTEMA_DE_FASE: 'FASE',
+  CLASSIFICACAO_ENERGETICA_INMETRO: 'CLASSIFICACAO_ENERGETICA',
+  INDICE_IDRS: 'SEER',
+  CONSUMO_DE_ENERGIA_ANUAL_KWH_ANO: 'CONSUMO_DE_ENERGIA_ANUAL_KWH_ANO',
+  POTENCIA_ELETRICA_CONSUMIDA_W: 'POTENCIA_ELETRICA_CONSUMIDA_W',
+  VAZAO_DE_AR_MAXIMA_M3_MIN: 'VAZAO_DE_AR',
+  NIVEL_DE_RUIDO_UNIDADE_INTERNA_DB: 'NIVEL_DE_RUIDO_INTERNO',
+  NIVEL_DE_RUIDO_UNIDADE_EXTERNA_DB: 'NIVEL_DE_RUIDO_UE',
+  CONEXAO_DA_TUBULACAO_LIQUIDA_MM: 'TUBULACAO_DE_LIQUIDO',
+  CONEXAO_DA_TUBULACAO_DE_GAS_MM: 'TUBULACAO_DE_GAS',
+  COMPRIMENTO_MAXIMO_DA_TUBULACAO_M: 'COMPRIMENTO_MAXIMO_TUBULACAO',
+  DESNIVEL_MAXIMO_M: 'DESNIVEL_MAXIMO',
+  SERPENTINA_DA_CONDENSADORA: 'MATERIAIS',
+  MATERIAL_SERPENTINA: 'MATERIAIS',
+  ORIGEM: 'ORIGEM',
+  NCM: 'CODIGO_NCM',
+  CODIGO_NCM: 'CODIGO_NCM',
+  CEST: 'CEST',
+  VOLUME: 'VOLUME',
+  ITEM_ERP: 'ITEM',
+  CODIGO_ERP: 'ITEM',
+  CODIGO: 'ITEM',
+  DESCRICAO_PRODUTO: 'DESCRICAO',
+  NOME: 'DESCRICAO',
+  NOME_COMERCIAL: 'DESCRICAO',
+  REFERENCIA_FABRICANTE: 'REFERENCIA',
+  MARCA_COMPLETA: 'MARCA_COMPLETA',
+  CODIGO_MODELO: 'CODIGO_MODELO',
+  EAN: 'EAN_GTIN',
+  GTIN: 'EAN_GTIN',
+  ALTURA: 'ALTURA',
+  LARGURA: 'LARGURA',
+  PROFUNDIDADE: 'PROFUNDIDADE',
+  COMPRIMENTO: 'PROFUNDIDADE',
+  ALTURA_EMBALAGEM: 'ALTURA_EMBALADO',
+  LARGURA_EMBALAGEM: 'LARGURA_EMBALADO',
+  PROFUNDIDADE_EMBALAGEM: 'PROFUNDIDADE_EMBALADO',
+  PESO_BRUTO: 'PESO',
+  PESO_LIQUIDO: 'PESO_LIQUIDO',
+  PRECO_CARTAO: 'VENDA_CARTAO',
+  PRECO_VISTA: 'VENDA_A_VISTA',
+  DISPONIBILIDADE: 'DISP',
+  ESTOQUE: 'FIS',
+  ESTOQUE_FISICO: 'FIS',
+  ESTOQUE_RESERVADO: 'RES',
+  ULTIMA_ATUALIZACAO: 'ULTIMA_ALTERACAO',
+  DATA_ULTIMA_ALTERACAO: 'ULTIMA_ALTERACAO'
+};
+
+async function descobrirDeParaConcorrente(empresaId: number, dados: Record<string, unknown>, regras: Record<string, unknown>) {
+  const atributos = await consultar<{ codigo: string; nome_exibido: string }>(
+    `SELECT codigo, nome_exibido FROM atributos WHERE empresa_id = $1 AND ativo = TRUE`,
+    [empresaId]
+  );
+  const configurado = (regras.de_para && typeof regras.de_para === 'object' ? regras.de_para : {}) as Record<string, unknown>;
+  const porCodigo = new Map(atributos.map((item) => [normalizarNomeAtributoComparacao(item.codigo), item.codigo]));
+  const porNome = new Map(atributos.map((item) => [normalizarNomeAtributoComparacao(item.nome_exibido), item.codigo]));
+  const dePara: Record<string, string> = { ...Object.fromEntries(Object.entries(configurado).map(([origem, destino]) => [origem, String(destino)])) };
+  for (const origem of Object.keys(dados)) {
+    const chave = normalizarNomeAtributoComparacao(origem);
+    const destinoConfigurado = configurado[origem] ?? configurado[chave];
+    const destino = String(destinoConfigurado ?? DEPARA_CONCORRENTE_PADRAO[chave] ?? porCodigo.get(chave) ?? porNome.get(chave) ?? '').trim();
+    if (destino) dePara[origem] = destino;
+  }
+  return dePara;
+}
+
+function mapearAtributosConcorrente(dados: Record<string, unknown>, regras: Record<string, unknown>) {
+  const configurado = (regras.de_para && typeof regras.de_para === 'object' ? regras.de_para : {}) as Record<string, unknown>;
+  const mapeado: Record<string, unknown> = {};
+  for (const [origem, valor] of Object.entries(dados)) {
+    const chave = normalizarNomeAtributoComparacao(origem);
+    const destinoConfigurado = configurado[origem] ?? configurado[chave];
+    const destino = String(destinoConfigurado ?? DEPARA_CONCORRENTE_PADRAO[chave] ?? chave).trim();
+    if (destino) mapeado[destino] = valor;
+  }
+  return mapeado;
+}
+
+function urlEhPaginaBusca(url: unknown) {
+  try {
+    const endereco = new URL(String(url ?? ''));
+    const caminho = endereco.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    return caminho === '/search' || caminho === '/busca' || caminho.includes('/catalogsearch/result') || caminho.includes('/searchresults');
+  } catch {
+    return false;
+  }
+}
+
+function urlEhPaginaGenerica(url: unknown) {
+  try {
+    const endereco = new URL(String(url ?? ''));
+    const caminho = endereco.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    if (caminho === '/') return true;
+    if (endereco.hostname.includes('centralar.com.br') && !caminho.includes('/p/')) return true;
+    if (endereco.hostname.includes('frigelar.com.br') && !caminho.includes('/p/')) return true;
+    if (endereco.hostname.includes('webcontinental.com.br') && !caminho.endsWith('/p')) return true;
+    if (caminho.includes('/pagina/') || caminho.includes('/politica') || caminho.includes('/tipos-de-ar-condicionado') || caminho.includes('/categor') || caminho.includes('/parceiros') || caminho.includes('/rastreio') || caminho.includes('/login') || caminho.includes('/checkout')) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function urlEhPaginaNaoProduto(url: unknown) {
+  return urlEhPaginaBusca(url) || urlEhPaginaGenerica(url);
+}
+
+function montarUrlsBuscaFonte(fonte: Record<string, unknown>, chave: string) {
+  const base = String(fonte.url_base ?? '').trim();
+  if (!/^https?:\/\//i.test(base)) return [];
+  const termo = encodeURIComponent(chave);
+  const codigo = String(fonte.codigo ?? '').toUpperCase();
+  const urlBase = new URL(base);
+  const caminhos = codigo === 'DUFRIO'
+    ? [`catalogsearch/result/?q=${termo}`]
+    : codigo === 'FRIGELAR'
+      ? [`searchresults?Ntt=${termo}&searchType=simple&type=search`]
+      : codigo === 'LEVEROS'
+        ? [`busca?term=${termo}`, `?q=${termo}`]
+        : [`?q=${termo}`, `?text=${termo}`, `search?query=${termo}`];
+  return caminhos.map((caminho) => new URL(caminho, urlBase).toString());
+}
+
+async function descobrirAnuncioPorModelo(fonte: Record<string, unknown>, chave: string, contexto?: Record<string, unknown>) {
+  const codigos = partesChaveModeloAlfaNumerico(chave).map(normalizarChaveModeloAlfaNumerico).filter(Boolean);
+  if (!codigos.length) return null;
+  const consultas = gerarConsultasModeloAlfaNumerico(chave);
+  let melhor: { url: string; score: number; codigos_encontrados: string[]; codigos_equivalentes?: Record<string, string>; busca_utilizada: string; tentativa: number; marca_confere?: boolean; btu_confere?: boolean } | null = null;
+
+  for (let tentativa = 0; tentativa < consultas.length; tentativa += 1) {
+    const consulta = consultas[tentativa];
+    const codigoFonte = String(fonte.codigo ?? '').toUpperCase();
+    const contextoAvaliacao = { ...(contexto ?? {}), _fonte_codigo: codigoFonte };
+    if (codigoFonte === 'WEBCONTINENTAL') {
+      const base = String(fonte.url_base ?? '').trim();
+      try {
+        const apiUrl = new URL('/api/catalog_system/pub/products/search', base);
+        apiUrl.searchParams.set('ft', consulta);
+        const retorno = await buscarJsonApi(apiUrl.toString(), { 'User-Agent': 'ControlS-Hub-PIM/1.0 (busca-vtex)', Accept: 'application/json' });
+        const produtos = Array.isArray(retorno) ? retorno : [];
+        for (const produto of produtos) {
+          if (!produto || typeof produto !== 'object') continue;
+          const item = produto as Record<string, unknown>;
+          const link = String(item.link ?? '').trim() || (item.linkText ? new URL(`/${String(item.linkText).replace(/^\/+|\/+$/g, '')}/p`, base).toString() : '');
+          if (!link || urlEhPaginaNaoProduto(link)) continue;
+          const avaliacao = avaliarTextoCandidatoModelo(JSON.stringify(item), codigos, contextoAvaliacao);
+          if (!avaliacao) continue;
+          const candidato = { url: link, score: avaliacao.score, codigos_encontrados: avaliacao.codigosEncontrados, codigos_equivalentes: avaliacao.codigosEquivalentes, busca_utilizada: consulta, tentativa, marca_confere: avaliacao.marca_confere, btu_confere: avaliacao.btu_confere };
+          if (!melhor || candidato.score > melhor.score) melhor = candidato;
+          if (tentativa === 0 && candidato.codigos_encontrados.length === codigos.length) return candidato;
+        }
+      } catch {
+        // A API pública pode bloquear a consulta; segue para os formatos HTML da fonte.
+      }
+    }
+    const urlsBusca = montarUrlsBuscaFonte(fonte, consulta);
+    for (const urlBusca of urlsBusca) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const resposta = await fetch(urlBusca, { signal: controller.signal, headers: { 'User-Agent': 'ControlS-Hub-PIM/1.0 (busca-de-produtos)' } });
+        if (!resposta.ok) continue;
+        const html = (await resposta.text()).slice(0, 4_000_000);
+        const origem = new URL(urlBusca);
+        const candidatos = new Map<string, { url: string; score: number; codigos_encontrados: string[]; busca_utilizada: string; tentativa: number }>();
+        for (const match of html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+          try {
+            const destino = new URL(match[1], urlBusca);
+            if (destino.hostname !== origem.hostname || urlEhPaginaNaoProduto(destino.toString())) continue;
+            const texto = `${destino.toString()} ${decodificarTextoHtml(match[2])}`;
+            const avaliacao = avaliarTextoCandidatoModelo(texto, codigos, contextoAvaliacao);
+            if (!avaliacao) continue;
+            const candidato = { url: destino.toString(), score: avaliacao.score, codigos_encontrados: avaliacao.codigosEncontrados, codigos_equivalentes: avaliacao.codigosEquivalentes, busca_utilizada: consulta, tentativa, marca_confere: avaliacao.marca_confere, btu_confere: avaliacao.btu_confere };
+            const anterior = candidatos.get(candidato.url);
+            if (!anterior || candidato.score > anterior.score) candidatos.set(candidato.url, candidato);
+          } catch {
+            // Links inválidos ou páginas de busca são ignorados.
+          }
+        }
+        const melhorDaPagina = [...candidatos.values()].sort((a, b) => b.score - a.score)[0];
+        if (!melhorDaPagina) continue;
+        if (!melhor || melhorDaPagina.score > melhor.score) melhor = melhorDaPagina;
+        // A busca completa encontrou todos os códigos: não reduzimos a consulta.
+        if (tentativa === 0 && melhorDaPagina.codigos_encontrados.length === codigos.length) return melhorDaPagina;
+      } catch {
+        // Uma fonte pode bloquear uma forma de busca; tenta o próximo padrão.
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+  }
+  return melhor;
+}
+
+async function descobrirAnuncioPorDescricao(fonte: Record<string, unknown>, descricao: string) {
+  const textoDescricao = String(descricao ?? '').trim();
+  if (!textoDescricao) return null;
+  const termos = textoDescricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').split(/\s+/).filter((termo) => termo.length >= 3);
+  const codigoFonte = String(fonte.codigo ?? '').toUpperCase();
+  if (codigoFonte === 'WEBCONTINENTAL') {
+    const base = String(fonte.url_base ?? '').trim();
+    try {
+      const apiUrl = new URL('/api/catalog_system/pub/products/search', base);
+      apiUrl.searchParams.set('ft', textoDescricao);
+      const retorno = await buscarJsonApi(apiUrl.toString(), { 'User-Agent': 'ControlS-Hub-PIM/1.0 (busca-vtex-descricao)', Accept: 'application/json' });
+      const produtos = Array.isArray(retorno) ? retorno : [];
+      let melhor: { url: string; score: number; codigos_encontrados: string[]; busca_utilizada: string; tentativa: number } | null = null;
+      for (const produto of produtos) {
+        if (!produto || typeof produto !== 'object') continue;
+        const item = produto as Record<string, unknown>;
+        const link = String(item.link ?? '').trim();
+        if (!link || urlEhPaginaNaoProduto(link)) continue;
+        const texto = normalizarChaveModeloAlfaNumerico(JSON.stringify(item));
+        const score = termos.filter((termo) => texto.includes(termo)).length;
+        if (score >= Math.min(3, termos.length) && (!melhor || score > melhor.score)) melhor = { url: link, score, codigos_encontrados: [], busca_utilizada: textoDescricao, tentativa: 0 };
+      }
+      if (melhor) return melhor;
+    } catch {
+      // A API de descrição é opcional; segue para o mecanismo HTML.
+    }
+  }
+  const resultado = await descobrirAnuncioPorModelo(fonte, textoDescricao);
+  return resultado ? { ...resultado, codigos_encontrados: [] } : null;
+}
+
+async function descobrirUrlAnuncioPorModelo(fonte: Record<string, unknown>, chave: string) {
+  const resultado = await descobrirAnuncioPorModelo(fonte, chave);
+  return resultado?.url ?? '';
+}
+
+export async function carregarFonteComparacao(empresaId: number, fonteId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const fonte = await consultarUm<Record<string, unknown>>(
+    `SELECT * FROM pim_comparacao_fontes WHERE id = $1 AND empresa_id = $2 AND ativo = TRUE`,
+    [fonteId, empresaId]
+  );
+  if (!fonte) throw new Error('Fonte de comparacao nao encontrada.');
+  let url = String(dados.url ?? dados.anuncio_url ?? '').trim();
+  if (urlEhPaginaNaoProduto(url)) url = '';
+  const produtoId = dados.produto_id ? Number(dados.produto_id) : null;
+  let chaveProduto = String(dados.chave_original ?? '').trim();
+  let resultadoBusca: { url: string; score: number; codigos_encontrados: string[]; codigos_equivalentes?: Record<string, string>; busca_utilizada: string; tentativa: number; marca_confere?: boolean; btu_confere?: boolean } | null = null;
+  let buscaPorDescricao = false;
+  const descricaoProduto = String(dados.descricao ?? dados.nome_comercial ?? '').trim();
+  let produtoContexto: Record<string, unknown> = { ...dados };
+  if (produtoId && !chaveProduto) {
+    const produto = await consultarUm<Record<string, unknown>>(
+      `SELECT * FROM produtos WHERE id = $1 AND empresa_id = $2 AND excluido = FALSE`,
+      [produtoId, empresaId]
+    );
+    if (!produto) throw new Error('Conjunto selecionado nao encontrado.');
+    produtoContexto = { ...produtoContexto, ...produto };
+    chaveProduto = String(obterChaveModeloAlfaNumerico(produto) ?? '').trim();
+  } else if (produtoId) {
+    const produto = await consultarUm<Record<string, unknown>>(
+      `SELECT * FROM produtos WHERE id = $1 AND empresa_id = $2 AND excluido = FALSE`,
+      [produtoId, empresaId]
+    );
+    if (produto) produtoContexto = { ...produtoContexto, ...produto };
+  }
+  if (!url && chaveProduto) {
+    resultadoBusca = await descobrirAnuncioPorModelo(fonte, chaveProduto, produtoContexto);
+    url = resultadoBusca?.url ?? '';
+  }
+  if (!url && descricaoProduto) {
+    resultadoBusca = await descobrirAnuncioPorDescricao(fonte, descricaoProduto);
+    buscaPorDescricao = Boolean(resultadoBusca?.url);
+    url = resultadoBusca?.url ?? '';
+  }
+  if (!/^https?:\/\//i.test(url) || urlEhPaginaNaoProduto(url)) throw new Error('Não foi encontrado um anúncio específico por Modelo ou descrição. Informe a URL do produto selecionado.');
+  const contextoValidacao = { ...produtoContexto, _fonte_codigo: String(fonte.codigo ?? '').toUpperCase() };
+  let extraido = await extrairAnuncioComparacao(empresaId, { anuncio_url: url, chave_original: chaveProduto });
+  let confiancaLinkInformado = compararChavesModeloAlfaNumericoValidado(chaveProduto, valoresModeloParaValidacao(extraido.dados as Record<string, unknown>, [extraido.modelo, extraido.titulo]), contextoValidacao);
+  if (chaveProduto && confiancaLinkInformado.percentual === 0 && !buscaPorDescricao) {
+    const redescoberto = await descobrirAnuncioPorModelo(fonte, chaveProduto, produtoContexto);
+    if (redescoberto?.url && redescoberto.url !== url) {
+      resultadoBusca = redescoberto;
+      url = redescoberto.url;
+      extraido = await extrairAnuncioComparacao(empresaId, { anuncio_url: url, chave_original: chaveProduto });
+      confiancaLinkInformado = compararChavesModeloAlfaNumericoValidado(chaveProduto, valoresModeloParaValidacao(extraido.dados as Record<string, unknown>, [extraido.modelo, extraido.titulo]), contextoValidacao);
+    }
+  }
+  if (chaveProduto && confiancaLinkInformado.percentual === 0) throw new Error('O anúncio encontrado não confirmou nenhum código do Modelo.');
+  if (dados.anuncio_url && chaveProduto && confiancaLinkInformado.percentual < 100) {
+    const redescoberto = await descobrirAnuncioPorModelo(fonte, chaveProduto, produtoContexto);
+    const correspondenciasAtuais = Number((confiancaLinkInformado as Record<string, unknown>).correspondencias ?? 0);
+    if (redescoberto?.url && (redescoberto.url !== url || redescoberto.score > correspondenciasAtuais)) {
+      resultadoBusca = redescoberto;
+      url = redescoberto.url;
+      extraido = await extrairAnuncioComparacao(empresaId, { anuncio_url: url, chave_original: chaveProduto });
+    }
+  }
+  const regras = (fonte.regras && typeof fonte.regras === 'object' ? fonte.regras : {}) as Record<string, unknown>;
+  const dadosOriginais = (extraido.dados ?? {}) as Record<string, unknown>;
+  const deParaAtualizado = await descobrirDeParaConcorrente(empresaId, dadosOriginais, regras);
+  const regrasAtualizadas = { ...regras, de_para: deParaAtualizado };
+  const dadosMapeados = mapearAtributosConcorrente(dadosOriginais, regrasAtualizadas);
+  const candidatosPagina = valoresModeloParaValidacao(dadosOriginais, [extraido.modelo, extraido.titulo]);
+  const confiancaPagina = compararChavesModeloAlfaNumericoValidado(chaveProduto, candidatosPagina, contextoValidacao);
+  const codigosEncontrados = Array.from(new Set([...(resultadoBusca?.codigos_encontrados ?? []), ...(confiancaPagina.codigos_encontrados ?? [])]));
+  const codigosEquivalentes = { ...(resultadoBusca?.codigos_equivalentes ?? {}), ...(confiancaPagina.codigos_equivalentes ?? {}) };
+  const confiancaModelo = {
+    codigos_total: partesChaveModeloAlfaNumerico(chaveProduto).length,
+    codigos_encontrados: codigosEncontrados,
+    correspondencias: codigosEncontrados.length,
+    percentual: partesChaveModeloAlfaNumerico(chaveProduto).length ? Math.round((codigosEncontrados.length / partesChaveModeloAlfaNumerico(chaveProduto).length) * 100) : confiancaPagina.percentual,
+    busca_utilizada: resultadoBusca?.busca_utilizada ?? chaveProduto,
+    tentativa: resultadoBusca?.tentativa ?? 0,
+    consulta_completa: resultadoBusca?.tentativa === 0,
+    marca_confere: resultadoBusca?.marca_confere,
+    btu_confere: resultadoBusca?.btu_confere,
+    codigos_equivalentes: codigosEquivalentes,
+    url_especifica: url,
+    chave_pagina: candidatosPagina,
+    percentual_pagina: confiancaPagina.percentual
+  };
+  const dadosPersistidos = {
+    ...dadosOriginais,
+    ...dadosMapeados,
+    _DADOS_BRUTOS: dadosOriginais,
+    _DEPARA_APLICADO: deParaAtualizado,
+    _DADOS_MAPEADOS: dadosMapeados,
+    _CONFIANCA_MODELO: confiancaModelo
+  };
+  await consultar(
+    `UPDATE pim_comparacao_fontes SET regras = $3::JSONB, alterado_em = NOW() WHERE id = $1 AND empresa_id = $2`,
+    [fonteId, empresaId, JSON.stringify(regrasAtualizadas)]
+  );
+  const registro = await salvarComparacaoAnuncio(empresaId, {
+    ...extraido,
+    fonte_id: fonteId,
+    produto_id: produtoId,
+    chave_original: chaveProduto || extraido.chave_original,
+    dados: dadosPersistidos,
+    status: 'PENDENTE',
+    origem: 'ANUNCIO_AUTOMATICO'
+  }, usuarioId);
+  return { fonte: { ...fonte, regras: regrasAtualizadas }, registro, extraido, dados_mapeados: dadosMapeados, de_para: deParaAtualizado };
+}
+
+export async function extrairAnuncioComparacao(empresaId: number, dados: Record<string, unknown>) {
+  const url = String(dados.anuncio_url ?? '').trim();
+  if (!/^https?:\/\//i.test(url)) throw new Error('Informe uma URL http(s) valida do anuncio.');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const resposta = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'ControlS-Hub-PIM/1.0 (comparacao-de-produtos)' }
+    });
+    const html = (await resposta.text()).slice(0, 4_000_000);
+    if (!resposta.ok) throw new Error(`Nao foi possivel ler o anuncio: HTTP ${resposta.status}.`);
+    const produtos = extrairJsonLdProdutos(html);
+    const produtoLd = produtos.find((item) => {
+      const tipo = item['@type'];
+      return tipo === 'Product' || (Array.isArray(tipo) && tipo.includes('Product'));
+    }) ?? produtos[0] ?? {};
+    const dadosExtraidos: Record<string, unknown> = normalizarMapaConcorrente({
+      ...extrairAtributosHtml(html),
+      ...extrairAtributosJsonLd(produtoLd),
+      TITULO: produtoLd.name ?? extrairMetaHtml(html, 'og:title'),
+      DESCRICAO: produtoLd.description ?? extrairMetaHtml(html, 'description'),
+      URL_CANONICA: extrairMetaHtml(html, 'og:url') || url,
+      ANUNCIO_URL: url,
+      __MIDIA_CANDIDATOS: extrairMidiaCandidataHtml(html, url, produtoLd)
+    });
+    const midiaApi = await enriquecerDadosPorApiConcorrente(url, html, produtoLd, dadosExtraidos);
+    const midiaAtual = dadosExtraidos.__MIDIA_CANDIDATOS && typeof dadosExtraidos.__MIDIA_CANDIDATOS === 'object'
+      ? dadosExtraidos.__MIDIA_CANDIDATOS as Record<string, unknown>
+      : {};
+    dadosExtraidos.__MIDIA_CANDIDATOS = {
+      ...midiaAtual,
+      imagens: Array.from(new Set([...(Array.isArray(midiaAtual.imagens) ? midiaAtual.imagens : []), ...midiaApi.imagens])).slice(0, 80),
+      manuais: Array.from(new Set([...(Array.isArray(midiaAtual.manuais) ? midiaAtual.manuais : []), ...midiaApi.manuais])).slice(0, 40)
+    };
+    const marca = typeof produtoLd.brand === 'object' && produtoLd.brand !== null
+      ? String((produtoLd.brand as Record<string, unknown>).name ?? '')
+      : String(produtoLd.brand ?? dadosExtraidos.MARCA ?? '');
+    const modelo = String(produtoLd.model ?? dadosExtraidos.MODELO ?? produtoLd.mpn ?? '');
+    const chave = String(dados.chave_original ?? produtoLd.mpn ?? produtoLd.sku ?? modelo ?? '').trim();
+    return {
+      anuncio_url: url,
+      titulo: String(produtoLd.name ?? dadosExtraidos.TITULO ?? ''),
+      marca,
+      modelo,
+      chave_original: chave,
+      chave_normalizada: normalizarChaveModeloAlfaNumerico(chave),
+      dados: dadosExtraidos,
+      fonte: 'JSON-LD_META_HTML',
+      pagina_http: resposta.status
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function salvarComparacaoAnuncio(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const fonteId = Number(dados.fonte_id);
+  const fonte = await consultarUm<{ id: number }>(
+    `SELECT id FROM pim_comparacao_fontes WHERE id = $1 AND empresa_id = $2 AND ativo = TRUE`,
+    [fonteId, empresaId]
+  );
+  if (!fonte) throw new Error('Fonte de comparacao nao encontrada.');
+  const limitarTexto = (valor: unknown, limite: number) => String(valor ?? '').trim().slice(0, limite);
+  const anuncioUrl = String(dados.anuncio_url ?? '').trim();
+  const chaveOriginal = limitarTexto(dados.chave_original ?? dados.modelo_alfa_numerico, 260);
+  if (!anuncioUrl || !chaveOriginal) throw new Error('Informe a URL do anuncio e a chave Modelo Alfa Numerico.');
+  const produtoId = dados.produto_id ? Number(dados.produto_id) : null;
+  let chaveCadastro = '';
+  if (produtoId) {
+    const produto = await consultarUm<Record<string, unknown>>(
+      `SELECT * FROM produtos WHERE id = $1 AND empresa_id = $2 AND excluido = FALSE`,
+      [produtoId, empresaId]
+    );
+    if (!produto) throw new Error('Produto selecionado nao encontrado.');
+    chaveCadastro = String(obterChaveModeloAlfaNumerico(produto) ?? '').trim();
+  }
+  const confiabilidade = chaveCadastro
+    ? compararChavesModeloAlfaNumericoValidado(
+      chaveCadastro,
+      valoresModeloParaValidacao((dados.dados as Record<string, unknown> | undefined) ?? {}, [dados.modelo, dados.titulo]),
+      { ...dados, _fonte_codigo: String((dados.fonte_codigo ?? dados.codigo_fonte) ?? '').toUpperCase() }
+    )
+    : { chave_cadastro_normalizada: '', chave_origem_normalizada: normalizarChaveModeloAlfaNumerico(chaveOriginal), correspondencias: 0, total: partesChaveModeloAlfaNumerico(chaveOriginal).length, percentual: 0, exata: false };
+  return consultarUm(
+    `INSERT INTO pim_comparacao_registros (
+      empresa_id, fonte_id, produto_id, chave_original, chave_normalizada, anuncio_url,
+      titulo, marca, modelo, dados, confiabilidade, status, origem, alterado_em, criado_por_usuario_id
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), COALESCE($10, '{}'::JSONB), COALESCE($11, '{}'::JSONB), $12, $13, NOW(), $14)
+    ON CONFLICT (empresa_id, fonte_id, produto_id) WHERE produto_id IS NOT NULL DO UPDATE SET
+      produto_id = EXCLUDED.produto_id,
+      chave_original = EXCLUDED.chave_original,
+      chave_normalizada = EXCLUDED.chave_normalizada,
+      titulo = EXCLUDED.titulo,
+      marca = EXCLUDED.marca,
+      modelo = EXCLUDED.modelo,
+      dados = EXCLUDED.dados,
+      confiabilidade = EXCLUDED.confiabilidade,
+      status = EXCLUDED.status,
+      origem = EXCLUDED.origem,
+      alterado_em = NOW()
+    RETURNING *`,
+    [
+      empresaId,
+      fonteId,
+      produtoId,
+      chaveOriginal,
+      normalizarChaveModeloAlfaNumerico(chaveOriginal),
+      anuncioUrl,
+      limitarTexto(dados.titulo, 320),
+      limitarTexto(dados.marca, 180),
+      limitarTexto(dados.modelo, 220),
+      JSON.stringify(dados.dados ?? {}),
+      JSON.stringify(confiabilidade),
+      String(dados.status ?? 'PENDENTE'),
+      String(dados.origem ?? 'MANUAL'),
+      usuarioId
+    ]
+  );
+}
+
+export async function listarComparacoesProduto(empresaId: number, produtoId?: number) {
+  return consultar(
+    `SELECT r.*, f.codigo AS fonte_codigo, f.nome AS fonte_nome, f.tipo_fonte
+    FROM pim_comparacao_registros r
+    INNER JOIN pim_comparacao_fontes f ON f.id = r.fonte_id
+    WHERE r.empresa_id = $1
+      AND ($2::BIGINT IS NULL OR r.produto_id = $2)
+    ORDER BY r.alterado_em DESC NULLS LAST, r.criado_em DESC
+    LIMIT 10000`,
+    [empresaId, produtoId ?? null]
+  );
+}
+
+export async function listarCoberturaComparacaoConcorrentes(empresaId: number) {
+  return consultar(
+    `WITH ultimos AS (
+      SELECT DISTINCT ON (r.produto_id, r.fonte_id)
+        r.produto_id,
+        r.fonte_id,
+        f.codigo AS fonte_codigo,
+        f.nome AS fonte_nome,
+        r.anuncio_url,
+        r.dados,
+        r.confiabilidade,
+        r.alterado_em
+      FROM pim_comparacao_registros r
+      INNER JOIN pim_comparacao_fontes f ON f.id = r.fonte_id
+      WHERE r.empresa_id = $1
+        AND f.empresa_id = $1
+        AND f.tipo_fonte = 'CONCORRENTE'
+        AND f.ativo = TRUE
+        AND r.produto_id IS NOT NULL
+      ORDER BY r.produto_id, r.fonte_id, r.alterado_em DESC NULLS LAST, r.id DESC
+    )
+    SELECT
+      produto_id,
+      fonte_id,
+      fonte_codigo,
+      fonte_nome,
+      anuncio_url,
+      COALESCE(NULLIF(dados #>> '{_CONFIANCA_MODELO,codigos_total}', '')::INTEGER, NULLIF(confiabilidade->>'total', '')::INTEGER, 0) AS codigos_total,
+      COALESCE(NULLIF(dados #>> '{_CONFIANCA_MODELO,correspondencias}', '')::INTEGER, NULLIF(confiabilidade->>'correspondencias', '')::INTEGER, 0) AS correspondencias,
+      COALESCE(dados #> '{_CONFIANCA_MODELO,codigos_encontrados}', '[]'::JSONB) AS codigos_encontrados,
+      COALESCE(NULLIF(dados #>> '{_CONFIANCA_MODELO,percentual}', '')::INTEGER, NULLIF(confiabilidade->>'percentual', '')::INTEGER, 0) AS percentual,
+      alterado_em
+    FROM ultimos
+    ORDER BY produto_id ASC, fonte_codigo ASC`,
+    [empresaId]
+  );
+}
+
+export async function salvarConsolidadoComparacaoProduto(empresaId: number, produtoId: number, dados: Record<string, unknown>, usuarioId: number) {
+  const codigo = String(dados.codigo ?? '').trim();
+  const valor = String(dados.valor ?? '').trim();
+  if (!codigo) throw new Error('Informe o código do atributo para salvar o Consolidado.');
+  const produto = await consultarUm<Record<string, unknown>>(
+    `SELECT id, fiscal_comercial FROM produtos WHERE id = $1 AND empresa_id = $2 AND excluido = FALSE`,
+    [produtoId, empresaId]
+  );
+  if (!produto) throw new Error('Produto/conjunto não encontrado.');
+  const fiscal = produto.fiscal_comercial && typeof produto.fiscal_comercial === 'object' ? produto.fiscal_comercial as Record<string, unknown> : {};
+  const comparacao = fiscal.ComparacaoConcorrentes && typeof fiscal.ComparacaoConcorrentes === 'object' ? fiscal.ComparacaoConcorrentes as Record<string, unknown> : {};
+  const consolidado = comparacao.Consolidado && typeof comparacao.Consolidado === 'object' ? comparacao.Consolidado as Record<string, unknown> : {};
+  consolidado[codigo] = { valor, origem: 'MANUAL', alterado_em: new Date().toISOString(), alterado_por: usuarioId };
+  const novoFiscal = { ...fiscal, ComparacaoConcorrentes: { ...comparacao, Consolidado: consolidado } };
+  await consultar(`UPDATE produtos SET fiscal_comercial = $3::JSONB, alterado_em = NOW() WHERE id = $1 AND empresa_id = $2`, [produtoId, empresaId, JSON.stringify(novoFiscal)]);
+  return { codigo, valor, origem: 'MANUAL' };
+}
+
+export async function obterMatrizComparacaoProduto(empresaId: number, produtoId: number) {
+  const produto = await consultarUm<Record<string, unknown>>(
+    `    SELECT id, codigo_interno, sku_interno, codigo_erp_decis, ean_gtin, mpn, ncm, cest, nome_comercial, descricao_interna, marca, linha, modelo, familia, categoria, tipo_produto, status, peso, altura, largura, comprimento, alterado_em, fiscal_comercial, pendencias_validacao
+
+    FROM produtos
+    WHERE id = $1 AND empresa_id = $2 AND excluido = FALSE`,
+    [produtoId, empresaId]
+  );
+  if (!produto) throw new Error('Produto/conjunto nao encontrado.');
+
+  const fontes = await consultar(
+    `SELECT id, codigo, nome, tipo_fonte, prioridade, url_base
+    FROM pim_comparacao_fontes
+    WHERE empresa_id = $1 AND ativo = TRUE AND tipo_fonte = 'CONCORRENTE'
+    ORDER BY prioridade ASC, nome ASC`,
+    [empresaId]
+  );
+
+  const atributosBrutos = await consultar(
+    `SELECT a.codigo, a.nome, COALESCE(ag.nome, 'Atributos ERP') AS grupo, a.tipo_campo, a.unidade_medida, a.ordem,
+      COALESCE(
+        (SELECT er.dados->>a.codigo
+         FROM pim_comparacao_registros er
+         WHERE er.empresa_id = $1 AND er.produto_id = $2 AND er.origem = 'ATRIBUTOS_ERP'
+         ORDER BY er.alterado_em DESC NULLS LAST, er.id DESC LIMIT 1),
+        p.fiscal_comercial->'TecnicosERP'->>a.codigo
+      ) AS valor_erp,
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+          'fonte_id', cf.id,
+          'fonte_codigo', cf.codigo,
+          'fonte_nome', cf.nome,
+          'valor', rr.dados->>a.codigo,
+          'anuncio_url', rr.anuncio_url,
+          'titulo', rr.titulo,
+          'status', COALESCE(rr.status, 'SEM_DADO')
+        ) ORDER BY cf.prioridade ASC, cf.nome ASC)
+        FROM pim_comparacao_fontes cf
+        LEFT JOIN pim_comparacao_registros rr
+          ON rr.fonte_id = cf.id
+          AND rr.empresa_id = $1
+          AND (rr.produto_id = $2 OR rr.chave_normalizada = regexp_replace(upper(COALESCE(p.fiscal_comercial->'Identificacao'->>'modelo_alfa_numerico', '')), '[^A-Z0-9]', '', 'g'))
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/search?%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/busca?%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/catalogsearch/result%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/searchresults%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%centralar.com.br/tipos-de-ar-condicionado%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%leveros.com.br/pagina/%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/parceiros%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/rastreio%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/login%'
+          AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/checkout%'
+          AND NOT (cf.codigo = 'WEBCONTINENTAL' AND COALESCE(lower(rr.anuncio_url), '') NOT LIKE '%/p%')
+        WHERE cf.empresa_id = $1 AND cf.ativo = TRUE AND cf.tipo_fonte = 'CONCORRENTE'
+      ), '[]'::JSONB) AS valores_fontes
+    FROM pim_comparacao_atributos a
+    INNER JOIN pim_comparacao_fontes base ON base.id = a.fonte_id
+    LEFT JOIN atributos ma ON ma.empresa_id = $1 AND ma.codigo = a.codigo AND ma.ativo = TRUE
+    LEFT JOIN atributos_grupos ag ON ag.id = ma.atributo_grupo_id
+    CROSS JOIN produtos p
+    WHERE p.id = $2 AND p.empresa_id = $1 AND base.codigo = 'ERP_ATRIBUTOS'
+      AND base.id = (SELECT id FROM pim_comparacao_fontes WHERE empresa_id = $1 AND ativo = TRUE AND codigo = 'ERP_ATRIBUTOS' LIMIT 1)
+      AND a.ativo = TRUE
+    ORDER BY a.ordem ASC, a.nome ASC`,
+    [empresaId, produtoId]
+  );
+  const atributos: Array<Record<string, unknown>> = (atributosBrutos as Array<Record<string, unknown>>).map((atributo) => ({
+    ...atributo,
+    valor_erp: normalizarValorConcorrente(atributo.valor_erp),
+    valores_fontes: Array.isArray(atributo.valores_fontes)
+      ? (atributo.valores_fontes as Array<Record<string, unknown>>).map((valor) => ({ ...valor, valor: normalizarValorConcorrente(valor.valor) }))
+      : []
+  }));
+
+  const fiscalProduto = produto.fiscal_comercial && typeof produto.fiscal_comercial === 'object' ? produto.fiscal_comercial as Record<string, unknown> : {};
+  const comparacaoProduto = fiscalProduto.ComparacaoConcorrentes && typeof fiscalProduto.ComparacaoConcorrentes === 'object' ? fiscalProduto.ComparacaoConcorrentes as Record<string, unknown> : {};
+  const consolidadoManual = comparacaoProduto.Consolidado && typeof comparacaoProduto.Consolidado === 'object' ? comparacaoProduto.Consolidado as Record<string, unknown> : {};
+  const registrosFontes = await consultar(
+    `SELECT r.id, r.produto_id, r.fonte_id, f.codigo AS fonte_codigo, f.nome AS fonte_nome, r.anuncio_url, r.titulo, r.marca, r.modelo, r.status, r.origem, r.dados, f.regras
+     FROM pim_comparacao_registros r
+     INNER JOIN pim_comparacao_fontes f ON f.id = r.fonte_id
+     WHERE r.empresa_id = $1 AND r.produto_id = $2 AND f.tipo_fonte = 'CONCORRENTE'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/search?%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/busca?%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/catalogsearch/result%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/searchresults%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%centralar.com.br/tipos-de-ar-condicionado%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%leveros.com.br/pagina/%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/parceiros%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/rastreio%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/login%'
+       AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/checkout%'
+       AND NOT (f.codigo = 'WEBCONTINENTAL' AND COALESCE(lower(r.anuncio_url), '') NOT LIKE '%/p%')
+     ORDER BY f.prioridade ASC, f.nome ASC, r.alterado_em DESC NULLS LAST, r.id DESC`,
+    [empresaId, produtoId]
+  );
+  const codigosMestres = new Set(atributos.map((item) => String(item.codigo ?? '').trim()).filter(Boolean));
+  const destinosConhecidosPim = new Set([
+    ...codigosMestres,
+    ...CAMPOS_DIRETOS_CONJUNTO.map((campo) => campo.codigo),
+    ...Object.values(DEPARA_CONCORRENTE_PADRAO),
+    'ITEM', 'DESCRICAO', 'REFERENCIA', 'MARCA', 'MODELO', 'CODIGO_FABRICANTE', 'CODIGO_NCM',
+    'ALTURA', 'LARGURA', 'PROFUNDIDADE', 'ALTURA_EMBALADO', 'LARGURA_EMBALADO', 'PROFUNDIDADE_EMBALADO',
+    'PESO', 'PESO_LIQUIDO', 'VENDA_PADRAO', 'VENDA_CARTAO', 'VENDA_A_VISTA', 'CFF', 'CFFUSO', 'DISP', 'FIS', 'RES', 'ULTIMA_ALTERACAO'
+  ]);
+  const registrosComRevisao: Array<Record<string, unknown>> = (registrosFontes as Array<Record<string, unknown>>).map((registro) => {
+    const dadosPersistidos = registro.dados && typeof registro.dados === 'object' ? registro.dados as Record<string, unknown> : {};
+    const dadosOriginais = dadosPersistidos._DADOS_BRUTOS && typeof dadosPersistidos._DADOS_BRUTOS === 'object'
+      ? dadosPersistidos._DADOS_BRUTOS as Record<string, unknown>
+      : dadosPersistidos;
+    const dados = normalizarMapaConcorrente(dadosOriginais);
+    const deParaAplicado = dadosPersistidos._DEPARA_APLICADO && typeof dadosPersistidos._DEPARA_APLICADO === 'object'
+      ? dadosPersistidos._DEPARA_APLICADO as Record<string, unknown>
+      : {};
+    const campos = Object.entries(dados)
+      .filter(([origem]) => origem !== '_DADOS_BRUTOS' && origem !== '_DEPARA_APLICADO' && origem !== '_DADOS_MAPEADOS' && !origem.startsWith('__'))
+      .map(([origem, valor]) => {
+        const destino = String(deParaAplicado[origem] ?? '').trim();
+        const mapeado = Boolean(destino) && destinosConhecidosPim.has(destino);
+        return {
+          origem,
+          valor,
+          destino_sugerido: mapeado ? destino : '',
+          status: mapeado ? 'VINCULADO' : 'PENDENTE'
+        };
+      });
+    return {
+      ...registro,
+      dados_brutos: dados,
+      midia_candidata: dadosPersistidos.__MIDIA_CANDIDATOS && typeof dadosPersistidos.__MIDIA_CANDIDATOS === 'object' ? dadosPersistidos.__MIDIA_CANDIDATOS : { imagens: [], manuais: [] },
+      campos_mapeados: campos.filter((campo) => campo.status === 'VINCULADO'),
+      campos_pendentes: campos.filter((campo) => campo.status === 'PENDENTE')
+    };
+  });
+  const codigosAtributosExistentes = new Set(atributos.map((atributo) => String(atributo.codigo ?? '').trim()));
+  const maiorOrdem = atributos.reduce((maior, atributo) => Math.max(maior, Number(atributo.ordem ?? 0)), 0);
+  const atributosComCamposDiretos: Array<Record<string, unknown>> = [
+    ...atributos.map((atributo) => {
+      const valorDireto = valorDiretoConjunto(produto, String(atributo.codigo ?? ''));
+      return { ...atributo, valor_erp: atributo.valor_erp ?? valorDireto ?? null };
+    }),
+    ...CAMPOS_DIRETOS_CONJUNTO
+      .filter((campo) => !codigosAtributosExistentes.has(campo.codigo))
+      .map((campo, indice) => ({
+        codigo: campo.codigo,
+        nome: campo.nome,
+        grupo: campo.grupo,
+        tipo_campo: 'TEXTO',
+        unidade_medida: campo.unidade_medida ?? null,
+        ordem: maiorOrdem + indice + 1,
+        valor_erp: valorDiretoConjunto(produto, campo.codigo) ?? null,
+        valores_fontes: registrosComRevisao.map((registro) => {
+          const persistido = registro.dados && typeof registro.dados === 'object' ? registro.dados as Record<string, unknown> : {};
+                      const mapeado = persistido._DADOS_MAPEADOS && typeof persistido._DADOS_MAPEADOS === 'object' ? normalizarMapaConcorrente(persistido._DADOS_MAPEADOS as Record<string, unknown>) : normalizarMapaConcorrente(persistido);
+
+          return {
+            fonte_id: registro.fonte_id,
+            fonte_codigo: registro.fonte_codigo,
+            fonte_nome: registro.fonte_nome,
+            valor: mapeado[campo.codigo] ?? null,
+            anuncio_url: registro.anuncio_url,
+            titulo: registro.titulo,
+            status: registro.status ?? 'SEM_DADO'
+          };
+        })
+      }))
+  ];
+  const pendencias = registrosComRevisao.flatMap((registro) => (registro.campos_pendentes as Array<Record<string, unknown>>).map((campo) => ({
+    ...campo,
+    registro_id: registro.id,
+    fonte_id: registro.fonte_id,
+    fonte_codigo: registro.fonte_codigo,
+    fonte_nome: registro.fonte_nome,
+    anuncio_url: registro.anuncio_url
+  })));
+  const atributosComConsolidado = atributosComCamposDiretos.map((atributo) => ({
+    ...atributo,
+    consolidado_manual: consolidadoManual[String(atributo.codigo)] ?? null
+  }));
+  return { produto, fontes, atributos: atributosComConsolidado, consolidado: consolidadoManual, registros_fontes: registrosComRevisao, pendencias_de_para: pendencias };
 }
 
 export async function listarScoreCanais(empresaId: number) {
@@ -1112,6 +2739,45 @@ export async function listarAssets(empresaId: number, busca?: string) {
     LIMIT 200`,
     [empresaId, termo]
   );
+}
+
+export async function listarCandidatosMidiaProduto(empresaId: number, produtoId: number) {
+  const registros = await consultar<Record<string, unknown>>(
+    `SELECT r.id AS registro_id, r.produto_id, r.fonte_id, f.codigo AS fonte_codigo, f.nome AS fonte_nome, r.anuncio_url, r.titulo, r.marca, r.modelo, r.dados->'__MIDIA_CANDIDATOS' AS midia
+     FROM pim_comparacao_registros r
+     INNER JOIN pim_comparacao_fontes f ON f.id = r.fonte_id
+     WHERE r.empresa_id = $1 AND r.produto_id = $2 AND f.tipo_fonte = 'CONCORRENTE'
+       AND r.dados ? '__MIDIA_CANDIDATOS'
+     ORDER BY f.prioridade ASC, f.nome ASC, r.id DESC`,
+    [empresaId, produtoId]
+  );
+  const candidatos: Array<Record<string, unknown>> = [];
+  const vistos = new Set<string>();
+  for (const registro of registros) {
+    const midia = registro.midia && typeof registro.midia === 'object' ? registro.midia as Record<string, unknown> : {};
+    const adicionar = (tipo: 'IMAGEM' | 'MANUAL', valor: unknown) => {
+      const url = String(valor ?? '').trim();
+      if (!/^https?:\/\//i.test(url) || vistos.has(`${tipo}:${url}`)) return;
+      vistos.add(`${tipo}:${url}`);
+      candidatos.push({
+        tipo,
+        url,
+        produto_id: produtoId,
+        registro_id: registro.registro_id,
+        fonte_id: registro.fonte_id,
+        fonte_codigo: registro.fonte_codigo,
+        fonte_nome: registro.fonte_nome,
+        anuncio_url: registro.anuncio_url,
+        titulo: registro.titulo,
+        marca: registro.marca,
+        modelo: registro.modelo,
+        status: 'PENDENTE_ESCOLHA'
+      });
+    };
+    (Array.isArray(midia.imagens) ? midia.imagens : []).forEach((valor) => adicionar('IMAGEM', valor));
+    (Array.isArray(midia.manuais) ? midia.manuais : []).forEach((valor) => adicionar('MANUAL', valor));
+  }
+  return candidatos;
 }
 
 export async function salvarAsset(empresaId: number, dados: Record<string, unknown>, usuarioId: number) {
@@ -1425,14 +3091,23 @@ export async function testarIaCadastroProdutoCentral(empresaId: number, dados: R
 }
 
 function montarComparacaoIa(produto: Record<string, unknown>, sugestao: Record<string, unknown>) {
-  const campos = ['codigo_referencia', 'codigo_fabricante', 'nome_comercial', 'marca', 'modelo', 'categoria', 'ciclo', 'tensao', 'btu', 'tecnologia', 'garantia'];
-  return campos.map((campo) => ({
-    campo,
-    valor_cadastro: produto[campo] ?? '',
-    valor_ia: sugestao[campo] ?? '',
-    valor_escolhido: produto[campo] ?? sugestao[campo] ?? '',
-    diferente: String(produto[campo] ?? '') !== String(sugestao[campo] ?? '')
-  }));
+  const campos = ['codigo_referencia', 'modelo_alfa_numerico', 'codigo_fabricante', 'nome_comercial', 'marca', 'modelo', 'categoria', 'ciclo', 'tensao', 'btu', 'tecnologia', 'garantia'];
+  const chaveCadastro = obterChaveModeloAlfaNumerico(produto);
+  const chaveOrigem = sugestao.modelo_alfa_numerico ?? sugestao.codigo_referencia ?? sugestao.referencias ?? '';
+  return campos.map((campo) => {
+    const valorCadastro = campo === 'modelo_alfa_numerico' ? chaveCadastro : produto[campo] ?? '';
+    const valorIa = campo === 'modelo_alfa_numerico' ? chaveOrigem : sugestao[campo] ?? '';
+    const compararComoChave = campo === 'modelo_alfa_numerico' || campo === 'codigo_referencia';
+    return {
+      campo,
+      valor_cadastro: valorCadastro,
+      valor_ia: valorIa,
+      valor_escolhido: valorCadastro || valorIa,
+      diferente: compararComoChave
+        ? normalizarChaveModeloAlfaNumerico(valorCadastro) !== normalizarChaveModeloAlfaNumerico(valorIa)
+        : String(valorCadastro) !== String(valorIa)
+    };
+  });
 }
 
 export async function compararProdutoComIa(empresaId: number, produtoId: number, dados: Record<string, unknown>, usuarioId: number) {
@@ -1450,22 +3125,27 @@ export async function compararProdutoComIa(empresaId: number, produtoId: number,
   const chave = String(dados.chave_openai ?? configuracao?.chave_openai ?? '').trim();
   const modelo = String(dados.modelo ?? configuracao?.modelo_padrao ?? 'gpt-4.1-mini');
   const sitePrioritario = String(dados.site_prioritario ?? 'https://www.leveros.com.br/');
-  const codigoReferencia = String(dados.codigo_referencia ?? dados.codigo_fabricante ?? produto.codigo_fabricante ?? produto.modelo ?? '').trim();
-  const referencias = codigoReferencia.split('|').map((item) => item.trim()).filter(Boolean);
-  if (!codigoReferencia) throw new Error('Informe a referencia da condensadora e evaporadora para comparar com dados enriquecidos.');
+  const chaveModeloAlfaNumerico = String(dados.modelo_alfa_numerico ?? obterChaveModeloAlfaNumerico(produto) ?? '').trim();
+  const codigoReferencia = String(dados.codigo_referencia ?? '').trim()
+    || chaveModeloAlfaNumerico
+    || String(dados.codigo_fabricante ?? produto.codigo_fabricante ?? produto.modelo ?? '').trim();
+  const referencias = partesChaveModeloAlfaNumerico(codigoReferencia);
+  const confiabilidadeBase = compararChavesModeloAlfaNumerico(chaveModeloAlfaNumerico || codigoReferencia, codigoReferencia);
+  if (!codigoReferencia) throw new Error('Informe o Modelo Alfa Numerico para comparar as referencias do ERP e do concorrente.');
 
   if (!chave || configuracao?.ativo === false) {
-    const sugestao = { codigo_referencia: codigoReferencia, referencias, fonte_prioritaria: sitePrioritario };
+    const sugestao = { codigo_referencia: codigoReferencia, modelo_alfa_numerico: codigoReferencia, referencias, fonte_prioritaria: sitePrioritario };
     return {
       configurado: false,
       modelo,
       site_prioritario: sitePrioritario,
       mensagem: 'IA nao configurada/ativa. Salve a chave OpenAI e ative a IA para consultar dados externos.',
+      confiabilidade: confiabilidadeBase,
       comparacao: montarComparacaoIa({ ...produto, codigo_referencia: codigoReferencia }, sugestao)
     };
   }
 
-  const prompt = `Busque informacoes publicas de um conjunto de ar-condicionado no site ${sitePrioritario} priorizando a referencia composta do conjunto. Referencia composta: ${codigoReferencia}. Separe as referencias por pipe quando houver, considerando condensadora e evaporadora: ${referencias.join(' | ')}. Retorne somente JSON com campos codigo_referencia, referencias, nome_comercial, marca, modelo, categoria, ciclo, tensao, btu, tecnologia, garantia, fonte_url e observacoes.`;
+  const prompt = `Busque informacoes publicas de um conjunto de ar-condicionado no site ${sitePrioritario} usando a chave Modelo Alfa Numerico do ERP. Chave original: ${codigoReferencia}. Chave normalizada: ${normalizarChaveModeloAlfaNumerico(codigoReferencia)}. Separe as referencias por pipe quando houver, considerando condensadora, evaporadora, controle e kit: ${referencias.join(' | ')}. Retorne somente JSON com campos codigo_referencia, modelo_alfa_numerico, referencias, nome_comercial, marca, modelo, categoria, ciclo, tensao, btu, tecnologia, garantia, fonte_url e observacoes.`;
   let sugestao: Record<string, unknown> = {};
   let bruto = '';
   try {
@@ -1489,6 +3169,9 @@ export async function compararProdutoComIa(empresaId: number, produtoId: number,
     bruto = texto || bruto;
     const match = bruto.match(/\{[\s\S]*\}/);
     sugestao = match ? JSON.parse(match[0]) : { observacoes: bruto };
+    if (!sugestao.modelo_alfa_numerico) {
+      sugestao.modelo_alfa_numerico = sugestao.codigo_referencia ?? sugestao.referencias ?? '';
+    }
   } catch (error) {
     sugestao = { codigo_referencia: codigoReferencia, referencias, observacoes: error instanceof Error ? error.message : 'Falha ao consultar IA.' };
   }
@@ -1496,14 +3179,16 @@ export async function compararProdutoComIa(empresaId: number, produtoId: number,
   await consultar(
     `INSERT INTO ia_sugestoes (produto_id, tipo_sugestao, entrada, sugestao, status, criado_por_usuario_id)
     VALUES ($1, 'ENRIQUECIMENTO_LEVEROS', $2::JSONB, $3::JSONB, 'GERADA', $4)`,
-    [produtoId, JSON.stringify({ codigo_referencia: codigoReferencia, referencias, site_prioritario: sitePrioritario, modelo }), JSON.stringify({ sugestao, bruto }), usuarioId]
+    [produtoId, JSON.stringify({ codigo_referencia: codigoReferencia, chave_modelo_alfa_numerico: normalizarChaveModeloAlfaNumerico(codigoReferencia), referencias, site_prioritario: sitePrioritario, modelo }), JSON.stringify({ sugestao, bruto }), usuarioId]
   );
 
+  const confiabilidade = compararChavesModeloAlfaNumerico(chaveModeloAlfaNumerico || codigoReferencia, sugestao.modelo_alfa_numerico ?? sugestao.codigo_referencia ?? sugestao.referencias ?? '');
   return {
     configurado: true,
     modelo,
     site_prioritario: sitePrioritario,
     sugestao,
+    confiabilidade,
     comparacao: montarComparacaoIa({ ...produto, codigo_referencia: codigoReferencia }, sugestao)
   };
 }
@@ -1983,6 +3668,7 @@ async function localizarProdutoPorCodigoErp(empresaId: number, codigoErp: unknow
 }
 
 async function localizarProdutoExistente(empresaId: number, produto: ProdutoCadastro) {
+  const chaveModeloAlfaNumerico = normalizarChaveModeloAlfaNumerico(obterChaveModeloAlfaNumerico(produto as Record<string, unknown>));
   return consultarUm<{ id: number; codigo_interno: string | null }>(
     `SELECT id, codigo_interno
     FROM produtos
@@ -1994,6 +3680,7 @@ async function localizarProdutoExistente(empresaId: number, produto: ProdutoCada
         OR ($4::TEXT IS NOT NULL AND ean_gtin = $4)
         OR ($5::TEXT IS NOT NULL AND codigo_fabricante = $5)
         OR ($6::TEXT IS NOT NULL AND modelo = $6)
+        OR ($7::TEXT IS NOT NULL AND regexp_replace(upper(COALESCE(fiscal_comercial->'Identificacao'->>'modelo_alfa_numerico', '')), '[^A-Z0-9]', '', 'g') = $7)
       )
     ORDER BY alterado_em DESC NULLS LAST, criado_em DESC
     LIMIT 1`,
@@ -2003,7 +3690,8 @@ async function localizarProdutoExistente(empresaId: number, produto: ProdutoCada
       produto.codigo_erp_decis ?? null,
       produto.ean_gtin ?? produto.ean ?? produto.gtin ?? null,
       produto.codigo_fabricante ?? null,
-      produto.modelo ?? null
+      produto.modelo ?? null,
+      chaveModeloAlfaNumerico || null
     ]
   );
 }

@@ -7,6 +7,7 @@ export type UsuarioLogado = {
   administrador: boolean;
   superadmin: boolean;
   empresaAtivaId?: number;
+  alterar_senha_proximo_login?: boolean;
   permissoes?: string[];
   preferencias_interface?: Record<string, unknown>;
 };
@@ -39,15 +40,16 @@ export type RegistroGenerico = Record<string, any>;
 async function requisitar<T>(caminho: string, opcoes?: RequestInit): Promise<T> {
   const token = localStorage.getItem('controlSHubToken');
   let resposta: Response;
+  const cabecalhos = {
+    ...(opcoes?.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(opcoes?.headers ?? {})
+  };
 
   try {
     resposta = await fetch(`${API_BASE}${caminho}`, {
       ...opcoes,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(opcoes?.headers ?? {})
-      }
+      headers: cabecalhos
     });
   } catch (erro) {
     throw new Error(`Falha de comunicacao com a API. Endpoint: ${caminho}. URL: ${API_BASE}${caminho}. Erro: ${erro instanceof Error ? erro.message : String(erro)}`);
@@ -78,6 +80,20 @@ export async function entrar(email: string, senha: string) {
   }>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, senha })
+  });
+}
+
+export async function validarCredenciaisLogin(email: string, senha: string) {
+  return requisitar<RegistroGenerico>('/api/auth/validar-credenciais', {
+    method: 'POST',
+    body: JSON.stringify({ email, senha })
+  });
+}
+
+export async function alterarSenhaLogin(email: string, senha_atual: string, nova_senha: string) {
+  return requisitar<RegistroGenerico>('/api/auth/alterar-senha-login', {
+    method: 'POST',
+    body: JSON.stringify({ email, senha_atual, nova_senha })
   });
 }
 
@@ -589,8 +605,82 @@ export async function salvarCanalPim(dados: RegistroGenerico) {
   });
 }
 
+export async function listarFontesComparacaoPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/concorrentes');
+}
+
+export async function salvarFonteComparacaoPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/concorrentes', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function excluirFonteComparacaoPim(id: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/concorrentes/${id}`, { method: 'DELETE' });
+}
+
+export async function listarAtributosComparacaoPim(fonteId: number) {
+  return requisitar<RegistroGenerico[]>(`/api/cadastro-produto-central/concorrentes/${fonteId}/atributos`);
+}
+
+export async function obterDeParaConcorrentePim(fonteId: number) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/concorrentes/${fonteId}/depara`);
+}
+
+export async function salvarAtributosComparacaoPim(fonteId: number, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico[]>(`/api/cadastro-produto-central/concorrentes/${fonteId}/atributos`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function carregarFonteComparacaoPim(fonteId: number, dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/concorrentes/${fonteId}/carregar`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function extrairAnuncioComparacaoPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/concorrentes/anuncios/extrair', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function salvarComparacaoAnuncioPim(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/cadastro-produto-central/concorrentes/anuncios', {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
+export async function listarComparacoesProdutoPim(produtoId?: number) {
+  return requisitar<RegistroGenerico[]>(`/api/cadastro-produto-central/concorrentes/anuncios${montarQuery({ produto_id: produtoId })}`);
+}
+
+export async function listarCoberturaConcorrentesPim() {
+  return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/concorrentes/cobertura');
+}
+
+export async function obterMatrizComparacaoProdutoPim(produtoId: number) {
+  return requisitar<{ produto: RegistroGenerico; fontes: RegistroGenerico[]; atributos: RegistroGenerico[]; consolidado?: RegistroGenerico }>(`/api/cadastro-produto-central/comparacao-matriz/${produtoId}`);
+}
+
+export async function salvarConsolidadoComparacaoPim(produtoId: number, dados: { codigo: string; valor: string }) {
+  return requisitar<RegistroGenerico>(`/api/cadastro-produto-central/comparacao-consolidado/${produtoId}`, {
+    method: 'POST',
+    body: JSON.stringify(dados)
+  });
+}
+
 export async function listarScoreCanaisPim() {
   return requisitar<RegistroGenerico[]>('/api/cadastro-produto-central/score-canais');
+}
+
+export async function listarCandidatosMidiaProdutoPim(produtoId: number) {
+  return requisitar<RegistroGenerico[]>(`/api/cadastro-produto-central/assets/candidatos/${produtoId}`);
 }
 
 export async function listarAssetsPim(busca?: string) {
@@ -862,6 +952,13 @@ export async function salvarMotoristaFrota(dados: RegistroGenerico) {
   return requisitar<RegistroGenerico>('/api/frota/motoristas', { method: 'POST', body: JSON.stringify(dados) });
 }
 
+export async function gerarUsuarioMotoristaFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/motoristas/${id}/gerar-usuario`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
 export async function excluirMotoristaFrota(id: number) {
   return requisitar<RegistroGenerico>(`/api/frota/motoristas/${id}`, { method: 'DELETE' });
 }
@@ -926,6 +1023,18 @@ export async function excluirMotivoCancelamentoFrota(id: number) {
   return requisitar<RegistroGenerico>(`/api/frota/motivos-cancelamento/${id}`, { method: 'DELETE' });
 }
 
+export async function listarMotivosSemPedidoFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/motivos-sem-pedido');
+}
+
+export async function salvarMotivoSemPedidoFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/motivos-sem-pedido', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirMotivoSemPedidoFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/motivos-sem-pedido/${id}`, { method: 'DELETE' });
+}
+
 export async function listarDespesasFrota(filtros?: RegistroGenerico) {
   return requisitar<{ linhas: RegistroGenerico[]; totalizadores: RegistroGenerico }>(`/api/frota/despesas${montarQuery(filtros)}`);
 }
@@ -944,6 +1053,10 @@ export async function cancelarDespesasFrota(ids: number[], motivo_id: number, ob
 
 export async function listarHistoricoDespesaFrota(id: number) {
   return requisitar<RegistroGenerico[]>(`/api/frota/despesas/${id}/historico`);
+}
+
+export async function listarHistoricoApontamentoKmFrota(id: number) {
+  return requisitar<RegistroGenerico[]>(`/api/frota/km/apontamentos/${id}/historico`);
 }
 
 export async function obterMapeamentoImportacaoFrota(fornecedorId: number) {
@@ -969,3 +1082,42 @@ export async function salvarConfiguracoesFrota(dados: RegistroGenerico) {
   return requisitar<RegistroGenerico>('/api/frota/configuracoes', { method: 'POST', body: JSON.stringify(dados) });
 }
 
+export async function obterContextoKmFrota() {
+  return requisitar<RegistroGenerico>('/api/frota/km/contexto');
+}
+
+export async function listarPedidosVendaFrota() {
+  return requisitar<RegistroGenerico[]>('/api/frota/pedidos-venda');
+}
+
+export async function salvarPedidoVendaFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/pedidos-venda', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirPedidoVendaFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/pedidos-venda/${id}`, { method: 'DELETE' });
+}
+
+export async function obterCalendarioKmFrota(filtros?: RegistroGenerico) {
+  return requisitar<RegistroGenerico>(`/api/frota/km/calendario${montarQuery(filtros)}`);
+}
+
+export async function listarApontamentosKmFrota(filtros?: RegistroGenerico) {
+  return requisitar<{ linhas: RegistroGenerico[]; totalizadores: RegistroGenerico }>(`/api/frota/km/apontamentos${montarQuery(filtros)}`);
+}
+
+export async function salvarApontamentoKmFrota(dados: RegistroGenerico) {
+  return requisitar<RegistroGenerico>('/api/frota/km/apontamentos', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function excluirApontamentoKmFrota(id: number) {
+  return requisitar<RegistroGenerico>(`/api/frota/km/apontamentos/${id}`, { method: 'DELETE' });
+}
+
+export async function validarApontamentosKmFrota(ids: number[], validado = true) {
+  return requisitar<RegistroGenerico>('/api/frota/km/validar-lote', { method: 'POST', body: JSON.stringify({ ids, validado }) });
+}
+
+export async function cancelarApontamentosKmFrota(ids: number[], motivo_id: number, observacao?: string) {
+  return requisitar<RegistroGenerico>('/api/frota/km/cancelar-lote', { method: 'POST', body: JSON.stringify({ ids, motivo_id, observacao }) });
+}

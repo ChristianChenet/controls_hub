@@ -34,7 +34,14 @@ $sqls = @(
   "database\migrations\014_consolidacao_pim_permissoes.sql",
   "database\migrations\015_padronizar_pim_banco_portugues.sql",
   "database\migrations\027_pim_sqlserver_carga_manual.sql",
-  "database\migrations\028_pim_consultas_sqlserver_salvas.sql"
+  "database\migrations\028_pim_consultas_sqlserver_salvas.sql",
+  "database\migrations\040_pim_comparacao_concorrentes.sql",
+  "database\atualizacoes\cadastro-produto-central\RESET_ATRIBUTOS_PLANILHA_ERP.sql",
+  "database\atualizacoes\cadastro-produto-central\SEED_ATRIBUTOS_ERP.sql",
+  "database\atualizacoes\cadastro-produto-central\SEED_PRODUTOS_CONJUNTOS_ERP.sql",
+  "database\atualizacoes\cadastro-produto-central\VINCULAR_REGISTROS_ERP_CONJUNTOS.sql",
+  "database\atualizacoes\cadastro-produto-central\SEED_VALORES_ATRIBUTOS_ERP.sql",
+  "database\atualizacoes\cadastro-produto-central\COMPLETAR_VALORES_ATRIBUTOS_CONJUNTOS_ERP.sql"
 )
 
 Write-Host "Atualizando banco do Cadastro de Produto Central..."
