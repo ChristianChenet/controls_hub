@@ -3597,6 +3597,29 @@ function percentualContraBase(valor: unknown, base: unknown) {
   return `${percentual > 0 ? '+' : ''}${percentual.toFixed(2)}%`;
 }
 
+function obterTotalNotaCotacao(cotacao: RegistroGenerico) {
+  return lerNumeroOperacional(
+    cotacao.valor_mercadoria
+    ?? cotacao.valor_total_nota
+    ?? cotacao.valor_total_nf
+    ?? cotacao.valor_nota
+    ?? 0
+  );
+}
+
+function formatarPercentualFreteSobreNota(valorFrete: unknown, totalNota: unknown) {
+  const frete = lerNumeroOperacional(valorFrete);
+  const nota = lerNumeroOperacional(totalNota);
+  if (frete <= 0 || nota <= 0) {
+    return '';
+  }
+  return ` (${formatarNumero((frete / nota) * 100, 1)}%)`;
+}
+
+function formatarFreteComPercentualNota(valorFrete: unknown, totalNota: unknown) {
+  return `${formatarMoeda(valorFrete)}${formatarPercentualFreteSobreNota(valorFrete, totalNota)}`;
+}
+
 function origemCotacaoAutomatica(origem: unknown) {
   const texto = String(origem ?? '').trim().toUpperCase();
   return ['BANCO', 'AUTOMATICA', 'ERP'].includes(texto);
@@ -3989,6 +4012,7 @@ function AbaTransportadoras({
   const ordenadas = [...transportadoras].sort(compararValorFreteRanking);
   const exibidas = verTodas ? ordenadas : ordenadas.slice(0, 3);
   const valorPedidoBase = cotacao.valor_frete_pedido ?? cotacao.valor_frete_venda ?? cotacao.valor_solicitado;
+  const totalNotaBase = obterTotalNotaCotacao(cotacao);
   const cubagemTotalLinkLocal = calcularCubagemTotal(cotacao, itens ?? []);
 
   return (
@@ -4000,7 +4024,7 @@ function AbaTransportadoras({
         </div>
         {ordenadas.length > 3 && <button className="ghost" onClick={() => setVerTodas(!verTodas)}>{verTodas ? 'Ver Top 3' : 'Ver todas'}</button>}
       </header>
-      <PodioCotacao transportadoras={ordenadas} />
+      <PodioCotacao transportadoras={ordenadas} totalNota={totalNotaBase} />
       <div className="comparativo compacto listaRankingAba">
         {exibidas.map((transportadora, indice) => {
           const motivoBloqueioRegra = bloqueioEscolha?.(transportadora) ?? null;
@@ -4011,7 +4035,7 @@ function AbaTransportadoras({
             <article className={`${indice === 0 ? 'primeiro' : indice === 1 ? 'segundo' : indice === 2 ? 'terceiro' : ''} ${motivoBloqueioRegra ? 'cotacaoCardBloqueada' : ''}`} key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}-${indice}`}>
               <small>{indice + 1}º lugar · {String(transportadora.origem_cotacao ?? '-')}</small>
               <strong>{String(transportadora.nome_fantasia ?? '-')}</strong>
-              <span>{formatarMoeda(transportadora.valor_frete)}</span>
+              <span>{formatarFreteComPercentualNota(transportadora.valor_frete, totalNotaBase)}</span>
               <small>{percentualContraBase(transportadora.valor_frete, valorPedidoBase)} vs Pedido</small>
               <small>Prazo {String(transportadora.prazo_dias ?? 0)} dias</small>
               <small>Status: {String(transportadora.status ?? transportadora.status_envio ?? '-')}</small>
@@ -4731,7 +4755,7 @@ function TabelaDocumentosFiscais({ titulo, dados, colunas }: { titulo: string; d
   );
 }
 
-function PodioCotacao({ transportadoras }: { transportadoras: RegistroGenerico[] }) {
+function PodioCotacao({ transportadoras, totalNota }: { transportadoras: RegistroGenerico[]; totalNota: unknown }) {
   const top = [...transportadoras]
     .filter((transportadora) => Number(transportadora.valor_frete ?? 0) > 0)
     .sort(compararValorFreteRanking)
@@ -4747,7 +4771,7 @@ function PodioCotacao({ transportadoras }: { transportadoras: RegistroGenerico[]
         <article className={indice === 0 ? 'ouro' : indice === 1 ? 'prata' : 'bronze'} key={`${String(transportadora.id ?? transportadora.transportadora_id ?? transportadora.nome_fantasia ?? 'transportadora')}-${String(transportadora.origem_cotacao ?? indice)}-${indice}`}>
           <small>{indice === 0 ? '1º lugar · melhor oferta' : `${indice + 1}º lugar`}</small>
           <strong>{String(transportadora.nome_fantasia)}</strong>
-          <span>{formatarMoeda(transportadora.valor_frete)}</span>
+          <span>{formatarFreteComPercentualNota(transportadora.valor_frete, totalNota)}</span>
           <em>{Number(transportadora.diferenca_percentual ?? 0) === 0 ? 'Vencendo agora' : `+${String(transportadora.diferenca_percentual)}% acima`}</em>
           <b>{String(transportadora.prazo_dias ?? 0)} dias</b>
         </article>
