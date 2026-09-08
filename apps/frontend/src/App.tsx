@@ -3868,6 +3868,7 @@ function normalizarDetalheCotacao(detalhe: {
 
 function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGenerico; transportadoras: RegistroGenerico[] }) {
   const valorPedido = Number(cotacao.valor_frete_pedido ?? cotacao.valor_frete_venda ?? cotacao.valor_solicitado ?? 0);
+  const totalNotaBase = obterTotalNotaCotacao(cotacao);
   const prazoPedido = Number(cotacao.prazo_pedido_dias ?? cotacao.prazo_informado_venda_dias ?? cotacao.prazo_vendedor_dias ?? 0);
   const automatica = obterAutomaticaReferenciaEscolhida(cotacao, transportadoras);
   const resposta = transportadoras.find((item: any) => ehCotacaoTransportadora(item) && Number(item.valor_frete ?? 0) > 0);
@@ -3917,7 +3918,7 @@ function ComparativoFases({ cotacao, transportadoras }: { cotacao: RegistroGener
         return (
           <article key={fase.titulo}>
             <span>{fase.titulo}</span>
-            <strong>{formatarMoeda(fase.valor)}</strong>
+            <strong>{formatarFreteComPercentualNota(fase.valor, totalNotaBase)}</strong>
             <small>{fase.detalhe}</small>
             <em className={fase.titulo === 'Pedido' ? undefined : classeComparacaoFrete(fase.valor, valorPedido)}>
               {percentualContraBase(fase.valor, valorPedido)} vs Pedido
