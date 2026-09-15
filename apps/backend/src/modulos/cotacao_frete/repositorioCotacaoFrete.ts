@@ -902,7 +902,9 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
     FROM etapas_kanban e
     LEFT JOIN cotacoes_frete c ON (
         CASE
-          WHEN EXISTS (
+          WHEN UPPER(TRIM(COALESCE(c.status, ''))) = 'CTE_EMITIDO'
+            OR COALESCE(NULLIF(TRIM(c.numero_cte), ''), '') <> ''
+            OR EXISTS (
             SELECT 1
             FROM cotacoes_frete_ctes ct_status
             WHERE ct_status.empresa_id = c.empresa_id
@@ -910,7 +912,8 @@ export async function listarKanbanCotacao(empresaId: number, filtros: FiltrosCot
               AND ct_status.numero_documento = c.numero_documento
               AND ct_status.codigo_chave = c.codigo_chave
           ) THEN 'CTE_EMITIDO'
-          WHEN c.transportadora_escolhida_id IS NOT NULL
+          WHEN UPPER(TRIM(COALESCE(c.status, ''))) = 'TRANSPORTADORA_ESCOLHIDA'
+            OR c.transportadora_escolhida_id IS NOT NULL
             OR c.escolhido_em IS NOT NULL
             OR c.escolhido_por_usuario_id IS NOT NULL
             OR EXISTS (
