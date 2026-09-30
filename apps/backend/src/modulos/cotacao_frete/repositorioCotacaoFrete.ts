@@ -2639,6 +2639,20 @@ export async function escolherAutomaticamenteTransportadoraDoPedido(dados: {
       titulo: 'Transportadora do pedido escolhida automaticamente',
       descricao: 'Transportadora configurada para escolha automatica quando vier definida no pedido.'
     });
+  } else {
+    await registrarTimelineCotacao({
+      cotacaoId: cotacao.id,
+      usuarioId: dados.usuarioId ?? null,
+      transportadoraId: cotacao.transportadora_auto_id,
+      tipoEvento: 'ESCOLHA_AUTOMATICA_TRANSPORTADORA_PEDIDO_IGNORADA',
+      titulo: 'Escolha automatica da transportadora nao aplicada',
+      descricao: 'A transportadora do pedido estava configurada para escolha automatica, mas a cotacao nao foi atualizada.',
+      dadosEvento: {
+        transportadora_id: cotacao.transportadora_auto_id,
+        status_cotacao: cotacao.status ?? null,
+        motivo: 'escolher_transportadora_sem_retorno'
+      }
+    });
   }
 
   return resultado;
@@ -2649,6 +2663,9 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
   usuarioId?: number;
   etapaCodigo?: string | null;
   cotacaoId?: string | number | null;
+  criadoApos?: Date | string | null;
+  limite?: number | null;
+  somenteSemEscolha?: boolean;
 }) {
   await consultar(
     `ALTER TABLE transportadoras
@@ -2684,6 +2701,22 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
     filtros.push(`c.codigo_chave = $${parametros.length}`);
   }
 
+  if (dados.criadoApos) {
+    parametros.push(dados.criadoApos);
+    filtros.push(`COALESCE(c.criadoem, c.criado_em, c.alterado_em) >= $${parametros.length}::TIMESTAMPTZ`);
+  }
+
+  if (dados.somenteSemEscolha) {
+    filtros.push('c.transportadora_escolhida_id IS NULL');
+    filtros.push('c.escolhido_em IS NULL');
+    filtros.push('c.escolhido_por_usuario_id IS NULL');
+    filtros.push("UPPER(COALESCE(c.status, '')) NOT IN ('COTACAO_CANCELADA', 'BLOQUEADO_FINALIZADO')");
+  }
+
+  const limite = dados.limite ? Math.min(200, Math.max(1, Number(dados.limite) || 50)) : null;
+  const parametrosConsulta = [...parametros];
+  const limiteSql = limite ? `\n    LIMIT $${parametrosConsulta.push(limite)}` : '';
+
   const cotacoes = await consultar<{
     id: string;
     numero_documento: string;
@@ -2699,8 +2732,8 @@ export async function reprocessarEscolhasAutomaticasTransportadoraPedido(dados: 
     LEFT JOIN etapas_kanban e
       ON e.id = c.etapa_kanban_id
     WHERE ${filtros.join('\n      AND ')}
-    ORDER BY c.numero_documento, c.codigo_chave`,
-    parametros
+    ORDER BY COALESCE(c.criadoem, c.criado_em, c.alterado_em) DESC, c.numero_documento, c.codigo_chave${limiteSql}`,
+    parametrosConsulta
   );
 
   const erros: Array<{ cotacao_id: string; mensagem: string }> = [];
@@ -3439,6 +3472,14 @@ export async function receberCotacaoErp(empresaId: number, dados: any) {
     empresaId,
     cotacaoId: cotacao.id,
     usuarioId: 1
+  });
+
+  await reprocessarEscolhasAutomaticasTransportadoraPedido({
+    empresaId,
+    usuarioId: 1,
+    criadoApos: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    limite: 50,
+    somenteSemEscolha: true
   });
 
   return cotacao;
